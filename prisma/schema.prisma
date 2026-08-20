@@ -1,0 +1,245 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum Role {
+  ADMIN
+  STAFF
+}
+
+enum TransactionType {
+  STOCK_IN
+  ISSUE
+  RETURN
+  /// Sealed pack → open. Quantity is the pack size; stock total is unchanged.
+  OPEN_PACK
+  /// Open pack at/below its item's scrapThreshold → recycle. Removes from stock.
+  SCRAP
+}
+
+/// Whether an item's base unit can be subdivided. CONTINUOUS material (wire,
+/// measured in metres) must come from a single pack — 60 m cannot be made from
+/// three 20 m offcuts. DISCRETE material (screws, in pcs) pools freely.
+enum MeasureType {
+  CONTINUOUS
+  DISCRETE
+}
+
+enum PackState {
+  OPEN
+  SCRAP
+}
+
+enum DefectSource {
+  DELIVERY
+  RETURN
+}
+
+enum DefectStatus {
+  QUARANTINED
+  CLAIMED
+  REPLACED
+}
+
+enum ShelfSide {
+  FRONT
+  BACK
+}
+
+enum BoxType {
+  FRESH
+  OPENED
+  RECYCLABLE
+}
+
+model User {
+  id             String          @id @default(cuid())
+  name           String
+  email          String          @unique
+  passwordHash   String
+  role           Role            @default(STAFF)
+  createdAt      DateTime        @default(now())
+  transactions   Transaction[]
+  defectiveItems DefectiveItem[]
+}
+
+model Item {
+  id       String  @id @default(cuid())
+  name     String
+  sku      String  @unique
+  category String?
+
+  /// The divisible unit stock is counted in: "m" for wire, "pcs" for screws.
+  /// Every quantity in the system is expressed in this unit.
+  baseUnit String  @default("pcs")
+  /// What a sealed pack is called ("roll", "packet"). Null = not packaged.
+  packUnit String? // renamed from `unit`
+
+  measure        MeasureType @default(DISCRETE)
+  /// CONTINUOUS only. An open pack at or below this many base units stops being
+  /// stock and moves to the recycle list. Null for DISCRETE items.
+  scrapThreshold Int?
+
+  minStock Int @default(0)
+
+  /// CACHE. Truth is PackStock + OpenPack; recalcItemStock() is the only writer.
+  ///   currentStock = Σ(packSize × sealedCount) + Σ(OpenPack.remaining where OPEN)
+  ///   scrapStock   = Σ(OpenPack.remaining where SCRAP)
+  currentStock Int @default(0)
+  scrapStock   Int @default(0)
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  transactions   Transaction[]
+  shelfSlots     ShelfSlot[]
+  packStock      PackStock[]
+  openPacks      OpenPack[]
+  defectiveItems DefectiveItem[]
+}
+
+/// Sealed packs, grouped by size. Two sealed 400 m rolls are interchangeable, so
+/// they are counted rather than tracked individually.
+model PackStock {
+  id          String @id @default(cuid())
+  item        Item   @relation(fields: [itemId], references: [id])
+  itemId      String
+  packSize    Int
+  sealedCount Int    @default(0)
+
+  @@unique([itemId, packSize])
+}
+
+/// Opened packs, tracked individually. Two opened rolls holding 30 m and 50 m are
+/// NOT interchangeable — which one you reach for is the whole question — so each
+/// keeps its own remainder.
+model OpenPack {
+  id           String    @id @default(cuid())
+  item         Item      @relation(fields: [itemId], references: [id])
+  itemId       String
+  remaining    Int
+  originalSize Int?
+  state        PackState @default(OPEN)
+  openedAt     DateTime  @default(now())
+
+  /// Which physical box it sits in. The shelf map reads this rather than
+  /// storing its own quantity.
+  shelfSlot   ShelfSlot? @relation(fields: [shelfSlotId], references: [id])
+  shelfSlotId String?
+
+  @@index([itemId, state])
+  @@index([shelfSlotId])
+}
+
+/// Goods that physically exist but are not stock: damaged on arrival, or returned
+/// damaged from a site. Held for a supplier claim.
+model DefectiveItem {
+  id        String @id @default(cuid())
+  item      Item   @relation(fields: [itemId], references: [id])
+  itemId    String
+  quantity  Int
+  /// Set when the defect is whole sealed packs rather than a loose quantity.
+  packSize  Int?
+  packCount Int?
+
+  source        DefectSource
+  /// The RETURN that brought it back, when source is RETURN.
+  transaction   Transaction? @relation(fields: [transactionId], references: [id])
+  transactionId String?
+  site          Site?        @relation(fields: [siteId], references: [id])
+  siteId        String?
+
+  status     DefectStatus @default(QUARANTINED)
+  note       String?
+  reportedAt DateTime     @default(now())
+  user       User         @relation(fields: [userId], references: [id])
+  userId     String
+
+  @@index([itemId, status])
+}
+
+model Site {
+  id             String          @id @default(cuid())
+  name           String
+  location       String?
+  notes          String?
+  createdAt      DateTime        @default(now())
+  transactions   Transaction[]
+  defectiveItems DefectiveItem[]
+}
+
+model Transaction {
+  id        String          @id @default(cuid())
+  type      TransactionType
+  /// ALWAYS in the item's baseUnit, for every transaction type. Reports and
+  /// guards depend on this being uniform.
+  quantity  Int
+  note      String?
+  createdAt DateTime        @default(now())
+
+  /// How it was entered, for display only — never for arithmetic.
+  packSize     Int?
+  packCount    Int?
+  /// JSON [{length, count}] for a continuous cut.
+  pieces       String?
+  /// Portion of a RETURN quarantined as defective rather than restocked.
+  defectiveQty Int?
+
+  item   Item   @relation(fields: [itemId], references: [id])
+  itemId String
+
+  site   Site?   @relation(fields: [siteId], references: [id])
+  siteId String?
+
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  defectiveItems DefectiveItem[]
+
+  @@index([itemId])
+  @@index([siteId])
+  @@index([createdAt])
+}
+
+model Shelf {
+  id        String      @id @default(cuid())
+  name      String
+  rows      Int
+  columns   Int
+  createdAt DateTime    @default(now())
+  slots     ShelfSlot[]
+}
+
+/// A physical box on a shelf. It records WHICH item lives here and in what
+/// condition; HOW MUCH is derived from the item's packs, never stored:
+///   FRESH       → the item's PackStock totals (sealed packs are fungible)
+///   OPENED      → the OpenPack rows pointing at this slot
+///   RECYCLABLE  → that item's SCRAP rows
+model ShelfSlot {
+  id         String    @id @default(cuid())
+  shelf      Shelf     @relation(fields: [shelfId], references: [id])
+  shelfId    String
+  side       ShelfSide
+  row        Int
+  column     Int
+  tagCode    String
+  isFrontRow Boolean   @default(false)
+  boxType    BoxType   @default(FRESH)
+
+  item      Item?      @relation(fields: [itemId], references: [id])
+  itemId    String?
+  openPacks OpenPack[]
+
+  @@unique([shelfId, side, row, column])
+  @@unique([shelfId, tagCode])
+  // No @@unique([itemId, boxType]): a large arrival may fill several boxes of
+  // the same condition.
+  @@index([itemId])
+}
