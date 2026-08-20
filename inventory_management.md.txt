@@ -1,0 +1,26 @@
+
+*Inventory Management System – Problem Statement*
+
+Current Problems:
+
+1. No Centralized Stock Records. There is currently no proper system to maintain records of the components and materials available in company stock.
+2. Manual Stock Verification & Restocking. Every component has to be manually checked to determine the available quantity and whether it needs to be reordered. This is time-consuming and prone to errors.
+3. No Record of Materials Taken to Sites. Materials and components taken from the office/store for installation sites are not consistently recorded, making it difficult to track where the inventory has been used.
+
+*Objective*
+Develop an easy-to-use inventory management system that can:
+- Maintain a real-time record of all components and their quantities.
+- Record stock in / stock out transactions.
+- Track materials issued to specific projects/sites.
+- Automatically update the available stock when materials are issued or received.
+- Provide alerts/indications when stock falls below the required minimum level.
+- Maintain a history of inventory movements for accountability and future reference.
+- Provide a simple dashboard to understand current stock, low-stock items, and materials issued to different sites.
+
+*Expected Outcome*
+
+By the end of the project, we should be able to answer at any time:
+
+*“What material do we have, how much do we have, where has it gone, and what needs to be purchased?”*
+
+The solution should be simple, practical, scalable and easy for the team to use on a day-to-day basis.
