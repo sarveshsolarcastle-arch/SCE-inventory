@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getPlacementSuggestions } from "@/lib/suggestions";
+import { materialAcrossSites } from "@/lib/stock";
 import { can, currentUser } from "@/lib/permissions";
 
 /** The dashboard is one page that reshapes itself: each role gets the actions
@@ -29,6 +30,22 @@ export default async function DashboardPage() {
   ]);
 
   const lowStock = allItems.filter((item) => item.currentStock < item.minStock);
+
+  // Material at sites is SHOWN beside a low-stock item but never COUNTED
+  // toward it: reorder levels stay store-only, so the app never implies
+  // material it cannot hand over today is available. Without this line
+  // though, an alert can tell you to buy wire while 300 m sits stranded
+  // across three sites.
+  const atSites = await materialAcrossSites();
+  const strandedByItem = new Map<string, { quantity: number; siteCount: number }>();
+  for (const { items } of atSites) {
+    for (const entry of items) {
+      const current = strandedByItem.get(entry.item.id) ?? { quantity: 0, siteCount: 0 };
+      current.quantity += entry.quantity;
+      current.siteCount += 1;
+      strandedByItem.set(entry.item.id, current);
+    }
+  }
 
   const siteSummaries = await prisma.site.findMany({
     include: {
@@ -68,16 +85,30 @@ export default async function DashboardPage() {
             Low Stock Alerts
           </h2>
           <ul className="divide-y divide-zinc-200 text-sm dark:divide-zinc-800">
-            {lowStock.map((item) => (
-              <li key={item.id} className="flex justify-between py-1.5">
-                <Link href={`/items/${item.id}`} className="hover:underline">
-                  {item.name}
-                </Link>
-                <span className="text-red-700 dark:text-red-300">
-                  {item.currentStock} / min {item.minStock} {item.baseUnit}
-                </span>
-              </li>
-            ))}
+            {lowStock.map((item) => {
+              const stranded = strandedByItem.get(item.id);
+              return (
+                <li key={item.id} className="flex justify-between gap-2 py-1.5">
+                  <Link href={`/items/${item.id}`} className="hover:underline">
+                    {item.name}
+                  </Link>
+                  <span className="text-right">
+                    <span className="text-red-700 dark:text-red-300">
+                      {item.currentStock} / min {item.minStock} {item.baseUnit}
+                    </span>
+                    {stranded && (
+                      <Link
+                        href="/at-sites"
+                        className="block text-xs text-zinc-500 hover:underline dark:text-zinc-500"
+                      >
+                        + {stranded.quantity} {item.baseUnit} at {stranded.siteCount} site
+                        {stranded.siteCount === 1 ? "" : "s"} (not counted)
+                      </Link>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
             {lowStock.length === 0 && (
               <li className="py-4 text-center text-zinc-500 dark:text-zinc-500">
                 All items are above minimum stock.

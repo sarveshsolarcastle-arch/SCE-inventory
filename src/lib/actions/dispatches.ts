@@ -11,6 +11,7 @@ import {
 } from "@/lib/packs";
 import { piecesTotal, type Piece } from "@/lib/units";
 import { serialiseAppliedPlan } from "@/lib/corrections";
+import { reconcileSitePickups } from "@/lib/sitePickups";
 import type { AllocationRequest } from "@/lib/allocation";
 
 /* -------------------------------------------------------------------------
@@ -165,6 +166,10 @@ export async function recordDispatch(input: DispatchInput): Promise<DispatchResu
             where: { id: movement.id },
             data: { appliedPlan: serialiseAppliedPlan(applied) },
           });
+          // Raises what the site holds, so a pickup flag can stay as it is —
+          // but reconciling keeps the "flag never exceeds the balance" rule
+          // in one place rather than reasoning about direction per caller.
+          await reconcileSitePickups(tx, input.siteId, item.id);
         } catch (error) {
           if (error instanceof AllocationFailedError) {
             throw new RowError(index, `Row ${index + 1} (${item.name}): ${error.message}`);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useId, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   recordDelivery,
@@ -271,6 +271,10 @@ function DeliveryRowCard({
   onUpdate: (patch: Partial<RowState>) => void;
   onRemove: () => void;
 }) {
+  // useId, not row.key: the module-level counter behind row.key advances
+  // independently on the server and in the browser, so using it in a DOM
+  // attribute produced a hydration mismatch. useId is stable across both.
+  const sizesId = useId();
   const packaged = !!item?.packUnit;
   const total = rowTotal(row);
   const defective = Number(row.defectiveQty) || 0;
@@ -310,7 +314,7 @@ function DeliveryRowCard({
             type="number"
             min={1}
             inputMode="numeric"
-            list={`sizes-${row.key}`}
+            list={sizesId}
             disabled={!packaged}
             value={row.packSize}
             onChange={(e) => onUpdate({ packSize: e.target.value })}
@@ -318,7 +322,7 @@ function DeliveryRowCard({
             className={INPUT}
           />
           {item && (
-            <datalist id={`sizes-${row.key}`}>
+            <datalist id={sizesId}>
               {item.knownPackSizes.map((s) => (
                 <option key={s} value={s} />
               ))}

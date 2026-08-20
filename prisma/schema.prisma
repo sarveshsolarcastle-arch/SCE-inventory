@@ -34,6 +34,16 @@ enum TransactionType {
   /// Marks an earlier movement as recorded in error. The original is kept and
   /// excluded from aggregation rather than deleted.
   REVERSAL
+  /// Material used up at a site. Zero delta to store currentStock — it left
+  /// the store when it was issued — and negative against the site's holding.
+  /// Without this a site's list is "everything ever sent, minus what came
+  /// back", so it grows forever and stops describing what is actually there.
+  CONSUME
+  /// Material moved site A → B without passing through the store. `siteId` is
+  /// the destination, `fromSiteId` the origin. Touches NO packs at all, which
+  /// is the honest model: packs are a store-side concept and this material
+  /// never goes near the shelf.
+  TRANSFER
 }
 
 /// Whether an item's base unit can be subdivided. CONTINUOUS material (wire,
@@ -82,6 +92,7 @@ model User {
   defectiveItems DefectiveItem[]
   dispatches     Dispatch[]
   deliveries     Delivery[]
+  pickups        SitePickup[]
 }
 
 model Item {
@@ -116,6 +127,7 @@ model Item {
   packStock      PackStock[]
   openPacks      OpenPack[]
   defectiveItems DefectiveItem[]
+  pickups        SitePickup[]
 }
 
 /// Sealed packs, grouped by size. Two sealed 400 m rolls are interchangeable, so
@@ -197,6 +209,39 @@ model Site {
   defectiveItems DefectiveItem[]
   dispatches     Dispatch[]
   deliveries     Delivery[]
+  /// Transfers OUT of this site. Inbound ones arrive via `transactions`.
+  transfersOut   Transaction[]   @relation("TransferOrigin")
+  pickups        SitePickup[]
+}
+
+/// Material left at a site that is neither in use nor consumed: too small a
+/// remainder, or too far a trip, to be worth collecting right now. It stays
+/// company property and gets picked up when someone is next heading that way.
+///
+/// This exists to keep a specific accident from happening. If CONSUME were the
+/// only way to clear a site's list, someone tidying up WILL book stranded
+/// material as consumed — writing off wire that is sitting on a roof, entirely
+/// retrievable. Flagging labels the material; it never moves it.
+///
+/// At-site quantities are derived from the ledger rather than stored, so this
+/// has to be its own record layered on top rather than a column to flip — and
+/// `quantity` can therefore go stale. reconcileSitePickups() clamps it after
+/// every movement touching this site+item pair.
+model SitePickup {
+  id       String   @id @default(cuid())
+  site     Site     @relation(fields: [siteId], references: [id])
+  siteId   String
+  item     Item     @relation(fields: [itemId], references: [id])
+  itemId   String
+  /// Base units flagged for collection. Never more than the site holds.
+  quantity Int
+  note     String?
+  markedAt DateTime @default(now())
+  user     User     @relation(fields: [userId], references: [id])
+  userId   String
+
+  @@unique([siteId, itemId])
+  @@index([itemId])
 }
 
 /// A batch of items dispatched to one site in one go. — the record a 15-line
@@ -297,8 +342,14 @@ model Transaction {
   item   Item   @relation(fields: [itemId], references: [id])
   itemId String
 
+  /// For a TRANSFER this is the DESTINATION site; see fromSiteId below.
   site   Site?   @relation(fields: [siteId], references: [id])
   siteId String?
+
+  /// TRANSFER only: the site the material came from. materialsAtSite adds a
+  /// transfer to its destination and subtracts it from its origin.
+  fromSite   Site?   @relation("TransferOrigin", fields: [fromSiteId], references: [id])
+  fromSiteId String?
 
   user   User   @relation(fields: [userId], references: [id])
   userId String
@@ -323,6 +374,7 @@ model Transaction {
   @@index([createdAt])
   @@index([dispatchId])
   @@index([deliveryId])
+  @@index([fromSiteId])
 }
 
 model Shelf {

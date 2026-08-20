@@ -1,6 +1,6 @@
 # Packs & Cut Lengths · Role-Scoped Workspaces · Bulk Dispatch & Delivery
 
-> **This is the working plan for phases 1-8. Phases 1-5 are built; 6 is not.**
+> **This is the working plan for phases 1-8. Phases 1-6 are built; 7-8 are deferred.**
 > Read [PROGRESS.md](PROGRESS.md) first for current state, then this for what to build next.
 >
 > Everything here was decided in conversation with the user over a long session. **The
@@ -49,8 +49,9 @@ site at **0**, and the return guard
 outright. Recording it as an ordinary stock-in is worse still: the store would show wire it
 does not physically have, and reordering would be decided against stock sitting on a roof.
 
-> **Status: Phases 1-5 are BUILT and verified (2026-08-20).** Phase 6 is not started.
-> Each built phase has an "as built" note recording where reality diverged from this plan —
+> **Status: ALL SIX FUNCTIONAL PHASES ARE BUILT and verified (2026-08-20).**
+> Phases 7 (UI overhaul + mobile web) and 8 (hosting) remain, both deferred by decision.
+> Each phase has an "as built" note recording where reality diverged from this plan —
 > read it before changing that phase's code.
 
 | Phase | Delivers |
@@ -60,7 +61,7 @@ does not physically have, and reordering would be decided against stock sitting 
 | 3 | ✅ **DONE** — corrections: reversal and stocktake adjustment |
 | 4 | ✅ **DONE** — Excel-pasted dispatch batch with review screen (employee) |
 | 5 | ✅ **DONE** — delivery entry (finance), to the store **or direct to a site** |
-| 6 | site material lifecycle — consumption, pickup, transfers, cross-site view |
+| 6 | ✅ **DONE** — site material lifecycle: consumption, pickup, transfers, cross-site view |
 | 7 | **UI overhaul + mobile web** — deferred; see below |
 | 8 | **Hosting on a proper domain** — deferred; see below |
 
@@ -1051,7 +1052,69 @@ still correct, still gated — only the UI option goes.
 
 ---
 
-# Phase 6 — Site material lifecycle
+# Phase 6 — Site material lifecycle ✅ BUILT
+
+> **As built, 2026-08-20.** Migration `20260820190000_site_lifecycle` (new `SitePickup`
+> table, `Transaction.fromSiteId`, and the `CONSUME`/`TRANSFER` enum members — the
+> Transaction table rebuild preserved every existing column). New
+> [src/lib/siteBalance.ts](src/lib/siteBalance.ts) (pure),
+> [src/lib/sitePickups.ts](src/lib/sitePickups.ts) (the reconcile helper),
+> [src/lib/actions/siteLifecycle.ts](src/lib/actions/siteLifecycle.ts),
+> [src/components/SiteMaterialPanel.tsx](src/components/SiteMaterialPanel.tsx),
+> `/at-sites`. `materialsAtSite` rewritten. 11 more unit tests, 52 total.
+>
+> **Verified in the browser, all nine checks below:**
+> - **Consumption (1):** Kandivali held 1160 m; consumed 1000 → site **160 m**, store
+>   `currentStock` **untouched at 2040**, a `CONSUME` row in the ledger.
+> - **The guard still binds (2):** returning 300 m from that site was refused with
+>   *"Cannot return more than what's currently at the site (160 m)"* — the post-consumption
+>   figure, so the guard picked up `CONSUME` for free by reading the same function.
+> - **Transfer (3):** 100 m Kandivali → Borivali. Origin 160 → 60, destination 390 → 490,
+>   store `currentStock` untouched, and **no pack rows changed at all** — the plan's own
+>   criterion for proving it is not routing through the store.
+> - **Transfer is guarded (4):** with the client `max` attribute stripped in devtools, a
+>   500 m transfer was still rejected server-side — *"the origin site holds only 160 m"*.
+> - **Flagging (5):** 450 m of Borivali's 490 m flagged → the row split into
+>   *"450 m awaiting collection · 40 m in use"*, store stock untouched.
+> - **The clamp — the bug to hunt (6):** returned 150 m leaving 340 → the flag clamped
+>   **450 → 340** on its own. Consuming 100 more clamped it **340 → 240**. Returning the
+>   last 240 **deleted the `SitePickup` row** entirely.
+> - **Consume warns, does not block (7):** consuming flagged material showed
+>   *"340 m … is marked for collection; consuming this much removes it from the pickup
+>   list"* with **Go back** / **Consume anyway**, and proceeded on confirmation.
+> - **Material at Sites (8):** lists every site holding material with quantities, flagged
+>   amounts and FIFO age; filters for awaiting-collection and oldest-first.
+> - **Reorder annotation (9):** an item forced below `minStock` showed
+>   *"+ 49 pcs at 2 sites (not counted)"* beside it, with its low-stock status unchanged.
+>
+> **Three deviations from what is written below:**
+>
+> 1. **The balance arithmetic lives in a new pure module,
+>    [siteBalance.ts](src/lib/siteBalance.ts), with [stock.ts](src/lib/stock.ts) reduced to
+>    the DB side.** The plan describes editing `stock.ts` in place. But `stock.ts` imports
+>    the Prisma singleton, and the `node --test` runner resolves no `@/` aliases at runtime,
+>    so nothing in that file could be unit-tested — and `siteDelta`/`oldestContributingDate`
+>    are exactly the kind of logic that should be. Splitting them follows the codebase's own
+>    allocation.ts / packs.ts pattern. `stock.ts` re-exports them, so callers are unchanged.
+> 2. **`reconcileSitePickups` is called from the movement paths, not from inside a shared
+>    write primitive.** The plan says it runs "after every transaction touching that pair";
+>    there is no single chokepoint every movement passes through, so the call sites are
+>    explicit: the return branch of `recordMovement`, each row of `recordDispatch`, all three
+>    site-lifecycle actions, and `reverseMovementTx`. **This is the thing most likely to be
+>    missed when adding a new movement type** — a new writer that forgets it leaves flags
+>    claiming more than a site holds.
+> 3. **The site activity list is queried with an explicit `OR`, not through the `transactions`
+>    relation.** That relation only matches `siteId`, so a transfer OUT of a site would never
+>    have appeared in that site's own activity feed. Transfers also render directionally
+>    (*"TRANSFER OUT to Borivali Site"* / *"TRANSFER IN from Kandivali Site"*), since one row
+>    means opposite things depending on which site page you are reading.
+>
+> **Also fixed here, a Phase 5 bug found by the console check:**
+> [DeliveryForm.tsx](src/components/DeliveryForm.tsx) built its pack-size `<datalist>` ids
+> from a module-level counter, which advances independently on the server and in the browser
+> — every load logged a React hydration mismatch. Now `useId()`, which is SSR-stable.
+> `DispatchBatchForm` uses the same counter but only as a React key, never in a DOM
+> attribute, so it was never affected.
 
 Four related things: closing material out when it is used up, marking material staying put
 until someone can collect it, moving it directly between sites, and seeing all of it at once.
@@ -1395,7 +1458,9 @@ were not separately re-run for this batch path*
    size below the scrap threshold, and more defective than delivered → in-page errors per
    row, no partial write, typed data still on screen.
 
-**Phase 6 — site lifecycle**
+**Phase 6 — site lifecycle** ✅ *all 9 passed 2026-08-20, checked in the browser; see
+"Phase 6 — as built" above for the numbers each produced. The FIFO age logic and the
+transfer-aware delta are additionally covered by `siteBalance.test.ts`.*
 1. Site holds 1200 m; mark 1000 m consumed. Site drops to 200 m, store `currentStock`
    **untouched**, a `CONSUME` row appears.
 2. **Guard still binds:** try to return 300 m from that site → rejected, only 200 m there.

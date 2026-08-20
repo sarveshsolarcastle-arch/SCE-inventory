@@ -13,6 +13,7 @@ const links: { href: string; label: string; capability: Capability | null }[] = 
   { href: "/transactions/new", label: "Issue / Return", capability: "stock:issue" },
   { href: "/items", label: "Items", capability: "ledger:view" },
   { href: "/sites", label: "Sites", capability: "ledger:view" },
+  { href: "/at-sites", label: "Material at Sites", capability: "ledger:view" },
   { href: "/shelf", label: "Shelf", capability: "ledger:view" },
   { href: "/shelf/suggestions", label: "Suggestions", capability: "ledger:view" },
   { href: "/recycle", label: "Recycle", capability: "ledger:view" },
