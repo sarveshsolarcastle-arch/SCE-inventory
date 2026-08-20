@@ -1,20 +1,26 @@
 import Link from "next/link";
 import { auth, signOut } from "@/lib/auth";
+import { can, type Capability } from "@/lib/permissions";
+import type { Role } from "@/generated/prisma/enums";
 
-const links = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/items", label: "Items" },
-  { href: "/sites", label: "Sites" },
-  { href: "/transactions/new", label: "Issue / Return" },
-  { href: "/shelf", label: "Shelf" },
-  { href: "/shelf/suggestions", label: "Suggestions" },
-  { href: "/recycle", label: "Recycle" },
-  { href: "/defective", label: "Defective" },
+/** `capability: null` means everyone signed in sees it. */
+const links: { href: string; label: string; capability: Capability | null }[] = [
+  { href: "/dashboard", label: "Dashboard", capability: null },
+  { href: "/transactions/new", label: "Issue / Return", capability: "stock:issue" },
+  { href: "/items", label: "Items", capability: "ledger:view" },
+  { href: "/sites", label: "Sites", capability: "ledger:view" },
+  { href: "/shelf", label: "Shelf", capability: "ledger:view" },
+  { href: "/shelf/suggestions", label: "Suggestions", capability: "ledger:view" },
+  { href: "/recycle", label: "Recycle", capability: "ledger:view" },
+  { href: "/defective", label: "Defective", capability: "ledger:view" },
 ];
 
 export default async function NavBar() {
   const session = await auth();
   if (!session?.user) return null;
+
+  const role = (session.user as { role?: Role }).role;
+  const visible = links.filter((l) => l.capability === null || can(role, l.capability));
 
   return (
     <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
@@ -24,7 +30,7 @@ export default async function NavBar() {
             Inventory
           </span>
           <nav className="flex flex-wrap gap-3 text-sm">
-            {links.map((l) => (
+            {visible.map((l) => (
               <Link
                 key={l.href}
                 href={l.href}
@@ -37,7 +43,7 @@ export default async function NavBar() {
         </div>
         <div className="flex items-center gap-3 text-sm text-zinc-600 dark:text-zinc-400">
           <span>
-            {session.user.name} ({(session.user as { role?: string }).role})
+            {session.user.name} ({role})
           </span>
           <form
             action={async () => {

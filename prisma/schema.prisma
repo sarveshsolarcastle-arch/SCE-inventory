@@ -10,9 +10,13 @@ datasource db {
   provider = "sqlite"
 }
 
+/// Each role is a workspace, not a permission level: FINANCE brings stock in,
+/// EMPLOYEE moves it to and from sites, and neither can do the other's job.
+/// See src/lib/permissions.ts for the capability each one carries.
 enum Role {
   ADMIN
-  STAFF
+  FINANCE
+  EMPLOYEE
 }
 
 enum TransactionType {
@@ -65,7 +69,7 @@ model User {
   name           String
   email          String          @unique
   passwordHash   String
-  role           Role            @default(STAFF)
+  role           Role            @default(EMPLOYEE)
   createdAt      DateTime        @default(now())
   transactions   Transaction[]
   defectiveItems DefectiveItem[]

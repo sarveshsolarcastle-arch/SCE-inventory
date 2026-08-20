@@ -1,20 +1,13 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
+import { requireCapability } from "@/lib/permissions";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
-async function requireAdmin() {
-  const session = await auth();
-  if ((session?.user as { role?: string } | undefined)?.role !== "ADMIN") {
-    throw new Error("Only admins can manage sites");
-  }
-}
-
 export async function createSite(formData: FormData) {
   "use server";
-  await requireAdmin();
+  await requireCapability("site:manage");
 
   const name = String(formData.get("name") ?? "").trim();
   const location = String(formData.get("location") ?? "").trim() || null;
@@ -30,7 +23,7 @@ export async function createSite(formData: FormData) {
 
 export async function updateSite(siteId: string, formData: FormData) {
   "use server";
-  await requireAdmin();
+  await requireCapability("site:manage");
 
   const name = String(formData.get("name") ?? "").trim();
   const location = String(formData.get("location") ?? "").trim() || null;

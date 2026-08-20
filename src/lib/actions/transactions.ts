@@ -1,7 +1,11 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
+import {
+  NotPermittedError,
+  requireCapability,
+  type Capability,
+} from "@/lib/permissions";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import {
@@ -106,10 +110,27 @@ async function netAtSite(
   return rows.reduce((sum, t) => sum + (t.type === "ISSUE" ? t.quantity : -t.quantity), 0);
 }
 
+/** Which capability a movement needs depends on its type — a finance account can
+ * record incoming stock but must not be able to issue it, and vice versa. */
+const CAPABILITY_FOR_TYPE: Record<TxType, Capability> = {
+  STOCK_IN: "delivery:record",
+  ISSUE: "stock:issue",
+  RETURN: "stock:return",
+};
+
 export async function recordMovement(input: MovementInput): Promise<MovementResult> {
-  const session = await auth();
-  const userId = session?.user?.id as string | undefined;
-  if (!userId) return { ok: false, message: "Not signed in" };
+  let userId: string;
+  try {
+    // Checked here, not just in the UI: server actions are directly invocable,
+    // so hiding a button proves nothing.
+    const user = await requireCapability(CAPABILITY_FOR_TYPE[input.type]);
+    userId = user.id;
+  } catch (error) {
+    if (error instanceof NotPermittedError) {
+      return { ok: false, message: `Your account cannot record a ${input.type} transaction` };
+    }
+    return { ok: false, message: "Not signed in" };
+  }
 
   const request = requestOf(input);
   const invalid = validate(input, request);
@@ -219,9 +240,7 @@ export async function recordMovement(input: MovementInput): Promise<MovementResu
  * rather than as part of an issue. */
 export async function openPackAction(formData: FormData) {
   "use server";
-  const session = await auth();
-  const userId = session?.user?.id as string | undefined;
-  if (!userId) throw new Error("Not signed in");
+  const { id: userId } = await requireCapability("stock:issue");
 
   const itemId = String(formData.get("itemId") ?? "");
   const packSize = Number(formData.get("packSize") ?? 0);

@@ -1,10 +1,10 @@
 # Inventory Management System — Progress Handover
 
-Last updated: 2026-08-20 (docs consolidated; major redesign planned — see §9)
+Last updated: 2026-08-20 (redesign phases 1-2 built — see §9)
 
 > **§1-§8 describe the code as it stands today.** A six-phase redesign is under way;
-> **Phase 1 is built and folded in above**, phases 2-6 are not. §9 tracks what is still
-> coming and what will change when it lands.
+> **phases 1-2 are built and folded in above**, phases 3-6 are not. §9 tracks what is still
+> coming, and §10 is a handover guide for continuing it.
 
 ## 1. Purpose
 
@@ -36,7 +36,7 @@ All core flows below were manually tested in a running dev server and confirmed 
 | Mobile-responsive layout | ✅ Done |
 | Production build | ✅ Passes |
 | Automated tests | ⚠️ 18 allocator unit tests (`npm test`); no coverage of the DB layer or UI |
-| Roles beyond ADMIN/STAFF | ❌ Phase 2 |
+| Roles: ADMIN / FINANCE / EMPLOYEE, capability-gated | ✅ Done (Phase 2) |
 | Undo / stock adjustment | ❌ Phase 3 — **nothing can currently be corrected** |
 | Bulk dispatch & delivery entry | ❌ Phases 4-5 |
 | Deployment | ❌ Not deployed anywhere — runs locally only |
@@ -60,11 +60,12 @@ npm install        # if node_modules isn't present
 npm run dev         # http://localhost:3000
 ```
 
-Seeded login (**change this before any real/shared use**):
-- Email: `admin@example.com`
-- Password: `admin123`
+Seeded logins, one per role (**change these before any real/shared use**):
+- `admin@example.com` / `admin123`
+- `finance@example.com` / `finance123` — receives stock, cannot issue it
+- `employee@example.com` / `employee123` — moves stock to/from sites, cannot receive it
 
-To re-seed the admin user (idempotent, safe to re-run):
+To re-seed users and item fixtures (idempotent, safe to re-run):
 ```bash
 npx tsx prisma/seed.ts
 ```
@@ -78,7 +79,7 @@ A `.claude/launch.json` is present so Claude Code's browser preview tool can sta
 
 ## 5. Data Model (`prisma/schema.prisma`)
 
-- **User** — id, name, email, passwordHash, role (`ADMIN` | `STAFF`)
+- **User** — id, name, email, passwordHash, role (`ADMIN` | `FINANCE` | `EMPLOYEE`)
 - **Item** — id, name, sku, category, `baseUnit` (what stock is counted in: m, pcs), `packUnit` (roll/packet; null = unpackaged), `measure` (`CONTINUOUS` | `DISCRETE`), `scrapThreshold`, minStock, `currentStock`, `scrapStock`
 - **PackStock** — sealed packs grouped by size (`@@unique([itemId, packSize])`). Two sealed 400 m rolls are interchangeable, so they are counted, not tracked individually. A 400 m and a 600 m roll of the same wire are two sizes of **one** item.
 - **OpenPack** — an opened pack, tracked individually with its own `remaining`, because a 30 m and a 50 m offcut are *not* interchangeable. `state` is `OPEN` or `SCRAP`; optionally points at the shelf slot it physically sits in.
@@ -155,7 +156,7 @@ prisma/
 backups/                    manual dev.db copies (gitignored)
 ```
 
-Admin-only actions (create/edit item, site, shelf; relabel a slot's box type; toggle front-row) are gated by a `requireAdmin()` check in each server action file. `STAFF` users can view everything and record transactions — including picking a shelf+slot destination on a transaction — but can't manage catalog/shelf data.
+**Permissions live in one place: [src/lib/permissions.ts](src/lib/permissions.ts).** Roles are *workspaces*, not levels — FINANCE receives stock and cannot issue it; EMPLOYEE moves stock to and from sites and cannot receive it; ADMIN does everything. Every server action calls `requireCapability(...)` for itself: `proxy.ts` route-gating and the filtered nav are convenience only, because a server action can be invoked regardless of what the page rendered.
 
 ## 7. Known Gaps / Suggested Next Steps
 
@@ -188,7 +189,7 @@ Admin-only actions (create/edit item, site, shelf; relabel a slot's box type; to
 
 ## 9. Redesign — Phase Status
 
-A six-phase redesign is under way. **Phase 1 (base units, packs, cut lengths, scrap) is built**; phases 2-6 (roles, corrections, dispatch batch, delivery, site lifecycle) are not.
+A six-phase redesign is under way. **Phases 1 (packs, cut lengths, scrap) and 2 (roles) are built**; phases 3-6 (corrections, dispatch batch, delivery, site lifecycle) are not.
 
 ### Phase 1 — built 2026-08-20
 
@@ -254,7 +255,6 @@ SQLite stays; nothing in the code changes. What the server needs:
 
 | Stated above | Changes to |
 |---|---|
-| §5 / §6: role is `ADMIN` \| `STAFF`, gated by `requireAdmin()` | `ADMIN` \| `FINANCE` \| `EMPLOYEE`, gated by a capability table (Phase 2) |
 | §7: nothing can be undone or corrected | reversal + stocktake adjustment (Phase 3) |
 | Stock-in is one row at a time | Excel-pasted dispatch batch (Phase 4) and delivery records (Phase 5) |
 | Sites accumulate material forever | consumption, transfers, pickup flags (Phase 6) |

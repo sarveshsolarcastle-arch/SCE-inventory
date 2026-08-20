@@ -1,21 +1,14 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
+import { requireCapability } from "@/lib/permissions";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { BOX_TYPES, type BoxType } from "@/lib/boxTypes";
 
-async function requireAdmin() {
-  const session = await auth();
-  if ((session?.user as { role?: string } | undefined)?.role !== "ADMIN") {
-    throw new Error("Only admins can manage shelves");
-  }
-}
-
 export async function createShelf(formData: FormData) {
   "use server";
-  await requireAdmin();
+  await requireCapability("shelf:manage");
 
   const name = String(formData.get("name") ?? "").trim();
   const rows = Number(formData.get("rows") ?? 0);
@@ -79,7 +72,7 @@ export async function updateSlotBoxType(
   formData: FormData
 ) {
   "use server";
-  await requireAdmin();
+  await requireCapability("shelf:manage");
 
   const boxTypeRaw = String(formData.get("boxType") ?? "");
   if (!(BOX_TYPES as readonly string[]).includes(boxTypeRaw)) {
@@ -106,7 +99,7 @@ export async function assignSlotItem(
   formData: FormData
 ) {
   "use server";
-  await requireAdmin();
+  await requireCapability("shelf:manage");
 
   const itemId = String(formData.get("itemId") ?? "") || null;
 
@@ -146,7 +139,7 @@ export async function assignSlotItem(
 
 export async function toggleFrontRow(shelfId: string, slotId: string) {
   "use server";
-  await requireAdmin();
+  await requireCapability("shelf:manage");
 
   const slot = await prisma.shelfSlot.findUniqueOrThrow({ where: { id: slotId } });
   await prisma.shelfSlot.update({
