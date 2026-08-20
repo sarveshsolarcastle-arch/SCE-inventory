@@ -80,6 +80,7 @@ model User {
   createdAt      DateTime        @default(now())
   transactions   Transaction[]
   defectiveItems DefectiveItem[]
+  dispatches     Dispatch[]
 }
 
 model Item {
@@ -184,6 +185,28 @@ model Site {
   createdAt      DateTime        @default(now())
   transactions   Transaction[]
   defectiveItems DefectiveItem[]
+  dispatches     Dispatch[]
+}
+
+/// A batch of items dispatched to one site in one go — the record a 15-line
+/// Excel sheet becomes. Each line is its own ISSUE Transaction (dispatchId
+/// set), so the pack model and every existing guard apply unchanged; this is
+/// purely a grouping record so a site's activity reads as one event instead
+/// of a wall of loose rows.
+model Dispatch {
+  id           String        @id @default(cuid())
+  /// Dispatch / challan number, if the paper trail has one.
+  reference    String?
+  site         Site          @relation(fields: [siteId], references: [id])
+  siteId       String
+  dispatchedAt DateTime      @default(now())
+  note         String?
+  user         User          @relation(fields: [userId], references: [id])
+  userId       String
+  transactions Transaction[]
+
+  @@index([dispatchedAt])
+  @@index([siteId])
 }
 
 model Transaction {
@@ -233,11 +256,18 @@ model Transaction {
   user   User   @relation(fields: [userId], references: [id])
   userId String
 
+  /// Set on the ISSUE rows of a batch dispatch (and on the REVERSAL rows that
+  /// undo them), so a site's history groups them instead of listing 15 loose
+  /// rows. Optional: a single-row Issue from /transactions/new carries none.
+  dispatch   Dispatch? @relation(fields: [dispatchId], references: [id])
+  dispatchId String?
+
   defectiveItems DefectiveItem[]
 
   @@index([itemId])
   @@index([siteId])
   @@index([createdAt])
+  @@index([dispatchId])
 }
 
 model Shelf {

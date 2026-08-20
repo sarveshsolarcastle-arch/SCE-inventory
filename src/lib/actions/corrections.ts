@@ -1,5 +1,6 @@
 "use server";
 
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
@@ -12,6 +13,83 @@ import {
 } from "@/lib/corrections";
 
 export type CorrectionResult = { ok: true } | { ok: false; message: string };
+
+type ReversibleMovement = {
+  id: string;
+  type: string;
+  itemId: string;
+  siteId: string | null;
+  dispatchId: string | null;
+  quantity: number;
+  appliedPlan: string | null;
+  reversedAt: Date | null;
+  createdAt: Date;
+};
+
+/** The shared primitive behind both a single reversal and a whole-dispatch
+ * one: verify the world still matches what this movement left behind, then
+ * restore it. Throws (never returns a result) so a caller looping over many
+ * movements in one $transaction aborts the lot on the first obstacle — a
+ * batch reversal is all-or-nothing for the same reason a batch dispatch is. */
+async function reverseMovementTx(
+  tx: Prisma.TransactionClient,
+  movement: ReversibleMovement,
+  userId: string,
+  reason: string
+): Promise<void> {
+  const obstacles: ReversalObstacle[] = [];
+  if (movement.reversedAt) obstacles.push({ kind: "already_reversed" });
+  if (movement.type === "REVERSAL" || movement.type === "ADJUSTMENT") {
+    throw new Error("Corrections cannot themselves be reversed — record a new one");
+  }
+
+  const plan = parseAppliedPlan(movement.appliedPlan);
+  if (!plan) obstacles.push({ kind: "no_plan" });
+
+  if (plan && !obstacles.length) {
+    const itemId = movement.itemId;
+    const [openPacks, sealed, defective] = await Promise.all([
+      tx.openPack.findMany({ where: { itemId } }),
+      tx.packStock.findMany({ where: { itemId } }),
+      plan.defectiveIds.length
+        ? tx.defectiveItem.findMany({ where: { id: { in: plan.defectiveIds } } })
+        : Promise.resolve([]),
+    ]);
+
+    obstacles.push(
+      ...findReversalObstacles(plan, {
+        openPacks: new Map(
+          openPacks.map((p) => [p.id, { remaining: p.remaining, state: p.state }])
+        ),
+        sealedCounts: new Map(sealed.map((s) => [s.packSize, s.sealedCount])),
+        defectiveStatuses: new Map(defective.map((d) => [d.id, d.status])),
+      })
+    );
+  }
+
+  if (obstacles.length) throw new Error(describeObstacle(obstacles[0]));
+
+  await applyInverse(tx, movement.itemId, plan!);
+
+  await tx.transaction.update({
+    where: { id: movement.id },
+    data: { reversedAt: new Date() },
+  });
+
+  await tx.transaction.create({
+    data: {
+      type: "REVERSAL",
+      quantity: movement.quantity,
+      itemId: movement.itemId,
+      siteId: movement.siteId,
+      dispatchId: movement.dispatchId,
+      userId,
+      reason,
+      reversesId: movement.id,
+      note: `Reverses ${movement.type} of ${movement.createdAt.toLocaleDateString()}`,
+    },
+  });
+}
 
 /** Undoes a movement recorded in error by restoring the exact prior state.
  *
@@ -29,65 +107,49 @@ export async function reverseTransaction(
 
   try {
     await prisma.$transaction(async (tx) => {
-      const movement = await tx.transaction.findUniqueOrThrow({
-        where: { id: transactionId },
-        include: { reversedBy: true, item: true },
-      });
-
-      const obstacles: ReversalObstacle[] = [];
-      if (movement.reversedBy) obstacles.push({ kind: "already_reversed" });
-      if (movement.type === "REVERSAL" || movement.type === "ADJUSTMENT") {
-        throw new Error("Corrections cannot themselves be reversed — record a new one");
-      }
-
-      const plan = parseAppliedPlan(movement.appliedPlan);
-      if (!plan) obstacles.push({ kind: "no_plan" });
-
-      if (plan && !obstacles.length) {
-        const itemId = movement.itemId;
-        const [openPacks, sealed, defective] = await Promise.all([
-          tx.openPack.findMany({ where: { itemId } }),
-          tx.packStock.findMany({ where: { itemId } }),
-          plan.defectiveIds.length
-            ? tx.defectiveItem.findMany({ where: { id: { in: plan.defectiveIds } } })
-            : Promise.resolve([]),
-        ]);
-
-        obstacles.push(
-          ...findReversalObstacles(plan, {
-            openPacks: new Map(
-              openPacks.map((p) => [p.id, { remaining: p.remaining, state: p.state }])
-            ),
-            sealedCounts: new Map(sealed.map((s) => [s.packSize, s.sealedCount])),
-            defectiveStatuses: new Map(defective.map((d) => [d.id, d.status])),
-          })
-        );
-      }
-
-      if (obstacles.length) throw new Error(describeObstacle(obstacles[0]));
-
-      await applyInverse(tx, movement.itemId, plan!);
-
-      await tx.transaction.update({
-        where: { id: movement.id },
-        data: { reversedAt: new Date() },
-      });
-
-      await tx.transaction.create({
-        data: {
-          type: "REVERSAL",
-          quantity: movement.quantity,
-          itemId: movement.itemId,
-          siteId: movement.siteId,
-          userId,
-          reason,
-          reversesId: movement.id,
-          note: `Reverses ${movement.type} of ${movement.createdAt.toLocaleDateString()}`,
-        },
-      });
+      const movement = await tx.transaction.findUniqueOrThrow({ where: { id: transactionId } });
+      await reverseMovementTx(tx, movement, userId, reason);
     });
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Reversal failed" };
+  }
+
+  revalidateAll();
+  return { ok: true };
+}
+
+/** Reverses every not-yet-reversed line of a batch dispatch, atomically: one
+ * row failing its obstacle check aborts the whole dispatch's reversal, same
+ * as the dispatch's own all-or-nothing commit. Each compensating REVERSAL
+ * row carries the same dispatchId as the ISSUE it undoes, so the dispatch
+ * page groups them as one event rather than N loose corrections. */
+export async function reverseDispatch(
+  dispatchId: string,
+  formData: FormData
+): Promise<CorrectionResult> {
+  const { id: userId } = await requireCapability("stock:reverse");
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!reason) return { ok: false, message: "A reason is required to reverse a dispatch" };
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const movements = await tx.transaction.findMany({
+        where: { dispatchId, type: "ISSUE", reversedAt: null },
+        orderBy: { createdAt: "asc" },
+      });
+      if (!movements.length) {
+        throw new Error("Nothing left to reverse on this dispatch");
+      }
+      for (const movement of movements) {
+        await reverseMovementTx(tx, movement, userId, reason);
+      }
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Dispatch reversal failed",
+    };
   }
 
   revalidateAll();
@@ -179,4 +241,5 @@ function revalidateAll() {
   revalidatePath("/recycle");
   revalidatePath("/defective");
   revalidatePath("/sites", "layout");
+  revalidatePath("/dispatches", "layout");
 }

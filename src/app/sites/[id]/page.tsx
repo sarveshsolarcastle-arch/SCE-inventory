@@ -17,12 +17,41 @@ export default async function SiteDetailPage({
       transactions: {
         orderBy: { createdAt: "desc" },
         take: 50,
-        include: { item: true, user: true },
+        include: { item: true, user: true, dispatch: true },
       },
     },
   });
 
   if (!site) notFound();
+
+  // A batch dispatch writes 15+ rows in one go; grouping them by dispatchId
+  // keeps the activity list readable instead of a wall of loose lines. A
+  // single-row Issue/Return (dispatchId null) still shows individually.
+  type SiteTransaction = (typeof site.transactions)[number];
+  type ActivityEntry =
+    | { kind: "dispatch"; id: string; reference: string | null; lines: SiteTransaction[] }
+    | { kind: "single"; tx: SiteTransaction };
+
+  const activity: ActivityEntry[] = [];
+  const dispatchIndex = new Map<string, number>();
+  for (const t of site.transactions) {
+    if (t.dispatchId) {
+      const existing = dispatchIndex.get(t.dispatchId);
+      if (existing != null) {
+        (activity[existing] as { kind: "dispatch"; lines: SiteTransaction[] }).lines.push(t);
+      } else {
+        dispatchIndex.set(t.dispatchId, activity.length);
+        activity.push({
+          kind: "dispatch",
+          id: t.dispatchId,
+          reference: t.dispatch?.reference ?? null,
+          lines: [t],
+        });
+      }
+    } else {
+      activity.push({ kind: "single", tx: t });
+    }
+  }
 
   const materials = await materialsAtSite(id);
   const updateWithId = updateSite.bind(null, site.id);
@@ -95,18 +124,41 @@ export default async function SiteDetailPage({
             </tr>
           </thead>
           <tbody>
-            {site.transactions.map((t) => (
-              <tr
-                key={t.id}
-                className="border-t border-zinc-200 dark:border-zinc-800"
-              >
-                <td className="py-1">{t.createdAt.toLocaleDateString()}</td>
-                <td className="py-1">{t.type}</td>
-                <td className="py-1">{t.item.name}</td>
-                <td className="py-1">{t.quantity}</td>
-                <td className="py-1">{t.user.name}</td>
-              </tr>
-            ))}
+            {activity.map((entry) => {
+              if (entry.kind === "single") {
+                const t = entry.tx;
+                return (
+                  <tr key={t.id} className="border-t border-zinc-200 dark:border-zinc-800">
+                    <td className="py-1">{t.createdAt.toLocaleDateString()}</td>
+                    <td className="py-1">{t.type}</td>
+                    <td className="py-1">{t.item.name}</td>
+                    <td className="py-1">{t.quantity}</td>
+                    <td className="py-1">{t.user.name}</td>
+                  </tr>
+                );
+              }
+              // Only the ISSUE lines describe what was dispatched — a
+              // REVERSAL sharing the same dispatchId is the undo of one of
+              // them, not a second item, so it must not double the count.
+              const issued = entry.lines.filter((t) => t.type === "ISSUE");
+              const total = issued.reduce((s, t) => s + t.quantity, 0);
+              const allReversed = issued.length > 0 && issued.every((t) => t.reversedAt);
+              return (
+                <tr key={entry.id} className="border-t border-zinc-200 dark:border-zinc-800">
+                  <td className="py-1">{issued[0].createdAt.toLocaleDateString()}</td>
+                  <td className="py-1">DISPATCH</td>
+                  <td className="py-1">
+                    <Link href={`/dispatches/${entry.id}`} className="hover:underline">
+                      {entry.reference || "Dispatch"} — {issued.length} item
+                      {issued.length === 1 ? "" : "s"}
+                      {allReversed && " (reversed)"}
+                    </Link>
+                  </td>
+                  <td className="py-1">{total}</td>
+                  <td className="py-1">{issued[0].user.name}</td>
+                </tr>
+              );
+            })}
             {site.transactions.length === 0 && (
               <tr>
                 <td

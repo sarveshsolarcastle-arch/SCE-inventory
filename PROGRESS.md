@@ -1,9 +1,9 @@
 # Inventory Management System — Progress Handover
 
-Last updated: 2026-08-20 (redesign phases 1-2 built — see §9)
+Last updated: 2026-08-20 (redesign phases 1-4 built — see §9)
 
 > **§1-§8 describe the code as it stands today.** A six-phase redesign is under way;
-> **phases 1-2 are built and folded in above**, phases 3-6 are not. §9 tracks what is still
+> **phases 1-4 are built and folded in above**, phases 5-6 are not. §9 tracks what is still
 > coming, and §10 is a handover guide for continuing it.
 
 ## 1. Purpose
@@ -35,10 +35,11 @@ All core flows below were manually tested in a running dev server and confirmed 
 | Placement suggestions (usage-frequency based) | ✅ Done |
 | Mobile-responsive layout | ✅ Done |
 | Production build | ✅ Passes |
-| Automated tests | ⚠️ 18 allocator unit tests (`npm test`); no coverage of the DB layer or UI |
+| Automated tests | ⚠️ 41 unit tests (`npm test`): allocator, corrections, matching, paste parsing; no coverage of the DB layer or UI |
 | Roles: ADMIN / FINANCE / EMPLOYEE, capability-gated | ✅ Done (Phase 2) |
-| Undo / stock adjustment | ❌ Phase 3 — **nothing can currently be corrected** |
-| Bulk dispatch & delivery entry | ❌ Phases 4-5 |
+| Corrections: reversal and stocktake adjustment | ✅ Done (Phase 3) |
+| Bulk dispatch to site, from Excel paste | ✅ Done (Phase 4) |
+| Delivery entry (to store or direct to site) | ❌ Phase 5 |
 | Deployment | ❌ Not deployed anywhere — runs locally only |
 | Database backups | ⚠️ Manual copies in `backups/` only — no schedule |
 
@@ -123,8 +124,10 @@ src/
     login/                  sign-in page
     dashboard/              stats, low-stock alerts, recent activity, suggestion panel
     items/                  list, new, [id] detail+edit+history
-    sites/                  list, new, [id] detail+edit+materials-on-site
-    transactions/new/       Stock In / Issue / Return form
+    sites/                  list, new, [id] detail+edit+materials-on-site (activity
+                            groups dispatch lines instead of listing them loose)
+    transactions/new/       Stock In / Issue / Return form (single row)
+    dispatches/             list, new (Excel-paste batch review), [id] detail+reverse
     shelf/                  list, new, [shelfId] 2D map, suggestions
     recycle/                offcuts below their item's scrap threshold
     defective/              damaged goods held for a supplier claim
@@ -132,22 +135,36 @@ src/
   components/
     NavBar.tsx              top nav, shown only when logged in
     TransactionForm.tsx     client form: pack/pieces entry + the open-pack confirmation screen
+    DispatchBatchForm.tsx   client form: paste → parse → match → plan → review, one card per
+                            row at every viewport width (mobile-first, no table)
+    CorrectionPanel.tsx     AdjustStockForm, ReverseButton (shared by items and dispatches)
     ShelfGrid.tsx           client component rendering the 2D shelf map (assign item, box type, front-row)
     NewShelfForm.tsx        client component: two-step shelf creation (size, then per-cell box type)
   lib/
-    allocation.ts           PURE planner — best-fit cutting, opens, scrap. No DB, runs on both
-                            server and client so the preview cannot disagree with the commit.
+    allocation.ts           PURE planner — best-fit cutting, opens, scrap, planBatch. No DB,
+                            runs on both server and client so the preview cannot disagree
+                            with the commit.
     allocation.test.ts      18 unit tests (`npm test`)
+    matching.ts             PURE item-name matcher — Dice coefficient over bigrams;
+                            exact/suggested/ambiguous/unmatched
+    matching.test.ts        6 unit tests
+    dispatchPaste.ts        PURE paste parser — Excel TSV → {name, quantity} rows,
+                            header-row skipping
+    dispatchPaste.test.ts   7 unit tests
     packs.ts                DB side: recalcItemStock, openPack, commitAllocation, restock
+    corrections.ts          PURE: AppliedPlan record, findReversalObstacles
+    corrections.test.ts     10 unit tests
     units.ts                pure formatting: formatStock, describeMovement, describeSlotContents
     auth.ts                 NextAuth config (credentials provider, JWT callbacks)
     prisma.ts               Prisma client singleton (with SQLite driver adapter)
     stock.ts                materialsAtSite() helper
     suggestions.ts          getPlacementSuggestions() — the frequency/placement engine
     boxTypes.ts             shared BOX_TYPES/BoxType
+    permissions.ts          capability table — see §"Permissions" below
     actions/                server actions: items.ts, sites.ts, transactions.ts
                             (recordMovement, openPackAction), shelf.ts (updateSlotBoxType,
-                            assignSlotItem)
+                            assignSlotItem), corrections.ts (reverseTransaction,
+                            reverseDispatch, adjustStock), dispatches.ts (recordDispatch)
   proxy.ts                  route-protection middleware (Next.js 16 naming)
 prisma/
   schema.prisma
@@ -164,7 +181,7 @@ backups/                    manual dev.db copies (gitignored)
 - **Change the seeded admin password** and consider adding a "change password" flow — there isn't one yet.
 - **Test coverage stops at the pure planner.** [allocation.ts](src/lib/allocation.ts) has 18 unit tests; [packs.ts](src/lib/packs.ts), which executes those plans against the database, has none. The subtlest code in the project lives there — `commitAllocation` resolves the planner's synthetic `new:<i>` pack ids onto rows it creates inside the same transaction. Deliberately deferred: the app is not in real use until the remaining phases land, so this is the thing to cover *before* it goes live, not now.
 - **Nothing can be undone or corrected.** No delete, reverse, or adjust operation exists anywhere. Auto-scrap makes this sharper: a mistaken issue permanently writes off the offcut. Phase 3.
-- **Existing items need reviewing after the Phase 1 migration** — everything defaulted to `DISCRETE`/no pack unit, which is right for screws and wrong for cable. Check `measure`, `packUnit` and `scrapThreshold` on each item.
+- ✅ **Existing items reviewed after the Phase 1 migration** (2026-08-20, during Phase 4). `CBL-200` and `SCR-M4` were the two that predated the pack model; both checked — see §9's Phase 4 note and §10's "State of the working copy". Any *new* item added later still needs `measure`, `packUnit` and `scrapThreshold` set correctly at creation, same as always.
 - **Shelf tag codes are auto-generated and not editable** (`F1-1`, `B2-3`, etc., generated at shelf-creation time). If physical stickers don't match this scheme, either the seed logic needs adjusting or an edit-tag UI needs adding.
 - **No file/photo attachments** on items or transactions — not requested, but a common ask for this type of tool.
 - **No CSV export / reporting page** — dashboard covers the "what do we have / what's low / what's issued where" questions live, but there's no printable/exportable report yet.
@@ -189,7 +206,9 @@ backups/                    manual dev.db copies (gitignored)
 
 ## 9. Redesign — Phase Status
 
-A six-phase redesign is under way. **Phases 1 (packs, cut lengths, scrap) and 2 (roles) are built**; phases 3-6 (corrections, dispatch batch, delivery, site lifecycle) are not.
+A six-phase redesign is under way. **Phases 1 (packs, cut lengths, scrap), 2 (roles),
+3 (corrections) and 4 (dispatch batch) are built**; phases 5-6 (delivery, site lifecycle)
+are not.
 
 ### Phase 1 — built 2026-08-20
 
@@ -201,6 +220,19 @@ A six-phase redesign is under way. **Phases 1 (packs, cut lengths, scrap) and 2 
 - Offcuts at or below `scrapThreshold` leave stock automatically and appear at `/recycle`. **Stock therefore drops by more than you issue** — cutting 340 m off a 350 m roll costs 350. That gap is measured waste, recorded as a `SCRAP` transaction.
 - Returns carry an optional defective quantity → `/defective`, held for a supplier claim.
 - **Shelf slots no longer store a quantity.** A box shows what its item's packs hold: Fresh → sealed, Opened → the open packs placed in it, Recyclable → scrap. `applyTransactionToSlot` is gone.
+
+### Phase 4 — built 2026-08-20
+
+New `Dispatch` model groups a 15+-line Excel-pasted allocation into one event. Flow is
+paste → parse → match → plan → review → commit, all client-side until submit; commit is one
+`prisma.$transaction` running the *same* `commitAllocation` a single-row issue uses, once
+per line in row order, so later rows see the stock earlier rows just took. Reversal extends
+the Phase 3 primitive to a whole dispatch atomically. Full detail, verification results, and
+the three deviations from the original plan are in
+[REDESIGN-PLAN.md's "Phase 4 — as built"](REDESIGN-PLAN.md) — worth reading before touching
+this code, since it records *why* the paste parser is a separate file, why the review screen
+has no table markup at all, and how batch reversal works without a single-row DB
+representation.
 
 ### Deferred by decision: UI overhaul + mobile web (Phase 7), hosting (Phase 8)
 
@@ -219,11 +251,11 @@ transaction client and knows nothing about Next. A redesign then touches only ma
 
 **Mobile checklist for the overhaul** (recorded now so it is not rediscovered later):
 
-- **The 15-row dispatch grid (Phase 4) is the hard one.** A seven-column table does not work
-  at 375px, and it is the screen employees will use most, most likely on a phone in a
-  storeroom. It wants a card-per-row layout on narrow screens rather than a scrolling table —
-  worth designing that way from the start, since retrofitting it is far more work.
-- `inputMode="numeric"` on every quantity/length field — summons the number keypad on
+- ✅ **The dispatch review screen (Phase 4) was built card-per-row from the start** — no
+  table markup at all, at any width — and confirmed at 375px with zero horizontal scroll.
+  `inputMode="numeric"` is already on its quantity/length fields, so that line item below is
+  done for this screen; the delivery grid (Phase 5) still needs both when it is built.
+- `inputMode="numeric"` on every OTHER quantity/length field — summons the number keypad on
   Android instead of the full keyboard. Trivial, and a large day-to-day difference.
 - Touch targets on the shelf grid cells and their popover, which are currently sized for a
   mouse.
@@ -319,18 +351,24 @@ Everything downstream assumes these. Breaking one corrupts stock silently rather
 
 ### State of the working copy
 
-- **The database contains test data I created while verifying Phase 1**, not real inventory:
-  `WIRE-2.5` at 2000 m with a 10 m scrap offcut, `SCR-M4` at 291. Reseed or clear as needed.
-- `CBL-200` and `SCR-M4` came through the Phase 1 migration as `DISCRETE` with no `packUnit`.
-  Correct for screws, wrong for cable — **needs a human decision**, not a guess.
+- **The database contains test data created while verifying Phases 1-4**, not real
+  inventory: `WIRE-2.5` at 2000 m with a 10 m scrap offcut, `SCR-M4` at 291,
+  `CBL-200` at 89, plus a reversed test dispatch on Borivali Site. Reseed or clear as needed.
+- ✅ `CBL-200` and `SCR-M4` were reviewed (2026-08-20, during Phase 4). `CBL-200` ("Cable
+  Tie 200mm") is a discrete fastener despite its "Cables" category, not continuous wire —
+  `DISCRETE`/no `packUnit` was already correct and is unchanged. `SCR-M4` had `packUnit`
+  stuck at `null` because `seed.ts`'s upsert never updates an existing row's fields; it is
+  now `"packet"`, matching the fixture's own intent. See REDESIGN-PLAN.md's "Phase 4 — as
+  built" for the reasoning.
 - Backups of `dev.db` are in `backups/` (gitignored). It is the only copy.
 
 ### Suggested order
 
-Phases are numbered in dependency order and the plan explains why. Phase 2 (roles) is next and
-is self-contained. **Phase 3 (corrections) matters more than its size suggests** — auto-scrap
-means a mistaken issue now permanently destroys material, and there is currently no undo
-anywhere in the app.
+Phases are numbered in dependency order and the plan explains why. **Phases 1-4 are built**;
+**Phase 5 (delivery entry) is next**. It reuses the row-editing pieces `DispatchBatchForm.tsx`
+built for Phase 4 — dispatch was deliberately the more demanding of the two flows so it would
+set the pattern rather than inherit it. Phase 6 (site lifecycle: consumption, transfers,
+pickup) depends on Phase 5's direct-to-site delivery existing first.
 
 ## 11. Related Documents
 
