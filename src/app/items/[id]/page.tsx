@@ -3,6 +3,8 @@ import { updateItem } from "@/lib/actions/items";
 import { openPackAction } from "@/lib/actions/transactions";
 import { describeMovement, formatQuantity, formatStock } from "@/lib/units";
 import { can, currentUser } from "@/lib/permissions";
+import { adjustStock, reverseTransaction } from "@/lib/actions/corrections";
+import { AdjustStockForm, ReverseButton } from "@/components/CorrectionPanel";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -39,6 +41,23 @@ export default async function ItemDetailPage({
   const user = await currentUser();
   const canOpenPacks = can(user?.role, "stock:issue");
   const canEdit = can(user?.role, "item:manage");
+  const canAdjust = can(user?.role, "stock:adjust");
+  const canReverse = can(user?.role, "stock:reverse");
+
+  const countRows = [
+    ...item.packStock.map((g) => ({
+      key: `sealed_${g.packSize}`,
+      label: `Sealed ${g.packSize} ${item.baseUnit} ${item.packUnit ?? "pack"}s`,
+      current: g.sealedCount,
+    })),
+    ...item.openPacks
+      .filter((p) => p.state === "OPEN")
+      .map((p) => ({
+        key: `open_${p.id}`,
+        label: `Open pack — ${p.remaining} ${item.baseUnit} remaining`,
+        current: p.remaining,
+      })),
+  ];
 
   return (
     <div className="space-y-6">
@@ -118,6 +137,14 @@ export default async function ItemDetailPage({
         </div>
       </div>
 
+      {canAdjust && (
+        <AdjustStockForm
+          rows={countRows}
+          baseUnit={item.baseUnit}
+          action={adjustStock.bind(null, item.id)}
+        />
+      )}
+
       <div className="grid gap-6 md:grid-cols-2">
         <div className={`space-y-4 rounded border border-zinc-200 p-4 dark:border-zinc-800 ${canEdit ? "" : "hidden"}`}>
           <h2 className="font-medium text-zinc-900 dark:text-zinc-50">
@@ -192,6 +219,7 @@ export default async function ItemDetailPage({
                   <th className="py-1">Qty</th>
                   <th className="py-1">Site</th>
                   <th className="py-1">By</th>
+                  <th className="py-1" />
                 </tr>
               </thead>
               <tbody>
@@ -214,12 +242,25 @@ export default async function ItemDetailPage({
                     </td>
                     <td className="py-1">{t.site?.name ?? "—"}</td>
                     <td className="py-1">{t.user.name}</td>
+                    <td className="py-1">
+                      {t.reversedAt ? (
+                        <span className="text-zinc-500 line-through">reversed</span>
+                      ) : canReverse &&
+                        t.type !== "REVERSAL" &&
+                        t.type !== "ADJUSTMENT" &&
+                        t.appliedPlan ? (
+                        <ReverseButton
+                          action={reverseTransaction.bind(null, t.id)}
+                          label={`this ${t.type} of ${describeMovement(item, t)}`}
+                        />
+                      ) : null}
+                    </td>
                   </tr>
                 ))}
                 {item.transactions.length === 0 && (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={6}
                       className="py-4 text-center text-zinc-500 dark:text-zinc-500"
                     >
                       No transactions yet.

@@ -27,6 +27,13 @@ enum TransactionType {
   OPEN_PACK
   /// Open pack at/below its item's scrapThreshold → recycle. Removes from stock.
   SCRAP
+  /// A physical count disagreed with the ledger and the count won. Carries a
+  /// mandatory reason so corrections stay visible instead of being disguised
+  /// as fake issues.
+  ADJUSTMENT
+  /// Marks an earlier movement as recorded in error. The original is kept and
+  /// excluded from aggregation rather than deleted.
+  REVERSAL
 }
 
 /// Whether an item's base unit can be subdivided. CONTINUOUS material (wire,
@@ -195,6 +202,27 @@ model Transaction {
   pieces       String?
   /// Portion of a RETURN quarantined as defective rather than restocked.
   defectiveQty Int?
+
+  /// JSON record of exactly which packs this movement touched, and their values
+  /// before and after. Reversal replays it backwards, and refuses if the world
+  /// has moved on since — restoring a roll that has been cut again would invent
+  /// material that no longer exists.
+  appliedPlan String?
+  /// Mandatory on ADJUSTMENT and REVERSAL.
+  reason String?
+
+  /// A REVERSAL points at the movement it undoes. Unique, so a movement can be
+  /// reversed at most once.
+  reverses   Transaction? @relation("Reversal", fields: [reversesId], references: [id])
+  reversesId String?      @unique
+  reversedBy Transaction? @relation("Reversal")
+
+  /// Scalar mirror of `reversedBy`, set when this movement is reversed.
+  /// Aggregations filter on this rather than the relation because Prisma's
+  /// groupBy does not accept relation filters — `reversedBy: null` throws there.
+  reversedAt DateTime?
+
+  @@index([reversedAt])
 
   item   Item   @relation(fields: [itemId], references: [id])
   itemId String

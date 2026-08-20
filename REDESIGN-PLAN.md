@@ -49,14 +49,14 @@ site at **0**, and the return guard
 outright. Recording it as an ordinary stock-in is worse still: the store would show wire it
 does not physically have, and reordering would be decided against stock sitting on a roof.
 
-> **Status: Phases 1 and 2 are BUILT and verified (2026-08-20).** Phases 3-6 are not started.
+> **Status: Phases 1, 2 and 3 are BUILT and verified (2026-08-20).** Phases 4-6 are not started.
 > See "Phase 1 — as built" below for the three places reality diverged from this plan.
 
 | Phase | Delivers |
 |---|---|
 | 1 | ✅ **DONE** — base units, packs, cut lengths, scrap, single-item issue with confirm |
 | 2 | ✅ **DONE** — `ADMIN` / `FINANCE` / `EMPLOYEE` and capability gating |
-| 3 | **corrections** — reversal and stocktake adjustment, before bulk entry exists |
+| 3 | ✅ **DONE** — corrections: reversal and stocktake adjustment |
 | 4 | **Excel-pasted dispatch batch** with review screen (employee) — the daily pain |
 | 5 | delivery entry (finance), to the store **or direct to a site** |
 | 6 | site material lifecycle — consumption, pickup, transfers, cross-site view |
@@ -652,7 +652,31 @@ fixtures.
 
 ---
 
-# Phase 3 — Corrections: reversal and adjustment
+# Phase 3 — Corrections: reversal and adjustment ✅ BUILT
+
+> **As built, 2026-08-20.** Migrations `20260820160000_corrections` and
+> `20260820161000_reversed_at`. New [corrections.ts](src/lib/corrections.ts) (pure: the
+> AppliedPlan record and `findReversalObstacles`), [actions/corrections.ts](src/lib/actions/corrections.ts),
+> and [CorrectionPanel.tsx](src/components/CorrectionPanel.tsx). 10 more unit tests, 28 total.
+>
+> **Verified:** an ISSUE that opened a 400 m roll and cut 120 m (leaving `1×400 + 2×600
+> sealed · 280 m open`, 1880 m) reversed back to `2×400 + 2×600 sealed`, 2000 m exactly —
+> the open pack deleted and the sealed roll restored, *not* a compensating +120 m that would
+> have left a stray open pack. The original ISSUE shows as "reversed" with a REVERSAL row
+> above it; nothing is deleted.
+>
+> **Deviations:**
+> 1. **A scalar `Transaction.reversedAt` mirrors the `reversedBy` relation.** Prisma's
+>    `groupBy` does **not** accept relation filters — `reversedBy: null` throws there, which
+>    broke the placement suggestions. Aggregations filter on the scalar.
+> 2. **`REVERSAL` and `ADJUSTMENT` are distinct transaction types**, and neither can itself
+>    be reversed — record a further correction instead.
+> 3. **A reversed movement is excluded from aggregation rather than cancelled by an opposing
+>    row.** `materialsAtSite` and the suggestion ranking filter `reversedAt: null`, so a
+>    reversed issue vanishes from a site balance instead of netting to zero.
+> 4. **Movements recorded before this phase are not reversible** — they carry no
+>    `appliedPlan`, so the UI offers no Reverse control and the action refuses with a message
+>    pointing at adjustment. Correct, and worth knowing when testing against old data.
 
 Two different problems that are easy to conflate, and must not be:
 

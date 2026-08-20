@@ -20,6 +20,7 @@ import {
 } from "@/lib/packs";
 import { planAllocation, type AllocationRequest } from "@/lib/allocation";
 import { piecesTotal, type Piece } from "@/lib/units";
+import { serialiseAppliedPlan } from "@/lib/corrections";
 
 type TxType = "STOCK_IN" | "ISSUE" | "RETURN";
 
@@ -105,7 +106,7 @@ async function netAtSite(
   siteId: string
 ): Promise<number> {
   const rows = await tx.transaction.findMany({
-    where: { itemId, siteId, type: { in: ["ISSUE", "RETURN"] } },
+    where: { itemId, siteId, type: { in: ["ISSUE", "RETURN"] }, reversedAt: null },
   });
   return rows.reduce((sum, t) => sum + (t.type === "ISSUE" ? t.quantity : -t.quantity), 0);
 }
@@ -172,13 +173,17 @@ export async function recordMovement(input: MovementInput): Promise<MovementResu
       });
 
       if (input.type === "ISSUE") {
-        await commitAllocation(
+        const { applied } = await commitAllocation(
           tx,
           item,
           request,
           input.approvedOpens ?? [],
           userId
         );
+        await tx.transaction.update({
+          where: { id: movement.id },
+          data: { appliedPlan: serialiseAppliedPlan(applied) },
+        });
         return;
       }
 
@@ -202,14 +207,14 @@ export async function recordMovement(input: MovementInput): Promise<MovementResu
             ? [looseBase - defective]
             : [];
 
-      await restock(tx, item, {
+      const { applied } = await restock(tx, item, {
         sealedPacks: request.sealedPacks,
         lengths: goodLengths,
         userId,
       });
 
       if (defective > 0) {
-        await tx.defectiveItem.create({
+        const row = await tx.defectiveItem.create({
           data: {
             itemId: item.id,
             quantity: defective,
@@ -220,7 +225,13 @@ export async function recordMovement(input: MovementInput): Promise<MovementResu
             note,
           },
         });
+        applied.defectiveIds.push(row.id);
       }
+
+      await tx.transaction.update({
+        where: { id: movement.id },
+        data: { appliedPlan: serialiseAppliedPlan(applied) },
+      });
     });
   } catch (error) {
     if (error instanceof StaleApprovalError) {
