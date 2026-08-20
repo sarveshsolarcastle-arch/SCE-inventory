@@ -24,7 +24,7 @@ export async function getPlacementSuggestions(): Promise<Suggestion[]> {
   const [issues, items, frontSlots] = await Promise.all([
     prisma.transaction.groupBy({
       by: ["itemId"],
-      where: { type: "ISSUE", createdAt: { gte: since } },
+      where: { type: "ISSUE", createdAt: { gte: since }, reversedAt: null },
       _sum: { quantity: true },
       _count: { _all: true },
     }),

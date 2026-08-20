@@ -3,7 +3,9 @@ import { prisma } from "@/lib/prisma";
 /** Net quantity of each item currently issued to a site (ISSUE - RETURN), positive only. */
 export async function materialsAtSite(siteId: string) {
   const transactions = await prisma.transaction.findMany({
-    where: { siteId, type: { in: ["ISSUE", "RETURN"] } },
+    // A reversed movement is excluded rather than cancelled by an opposing row:
+    // it never happened, so it should not appear in a balance at all.
+    where: { siteId, type: { in: ["ISSUE", "RETURN"] }, reversedAt: null },
     include: { item: true },
   });
 

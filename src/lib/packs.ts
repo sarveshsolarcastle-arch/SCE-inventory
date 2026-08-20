@@ -7,6 +7,11 @@ import {
   type ItemRules,
   type PackSnapshot,
 } from "@/lib/allocation";
+import {
+  addSealedDelta,
+  emptyAppliedPlan,
+  type AppliedPlan,
+} from "@/lib/corrections";
 
 /* -------------------------------------------------------------------------
  * The database side of the pack model. Everything here takes a transaction
@@ -216,7 +221,8 @@ export async function commitAllocation(
   request: AllocationRequest,
   approvedOpens: ApprovedOpens,
   userId: string
-): Promise<AllocationPlan> {
+): Promise<{ plan: AllocationPlan; applied: AppliedPlan }> {
+  const applied = emptyAppliedPlan();
   const snapshot = await readSnapshot(tx, item.id);
   const plan = planAllocation(
     { measure: item.measure, scrapThreshold: item.scrapThreshold },
@@ -240,6 +246,7 @@ export async function commitAllocation(
     newPackIds.push(
       await openPack(tx, { itemId: item.id, packSize: open.packSize, userId })
     );
+    addSealedDelta(applied, open.packSize, -1);
   }
   const resolve = (id: string) =>
     id.startsWith(NEW_PACK_PREFIX)
@@ -251,7 +258,17 @@ export async function commitAllocation(
       where: { itemId_packSize: { itemId: item.id, packSize: take.packSize } },
       data: { sealedCount: { decrement: take.count } },
     });
+    addSealedDelta(applied, take.packSize, -take.count);
   }
+
+  // Record the state each touched pack started in, before anything mutates it.
+  const touchedIds = [...new Set(plan.cuts.map((c) => resolve(c.openPackId)))];
+  const before = new Map(
+    (await tx.openPack.findMany({ where: { id: { in: touchedIds } } })).map((p) => [
+      p.id,
+      p,
+    ])
+  );
 
   // The planner already computed each pack's final remainder, so apply the last
   // one per pack rather than replaying every cut.
@@ -262,9 +279,28 @@ export async function commitAllocation(
   const scrapped = new Map(plan.scrap.map((s) => [resolve(s.openPackId), s.length]));
 
   for (const [packId, remaining] of finalRemainder) {
+    const was = before.get(packId);
+    const isNew = newPackIds.includes(packId);
+
     if (emptied.has(packId)) {
+      if (was && !isNew) {
+        applied.deleted.push({
+          id: was.id,
+          remaining: was.remaining,
+          originalSize: was.originalSize,
+          state: was.state,
+          shelfSlotId: was.shelfSlotId,
+        });
+      }
       await tx.openPack.delete({ where: { id: packId } });
       continue;
+    }
+    if (!isNew && was) {
+      applied.changed.push({
+        id: packId,
+        before: { remaining: was.remaining, state: was.state },
+        after: { remaining, state: scrapped.has(packId) ? "SCRAP" : "OPEN" },
+      });
     }
     if (scrapped.has(packId)) {
       await tx.openPack.update({
@@ -285,8 +321,22 @@ export async function commitAllocation(
     await tx.openPack.update({ where: { id: packId }, data: { remaining } });
   }
 
+  // Packs this movement opened are recorded with their FINAL state, so reversal
+  // can confirm nothing has touched them since before deleting them.
+  if (newPackIds.length) {
+    for (const p of await tx.openPack.findMany({ where: { id: { in: newPackIds } } })) {
+      applied.created.push({
+        id: p.id,
+        remaining: p.remaining,
+        originalSize: p.originalSize,
+        state: p.state,
+        shelfSlotId: p.shelfSlotId,
+      });
+    }
+  }
+
   await recalcItemStock(tx, item.id);
-  return plan;
+  return { plan, applied };
 }
 
 /** Puts material back into stock: a return, or a delivery of loose stock.
@@ -300,14 +350,24 @@ export async function restock(
     lengths?: number[];
     userId: string;
   }
-): Promise<{ scrappedLengths: number[] }> {
+): Promise<{ scrappedLengths: number[]; applied: AppliedPlan }> {
+  const applied = emptyAppliedPlan();
+
   for (const p of args.sealedPacks ?? []) {
     await addPacks(tx, item.id, p.packSize, p.count);
+    addSealedDelta(applied, p.packSize, p.count);
   }
 
   const scrappedLengths: number[] = [];
   for (const length of args.lengths ?? []) {
-    const { scrapped } = await addOpenPack(tx, item, length);
+    const { id, scrapped } = await addOpenPack(tx, item, length);
+    applied.created.push({
+      id,
+      remaining: length,
+      originalSize: null,
+      state: scrapped ? "SCRAP" : "OPEN",
+      shelfSlotId: null,
+    });
     if (scrapped) {
       scrappedLengths.push(length);
       await tx.transaction.create({
@@ -323,5 +383,54 @@ export async function restock(
   }
 
   await recalcItemStock(tx, item.id);
-  return { scrappedLengths };
+  return { scrappedLengths, applied };
+}
+
+/** Replays an AppliedPlan backwards. Callers MUST have checked
+ * `findReversalObstacles` first — this assumes the world still matches. */
+export async function applyInverse(
+  tx: Prisma.TransactionClient,
+  itemId: string,
+  plan: AppliedPlan
+): Promise<void> {
+  for (const { packSize, delta } of plan.sealedDelta) {
+    if (delta > 0) {
+      await tx.packStock.update({
+        where: { itemId_packSize: { itemId, packSize } },
+        data: { sealedCount: { decrement: delta } },
+      });
+    } else if (delta < 0) {
+      await addPacks(tx, itemId, packSize, -delta);
+    }
+  }
+
+  if (plan.created.length) {
+    await tx.openPack.deleteMany({ where: { id: { in: plan.created.map((p) => p.id) } } });
+  }
+
+  for (const pack of plan.deleted) {
+    await tx.openPack.create({
+      data: {
+        id: pack.id,
+        itemId,
+        remaining: pack.remaining,
+        originalSize: pack.originalSize,
+        state: pack.state,
+        shelfSlotId: pack.shelfSlotId,
+      },
+    });
+  }
+
+  for (const change of plan.changed) {
+    await tx.openPack.update({
+      where: { id: change.id },
+      data: { remaining: change.before.remaining, state: change.before.state },
+    });
+  }
+
+  if (plan.defectiveIds.length) {
+    await tx.defectiveItem.deleteMany({ where: { id: { in: plan.defectiveIds } } });
+  }
+
+  await recalcItemStock(tx, itemId);
 }
