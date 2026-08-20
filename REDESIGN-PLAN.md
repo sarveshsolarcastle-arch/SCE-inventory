@@ -1,6 +1,6 @@
 # Packs & Cut Lengths · Role-Scoped Workspaces · Bulk Dispatch & Delivery
 
-> **This is the working plan for phases 1-8. Phases 1-4 are built; 5-6 are not.**
+> **This is the working plan for phases 1-8. Phases 1-5 are built; 6 is not.**
 > Read [PROGRESS.md](PROGRESS.md) first for current state, then this for what to build next.
 >
 > Everything here was decided in conversation with the user over a long session. **The
@@ -49,9 +49,9 @@ site at **0**, and the return guard
 outright. Recording it as an ordinary stock-in is worse still: the store would show wire it
 does not physically have, and reordering would be decided against stock sitting on a roof.
 
-> **Status: Phases 1-4 are BUILT and verified (2026-08-20).** Phases 5-6 are not started.
-> See "Phase 1 — as built" below for the three places reality diverged from this plan, and
-> "Phase 4 — as built" for that phase's own deviations.
+> **Status: Phases 1-5 are BUILT and verified (2026-08-20).** Phase 6 is not started.
+> Each built phase has an "as built" note recording where reality diverged from this plan —
+> read it before changing that phase's code.
 
 | Phase | Delivers |
 |---|---|
@@ -59,7 +59,7 @@ does not physically have, and reordering would be decided against stock sitting 
 | 2 | ✅ **DONE** — `ADMIN` / `FINANCE` / `EMPLOYEE` and capability gating |
 | 3 | ✅ **DONE** — corrections: reversal and stocktake adjustment |
 | 4 | ✅ **DONE** — Excel-pasted dispatch batch with review screen (employee) |
-| 5 | delivery entry (finance), to the store **or direct to a site** |
+| 5 | ✅ **DONE** — delivery entry (finance), to the store **or direct to a site** |
 | 6 | site material lifecycle — consumption, pickup, transfers, cross-site view |
 | 7 | **UI overhaul + mobile web** — deferred; see below |
 | 8 | **Hosting on a proper domain** — deferred; see below |
@@ -899,7 +899,53 @@ dispatch rather than showing loose rows.
 
 ---
 
-# Phase 5 — Delivery entry
+# Phase 5 — Delivery entry ✅ BUILT
+
+> **As built, 2026-08-20.** Migration `20260820180000_delivery_entry` (additive: new
+> `Delivery` table, nullable `Transaction.deliveryId`, and the two `DefectiveItem` fields
+> that were specified back in Phase 1 but could not be created until `Delivery` existed —
+> `deliveryId` and `replacedByDeliveryId`). New
+> [src/lib/actions/deliveries.ts](src/lib/actions/deliveries.ts) (`recordDelivery`,
+> `updateDefectiveStatus`), [src/components/DeliveryForm.tsx](src/components/DeliveryForm.tsx),
+> [src/components/DefectClaimControl.tsx](src/components/DefectClaimControl.tsx),
+> `/deliveries`, `/deliveries/new`, `/deliveries/[id]`. `STOCK_IN` removed from the
+> transaction form's type select as planned; `recordTransaction` keeps its branch.
+>
+> **Verified in the browser, all seven checks below:**
+> - **Defective on delivery (3):** 10 inverters with 2 damaged. The live row total read
+>   *"8 pcs into stock · 2 pcs quarantined"* before submit, and stock went 0 → **8**, never
+>   10-then-minus-2 — one `STOCK_IN:8`, no compensating row.
+> - **Direct to site (5):** 3 sealed 400 m rolls to Kandivali. Store `currentStock`
+>   **unchanged at 2000**, **no `PackStock` row created** (still `2×400, 2×600`), site holds
+>   **1200 m**, rendered as one "Delivered direct to…" event rather than a stock-in-then-issue.
+> - **The failure this fixes (6):** returned a 40 m offcut from that site — **accepted**,
+>   where before this phase the return guard rejected it because the site's net was 0. It
+>   landed in the store as a new 40 m `OpenPack`; store 2000 → 2040, site 1200 → 1160.
+> - **The suggestions trap:** WIRE-2.5 now has 3 unreversed `ISSUE` rows but only **2** count
+>   toward the placement ranking — the delivery's paired `ISSUE` is excluded, as required.
+> - **Claim lifecycle (4):** QUARANTINED → CLAIMED → REPLACED, with the replacement recorded
+>   as an ordinary delivery and linked; outstanding count fell from 2 to 1.
+> - **Validation (7):** a pack size below the scrap threshold, more defective than delivered,
+>   and a quantity with no item — all three reported **per row simultaneously**, nothing
+>   written, typed data still on screen.
+> - **Mobile:** zero horizontal scroll at 375px; all 12 number inputs carry
+>   `inputMode="numeric"`.
+>
+> **Two deviations from what is written below:**
+>
+> 1. **`recordDelivery` takes a typed object, not `(prevState, formData)`.** The plan
+>    specifies the `useActionState` shape, but Phase 4's `recordDispatch` had already settled
+>    on a plain typed argument, and a delivery line carries the same mix of numbers and nulls
+>    that survives a round-trip through `FormData` badly. Matching the sibling action mattered
+>    more than matching the plan's shape — the two are now read side by side. Per-row errors
+>    still come back as the specified `{ rowIndex, message }[]`.
+> 2. **Damage is subtracted from the loose portion first, then from whole packs.** The plan
+>    says a line records "8 good and 2 defective" without saying *which* 8. With a line that
+>    mixes packs and loose material the split is ambiguous, and taking damage off the loose
+>    part first keeps sealed packs intact wherever the arithmetic allows — a sealed pack is
+>    the more useful thing to preserve, and a partially-damaged pack is not representable in
+>    `PackStock` anyway. The `DefectiveItem` records `packSize`/`packCount` only when the
+>    damaged quantity divides exactly into whole packs; otherwise it is recorded as loose.
 
 Deliveries **trickle** — typically one or two item types as stock runs out — so this is the
 lighter of the two flows. The multi-row grid still earns its place for the occasional larger
@@ -1326,7 +1372,8 @@ were not separately re-run for this batch path*
 10. **Batch reversal** (builds on Phase 3): reverse a 15-row dispatch → every row's packs
    restored, site holdings back to zero, one reversal event in history.
 
-**Phase 5 — delivery**
+**Phase 5 — delivery** ✅ *all 7 passed 2026-08-20, checked in the browser; see
+"Phase 5 — as built" above for the numbers each one produced*
 1. A one-line delivery (the common case) is quick: item, pack size, count, submit.
 2. A 3-line delivery with a new pack size and one unpackaged item commits in one submit;
    `/items` totals rise by exactly the line totals; no open prompt ever appears, since

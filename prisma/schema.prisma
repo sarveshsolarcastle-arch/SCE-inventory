@@ -81,6 +81,7 @@ model User {
   transactions   Transaction[]
   defectiveItems DefectiveItem[]
   dispatches     Dispatch[]
+  deliveries     Delivery[]
 }
 
 model Item {
@@ -165,16 +166,25 @@ model DefectiveItem {
   /// The RETURN that brought it back, when source is RETURN.
   transaction   Transaction? @relation(fields: [transactionId], references: [id])
   transactionId String?
+  /// The delivery it arrived damaged on, when source is DELIVERY.
+  delivery      Delivery?    @relation("ArrivedDamaged", fields: [deliveryId], references: [id])
+  deliveryId    String?
   site          Site?        @relation(fields: [siteId], references: [id])
   siteId        String?
 
-  status     DefectStatus @default(QUARANTINED)
+  status DefectStatus @default(QUARANTINED)
+  /// The delivery that made good on the claim. Set alongside status REPLACED,
+  /// so an unfulfilled claim is a query rather than someone's memory.
+  replacedBy           Delivery? @relation("Replacement", fields: [replacedByDeliveryId], references: [id])
+  replacedByDeliveryId String?
+
   note       String?
-  reportedAt DateTime     @default(now())
-  user       User         @relation(fields: [userId], references: [id])
+  reportedAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
   userId     String
 
   @@index([itemId, status])
+  @@index([deliveryId])
 }
 
 model Site {
@@ -186,9 +196,10 @@ model Site {
   transactions   Transaction[]
   defectiveItems DefectiveItem[]
   dispatches     Dispatch[]
+  deliveries     Delivery[]
 }
 
-/// A batch of items dispatched to one site in one go — the record a 15-line
+/// A batch of items dispatched to one site in one go. — the record a 15-line
 /// Excel sheet becomes. Each line is its own ISSUE Transaction (dispatchId
 /// set), so the pack model and every existing guard apply unchanged; this is
 /// purely a grouping record so a site's activity reads as one event instead
@@ -206,6 +217,42 @@ model Dispatch {
   transactions Transaction[]
 
   @@index([dispatchedAt])
+  @@index([siteId])
+}
+
+/// One challan/consignment received from a supplier. `siteId` is the whole
+/// destination decision:
+///   null  → the ordinary path; packs land in the store.
+///   set   → the material never touches the store. Each line then writes TWO
+///           transactions sharing this deliveryId — a STOCK_IN and an
+///           immediate ISSUE to that site — netting to zero at the office.
+///
+/// That pairing is deliberate, not bookkeeping sleight of hand: it means
+/// materialsAtSite, the return guard, the dashboards and the site pages all
+/// keep working untouched. A dedicated SITE_DELIVERY transaction type would
+/// have meant editing every one of them, with a chance of missing one.
+/// The shared deliveryId lets the UI render the pair as a single event.
+model Delivery {
+  id         String   @id @default(cuid())
+  /// Challan / invoice number.
+  reference  String?
+  supplier   String?
+  receivedAt DateTime @default(now())
+  note       String?
+
+  site   Site?   @relation(fields: [siteId], references: [id])
+  siteId String?
+
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  transactions   Transaction[]
+  /// Goods that arrived damaged on this delivery.
+  defectiveItems DefectiveItem[] @relation("ArrivedDamaged")
+  /// Defective rows this delivery made good on, as a supplier replacement.
+  replaces       DefectiveItem[] @relation("Replacement")
+
+  @@index([receivedAt])
   @@index([siteId])
 }
 
@@ -262,12 +309,20 @@ model Transaction {
   dispatch   Dispatch? @relation(fields: [dispatchId], references: [id])
   dispatchId String?
 
+  /// Set on both rows of a delivery line. On a direct-to-site delivery that
+  /// is a STOCK_IN and an ISSUE pair, which is how the UI knows to render
+  /// them as one event — and how suggestions.ts knows to ignore an ISSUE for
+  /// material that never sat on a shelf.
+  delivery   Delivery? @relation(fields: [deliveryId], references: [id])
+  deliveryId String?
+
   defectiveItems DefectiveItem[]
 
   @@index([itemId])
   @@index([siteId])
   @@index([createdAt])
   @@index([dispatchId])
+  @@index([deliveryId])
 }
 
 model Shelf {
