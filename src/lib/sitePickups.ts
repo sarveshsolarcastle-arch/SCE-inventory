@@ -1,20 +1,25 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { itemQuantityAtSite } from "@/lib/stock";
+import { effectiveFlagged } from "@/lib/siteBalance";
 
 /* -------------------------------------------------------------------------
- * Keeping the "awaiting collection" flag honest.
+ * Tidying the stored "awaiting collection" rows.
  *
  * A SitePickup row says "N units of this item at this site are not in use —
  * we have given up collecting them for now". But the site's actual holding is
- * derived from the ledger, not stored, so the flag can be left claiming more
- * than the site has the moment anything moves: material returned, consumed,
- * or transferred away.
+ * derived from the ledger, not stored, so the stored number goes stale the
+ * moment anything moves: material returned, consumed, or transferred away.
  *
- * So this runs after EVERY movement touching a site+item pair, clamping the
- * flag down to what is really there and deleting it once nothing is left.
+ * IMPORTANT: this is housekeeping, NOT the correctness guarantee. Every read
+ * path runs the stored number through `effectiveFlagged`, so a flag can never
+ * be *shown* claiming more than the site holds even if a writer forgets to
+ * call this. That is deliberate — the failure mode here is silent, and making
+ * correctness depend on every future writer remembering a call would be the
+ * weakest possible enforcement. This function only keeps the rows tidy and
+ * deletes ones that have reached zero.
  * ---------------------------------------------------------------------- */
 
-/** Clamps a pickup flag to the site's real balance; deletes it at zero.
+/** Persists the clamp and deletes a flag whose material is all gone.
  * Safe to call when no flag exists — it simply does nothing. */
 export async function reconcileSitePickups(
   tx: Prisma.TransactionClient,
@@ -27,13 +32,14 @@ export async function reconcileSitePickups(
   if (!flag) return;
 
   const held = await itemQuantityAtSite(tx, itemId, siteId);
+  const clamped = effectiveFlagged(flag.quantity, held);
 
-  if (held <= 0) {
+  if (clamped === 0) {
     await tx.sitePickup.delete({ where: { id: flag.id } });
     return;
   }
-  if (flag.quantity > held) {
-    await tx.sitePickup.update({ where: { id: flag.id }, data: { quantity: held } });
+  if (clamped !== flag.quantity) {
+    await tx.sitePickup.update({ where: { id: flag.id }, data: { quantity: clamped } });
   }
 }
 

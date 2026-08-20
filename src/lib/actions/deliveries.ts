@@ -5,6 +5,7 @@ import { NotPermittedError, requireCapability } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { addPacks, addOpenPack, recalcItemStock } from "@/lib/packs";
 import { emptyAppliedPlan, addSealedDelta, serialiseAppliedPlan } from "@/lib/corrections";
+import { reconcileSitePickups } from "@/lib/sitePickups";
 
 /* -------------------------------------------------------------------------
  * Recording goods received. Deliveries trickle — usually one or two item
@@ -246,6 +247,11 @@ export async function recordDelivery(input: DeliveryInput): Promise<DeliveryResu
               packCount: line.packCount || null,
             },
           });
+          // Only ever raises this site's balance, so no flag can be left
+          // over-claiming — called anyway so every writer of a site movement
+          // looks the same, rather than each one needing the reader to work
+          // out which direction it moves.
+          await reconcileSitePickups(tx, siteId, item.id);
         }
       }
     }

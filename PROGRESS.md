@@ -36,7 +36,7 @@ All core flows below were manually tested in a running dev server and confirmed 
 | Placement suggestions (usage-frequency based) | ✅ Done |
 | Mobile-responsive layout | ✅ Done |
 | Production build | ✅ Passes |
-| Automated tests | ⚠️ 52 unit tests (`npm test`): allocator, corrections, matching, paste parsing, site balances/FIFO age; **no coverage of the DB layer or UI** |
+| Automated tests | ⚠️ 58 unit tests (`npm test`): allocator, corrections, matching, paste parsing, site balances/FIFO age/pickup clamp; **no coverage of the DB layer or UI** |
 | Roles: ADMIN / FINANCE / EMPLOYEE, capability-gated | ✅ Done (Phase 2) |
 | Corrections: reversal and stocktake adjustment | ✅ Done (Phase 3) |
 | Bulk dispatch to site, from Excel paste | ✅ Done (Phase 4) |
@@ -173,12 +173,13 @@ src/
     auth.ts                 NextAuth config (credentials provider, JWT callbacks)
     prisma.ts               Prisma client singleton (with SQLite driver adapter)
     siteBalance.ts          PURE site arithmetic — siteDelta (transfer-aware),
-                            oldestContributingDate (FIFO age)
-    siteBalance.test.ts     11 unit tests
+                            oldestContributingDate (FIFO age), effectiveFlagged (the
+                            read-time clamp that makes a stale pickup flag unshowable)
+    siteBalance.test.ts     17 unit tests
     stock.ts                DB side: materialsAtSite, itemQuantityAtSite,
                             materialAcrossSites
-    sitePickups.ts          reconcileSitePickups — clamps a collection flag to what the
-                            site really holds; MUST be called by every new movement type
+    sitePickups.ts          reconcileSitePickups — persists the clamp and deletes emptied
+                            rows. HOUSEKEEPING ONLY; correctness comes from effectiveFlagged
     suggestions.ts          getPlacementSuggestions() — the frequency/placement engine
     boxTypes.ts             shared BOX_TYPES/BoxType
     permissions.ts          capability table — see §"Permissions" below
@@ -411,10 +412,13 @@ Everything downstream assumes these. Breaking one corrupts stock silently rather
    "reconsideration case" in the plan.
 4. **A shelf slot never stores a quantity.** Contents derive from the item's packs.
 5. **A site's holding is derived from the ledger, never stored** — see
-   [siteBalance.ts](src/lib/siteBalance.ts). Anything that writes a movement touching a site
-   must call `reconcileSitePickups`, or a `SitePickup` flag will go on claiming material the
-   site no longer has. **This is the invariant a new movement type is most likely to break**,
-   because nothing enforces it centrally.
+   [siteBalance.ts](src/lib/siteBalance.ts) — and so is the *effective* pickup flag.
+   `SitePickup.quantity` is an **intent**, not a fact: every read path runs it through
+   `effectiveFlagged(stored, held)`, so a flag can never be shown claiming more than the site
+   holds. `reconcileSitePickups` persists the clamp and deletes emptied rows, but it is
+   **housekeeping, not the guarantee** — a writer that forgets to call it leaves an untidy
+   row, not a wrong number. That split is deliberate: the failure mode is silent, so it is
+   enforced by derivation rather than by every future writer remembering a convention.
 
 ### Traps that are not obvious from the code
 

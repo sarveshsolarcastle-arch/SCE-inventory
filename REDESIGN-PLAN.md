@@ -1061,7 +1061,7 @@ still correct, still gated — only the UI option goes.
 > [src/lib/sitePickups.ts](src/lib/sitePickups.ts) (the reconcile helper),
 > [src/lib/actions/siteLifecycle.ts](src/lib/actions/siteLifecycle.ts),
 > [src/components/SiteMaterialPanel.tsx](src/components/SiteMaterialPanel.tsx),
-> `/at-sites`. `materialsAtSite` rewritten. 11 more unit tests, 52 total.
+> `/at-sites`. `materialsAtSite` rewritten. 17 more unit tests, 58 total.
 >
 > **Verified in the browser, all nine checks below:**
 > - **Consumption (1):** Kandivali held 1160 m; consumed 1000 → site **160 m**, store
@@ -1091,18 +1091,31 @@ still correct, still gated — only the UI option goes.
 >
 > 1. **The balance arithmetic lives in a new pure module,
 >    [siteBalance.ts](src/lib/siteBalance.ts), with [stock.ts](src/lib/stock.ts) reduced to
->    the DB side.** The plan describes editing `stock.ts` in place. But `stock.ts` imports
->    the Prisma singleton, and the `node --test` runner resolves no `@/` aliases at runtime,
->    so nothing in that file could be unit-tested — and `siteDelta`/`oldestContributingDate`
->    are exactly the kind of logic that should be. Splitting them follows the codebase's own
->    allocation.ts / packs.ts pattern. `stock.ts` re-exports them, so callers are unchanged.
-> 2. **`reconcileSitePickups` is called from the movement paths, not from inside a shared
->    write primitive.** The plan says it runs "after every transaction touching that pair";
->    there is no single chokepoint every movement passes through, so the call sites are
->    explicit: the return branch of `recordMovement`, each row of `recordDispatch`, all three
->    site-lifecycle actions, and `reverseMovementTx`. **This is the thing most likely to be
->    missed when adding a new movement type** — a new writer that forgets it leaves flags
->    claiming more than a site holds.
+>    the DB side.** The plan describes editing `stock.ts` in place. But `stock.ts`
+>    **instantiates the Prisma client at module scope**, so importing it at all requires a
+>    database — no import style avoids that, and a unit test cannot depend on one. (The
+>    `@/` alias not resolving under `node --test` is a real but lesser obstacle; a relative
+>    path works around it, whereas the module-scope client cannot be worked around.)
+>    `siteDelta` and `oldestContributingDate` are exactly the kind of logic that should be
+>    tested, so they moved to a module that imports nothing. This follows the codebase's own
+>    allocation.ts / packs.ts split. `stock.ts` re-exports them, so callers are unchanged.
+> 2. **The pickup flag is clamped on READ, not merely reconciled on write.** The plan says
+>    `reconcileSitePickups` runs "after every transaction touching that pair", which makes
+>    correctness depend on every present and future writer remembering to call it — and there
+>    is no single chokepoint that would enforce it. That is the weakest possible enforcement
+>    for a failure that is **silent**: a flag quietly claims material a site no longer holds
+>    and nothing errors. The first draft of this phase proved the point by missing the call
+>    in `recordDelivery` (harmless there, since that path only raises a balance — but nothing
+>    caught it).
+>
+>    So `SitePickup.quantity` is treated as an **intent**, and the number every read path
+>    actually uses is `effectiveFlagged(stored, held)` — derived, and structurally incapable
+>    of exceeding the balance. `reconcileSitePickups` still runs from all six write paths,
+>    but only to persist the clamp and delete emptied rows: housekeeping, not the guarantee.
+>    Same reasoning as `ShelfSlot` storing no quantity in Phase 1 — derived contents cannot
+>    drift. **Verified by planting a `9999` flag directly in the database against a site
+>    holding 60 m: both the site page and `/at-sites` reported 60 m.** Six unit tests cover
+>    the clamp.
 > 3. **The site activity list is queried with an explicit `OR`, not through the `transactions`
 >    relation.** That relation only matches `siteId`, so a transfer OUT of a site would never
 >    have appeared in that site's own activity feed. Transfers also render directionally
