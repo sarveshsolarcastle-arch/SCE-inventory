@@ -196,12 +196,15 @@ export default function TransactionForm({
       )}
 
       <Labelled label="Transaction type">
+        {/* STOCK_IN is deliberately absent now that deliveries have their own
+            grid: incoming stock belongs to a Delivery record with a supplier
+            and challan reference. recordTransaction keeps its STOCK_IN branch
+            — still correct, still capability-gated — only the UI option goes. */}
         <select
           value={type}
           onChange={(e) => setType(e.target.value as TxType)}
           className={INPUT}
         >
-          <option value="STOCK_IN">Stock In (received)</option>
           <option value="ISSUE">Issue to Site</option>
           <option value="RETURN">Return from Site</option>
         </select>

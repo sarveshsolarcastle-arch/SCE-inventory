@@ -24,7 +24,17 @@ export async function getPlacementSuggestions(): Promise<Suggestion[]> {
   const [issues, items, frontSlots] = await Promise.all([
     prisma.transaction.groupBy({
       by: ["itemId"],
-      where: { type: "ISSUE", createdAt: { gte: since }, reversedAt: null },
+      where: {
+        type: "ISSUE",
+        createdAt: { gte: since },
+        reversedAt: null,
+        // A direct-to-site delivery writes a STOCK_IN/ISSUE pair for material
+        // that never sat on a shelf. Counting those ISSUEs would climb an
+        // item up this ranking and win it a prime picking slot it is never
+        // picked from — so a delivery's own ISSUE rows are excluded and only
+        // real withdrawals from the store are ranked.
+        deliveryId: null,
+      },
       _sum: { quantity: true },
       _count: { _all: true },
     }),

@@ -1,9 +1,9 @@
 # Inventory Management System — Progress Handover
 
-Last updated: 2026-08-20 (redesign phases 1-4 built — see §9)
+Last updated: 2026-08-20 (redesign phases 1-5 built — see §9)
 
 > **§1-§8 describe the code as it stands today.** A six-phase redesign is under way;
-> **phases 1-4 are built and folded in above**, phases 5-6 are not. §9 tracks what is still
+> **phases 1-5 are built and folded in above**, phase 6 is not. §9 tracks what is still
 > coming, and §10 is a handover guide for continuing it.
 
 ## 1. Purpose
@@ -28,7 +28,7 @@ All core flows below were manually tested in a running dev server and confirmed 
 | Sites (CRUD, materials currently on-site) | ✅ Done |
 | Transactions (Stock In / Issue / Return, atomic stock updates) | ✅ Done |
 | Packs & cut lengths (sealed/opened, best-fit allocation, scrap threshold) | ✅ Done (Phase 1) |
-| Defective goods register | ✅ Done (returns only; deliveries in Phase 5) |
+| Defective goods register (+ supplier claim lifecycle) | ✅ Done (returns and deliveries) |
 | Dashboard (totals, low-stock alerts, recent activity, suggestion panel) | ✅ Done |
 | Shelf 2D map (front/back sides, box-type relabeling; contents derived from packs) | ✅ Done |
 | Condition-based shelving (Fresh/Opened/Recyclable box types) | ✅ Done |
@@ -39,7 +39,8 @@ All core flows below were manually tested in a running dev server and confirmed 
 | Roles: ADMIN / FINANCE / EMPLOYEE, capability-gated | ✅ Done (Phase 2) |
 | Corrections: reversal and stocktake adjustment | ✅ Done (Phase 3) |
 | Bulk dispatch to site, from Excel paste | ✅ Done (Phase 4) |
-| Delivery entry (to store or direct to site) | ❌ Phase 5 |
+| Delivery entry (to store or direct to site) | ✅ Done (Phase 5) |
+| Site lifecycle: consumption, transfers, pickup flags | ❌ Phase 6 |
 | Deployment | ❌ Not deployed anywhere — runs locally only |
 | Database backups | ⚠️ Manual copies in `backups/` only — no schedule |
 
@@ -126,8 +127,9 @@ src/
     items/                  list, new, [id] detail+edit+history
     sites/                  list, new, [id] detail+edit+materials-on-site (activity
                             groups dispatch lines instead of listing them loose)
-    transactions/new/       Stock In / Issue / Return form (single row)
+    transactions/new/       Issue / Return form (single row; Stock In removed in Phase 5)
     dispatches/             list, new (Excel-paste batch review), [id] detail+reverse
+    deliveries/             list, new (3-row grid, store or direct-to-site), [id] detail
     shelf/                  list, new, [shelfId] 2D map, suggestions
     recycle/                offcuts below their item's scrap threshold
     defective/              damaged goods held for a supplier claim
@@ -137,6 +139,9 @@ src/
     TransactionForm.tsx     client form: pack/pieces entry + the open-pack confirmation screen
     DispatchBatchForm.tsx   client form: paste → parse → match → plan → review, one card per
                             row at every viewport width (mobile-first, no table)
+    DeliveryForm.tsx        client form: 3-row goods-received grid, store or direct-to-site,
+                            per-row defective count
+    DefectClaimControl.tsx  QUARANTINED → CLAIMED → REPLACED, linking the replacing delivery
     CorrectionPanel.tsx     AdjustStockForm, ReverseButton (shared by items and dispatches)
     ShelfGrid.tsx           client component rendering the 2D shelf map (assign item, box type, front-row)
     NewShelfForm.tsx        client component: two-step shelf creation (size, then per-cell box type)
@@ -164,7 +169,8 @@ src/
     actions/                server actions: items.ts, sites.ts, transactions.ts
                             (recordMovement, openPackAction), shelf.ts (updateSlotBoxType,
                             assignSlotItem), corrections.ts (reverseTransaction,
-                            reverseDispatch, adjustStock), dispatches.ts (recordDispatch)
+                            reverseDispatch, adjustStock), dispatches.ts (recordDispatch),
+                            deliveries.ts (recordDelivery, updateDefectiveStatus)
   proxy.ts                  route-protection middleware (Next.js 16 naming)
 prisma/
   schema.prisma
@@ -207,8 +213,8 @@ backups/                    manual dev.db copies (gitignored)
 ## 9. Redesign — Phase Status
 
 A six-phase redesign is under way. **Phases 1 (packs, cut lengths, scrap), 2 (roles),
-3 (corrections) and 4 (dispatch batch) are built**; phases 5-6 (delivery, site lifecycle)
-are not.
+3 (corrections), 4 (dispatch batch) and 5 (delivery entry) are built**; phase 6 (site
+lifecycle) is not.
 
 ### Phase 1 — built 2026-08-20
 
@@ -234,6 +240,28 @@ this code, since it records *why* the paste parser is a separate file, why the r
 has no table markup at all, and how batch reversal works without a single-row DB
 representation.
 
+### Phase 5 — built 2026-08-20
+
+New `Delivery` model records goods received: supplier, challan reference, and above all
+**destination**. `siteId = null` is the ordinary path (packs land in the store);
+`siteId` set means the material never touches the store, and each line writes a
+**`STOCK_IN` + `ISSUE` pair sharing one `deliveryId`**, netting to zero at the office. That
+pairing is what lets `materialsAtSite`, the return guard and every dashboard keep working
+untouched — and it is why returning leftovers from a direct-delivered site now succeeds
+where it used to be rejected. Deliveries only ever add material, so nothing here touches the
+allocator. Defective goods **never enter stock at all**: ten arriving with two damaged
+records 8 in and 2 quarantined, not 10-then-minus-2.
+
+**The one non-obvious consequence, fixed in the same phase:**
+[suggestions.ts](src/lib/suggestions.ts) now excludes `ISSUE` rows carrying a `deliveryId`
+from its ranking `groupBy`. Without that, an item delivered straight to site twenty times
+would climb the usage ranking and be recommended a prime front-row picking slot it is never
+picked from — material that never sat on the shelf at all. This is the one place where
+"the pairing changes nothing downstream" turned out to be false.
+
+Full verification results and the two deviations are in
+[REDESIGN-PLAN.md's "Phase 5 — as built"](REDESIGN-PLAN.md).
+
 ### Deferred by decision: UI overhaul + mobile web (Phase 7), hosting (Phase 8)
 
 Neither is started, and the app will not be in real use until the functional phases land.
@@ -251,12 +279,15 @@ transaction client and knows nothing about Next. A redesign then touches only ma
 
 **Mobile checklist for the overhaul** (recorded now so it is not rediscovered later):
 
-- ✅ **The dispatch review screen (Phase 4) was built card-per-row from the start** — no
-  table markup at all, at any width — and confirmed at 375px with zero horizontal scroll.
-  `inputMode="numeric"` is already on its quantity/length fields, so that line item below is
-  done for this screen; the delivery grid (Phase 5) still needs both when it is built.
-- `inputMode="numeric"` on every OTHER quantity/length field — summons the number keypad on
-  Android instead of the full keyboard. Trivial, and a large day-to-day difference.
+- ✅ **Both batch screens were built card-per-row from the start** — the dispatch review
+  (Phase 4) and the delivery grid (Phase 5), no table markup at all at any width, each
+  confirmed at 375px with zero horizontal scroll and `inputMode="numeric"` on every number
+  field. These were the two screens the checklist worried about, and neither needs
+  retrofitting.
+- `inputMode="numeric"` on the remaining quantity/length fields — the single-row
+  [TransactionForm.tsx](src/components/TransactionForm.tsx) still lacks it. Summons the
+  number keypad on Android instead of the full keyboard; trivial, and a large daily
+  difference.
 - Touch targets on the shelf grid cells and their popover, which are currently sized for a
   mouse.
 - Keep the existing `overflow-x-auto` wrapper on every table; it is already the house pattern
@@ -285,17 +316,19 @@ SQLite stays; nothing in the code changes. What the server needs:
 
 ### Still to come — what below will change
 
+Only one row of this table is still outstanding; the rest have landed.
+
 | Stated above | Changes to |
 |---|---|
-| §7: nothing can be undone or corrected | reversal + stocktake adjustment (Phase 3) |
-| Stock-in is one row at a time | Excel-pasted dispatch batch (Phase 4) and delivery records (Phase 5) |
-| Sites accumulate material forever | consumption, transfers, pickup flags (Phase 6) |
+| ~~§7: nothing can be undone or corrected~~ | ✅ reversal + stocktake adjustment (Phase 3) |
+| ~~Stock-in is one row at a time~~ | ✅ dispatch batch (Phase 4) and delivery records (Phase 5) |
+| **Sites accumulate material forever** | consumption, transfers, pickup flags (**Phase 6 — still to come**) |
 
 ### Deviations from the Phase 1 plan, and why
 
 Three things came up in the build that the plan had wrong:
 
-1. **`STOCK_IN` stayed in the transaction form.** The plan removes it once the delivery grid lands (Phase 5). Doing that in Phase 1 left no way to add stock at all, so it stays — pack-aware, accepting a new pack size by typing it.
+1. **`STOCK_IN` stayed in the transaction form** — through Phases 1-4, because removing it before the delivery grid existed would have left no way to add stock at all. ✅ **Resolved in Phase 5:** the delivery grid landed, so the `STOCK_IN` option was removed from the form's type select as originally planned. `recordTransaction` keeps its `STOCK_IN` branch — still correct, still capability-gated — only the UI option went.
 2. **Assigning an item to an Opened/Recyclable box adopts its unplaced packs.** Nothing else ever set `OpenPack.shelfSlotId`, so those boxes would have stayed permanently empty.
 3. **Empty boxes say what kind of stock is missing** ("no sealed packs", "nothing open here") rather than "empty", which read as though the item had no stock when it merely had none of that condition.
 
@@ -364,11 +397,24 @@ Everything downstream assumes these. Breaking one corrupts stock silently rather
 
 ### Suggested order
 
-Phases are numbered in dependency order and the plan explains why. **Phases 1-4 are built**;
-**Phase 5 (delivery entry) is next**. It reuses the row-editing pieces `DispatchBatchForm.tsx`
-built for Phase 4 — dispatch was deliberately the more demanding of the two flows so it would
-set the pattern rather than inherit it. Phase 6 (site lifecycle: consumption, transfers,
-pickup) depends on Phase 5's direct-to-site delivery existing first.
+**Phases 1-5 are built. Phase 6 (site material lifecycle) is the last functional phase**:
+consumption at site, site-to-site transfers, stranded-material pickup flags, and the
+cross-site "Material at Sites" view. It is the phase that stops a site's list growing
+forever, and direct-to-site deliveries (Phase 5) make that drift worse, so it now matters
+more than it did.
+
+Two things to know before starting it, both recorded in the plan:
+
+- It **forces the one change to [stock.ts](src/lib/stock.ts)** earlier phases avoided —
+  `materialsAtSite` becomes `ISSUE − RETURN − CONSUME`, plus the transfer terms. Every
+  Phase 1-5 decision was shaped by *not* touching that function; Phase 6 spends that budget
+  deliberately.
+- `TRANSFER` gets a **dedicated transaction type**, unlike direct-to-site delivery which
+  reused a `STOCK_IN`/`ISSUE` pair. That is not an inconsistency — the plan explains why the
+  pairing argument is already spent by then, and why routing a transfer through the store
+  would churn pack state for material that never goes near a shelf.
+
+After that, Phases 7 (UI overhaul + mobile web) and 8 (hosting) are deferred by decision.
 
 ## 11. Related Documents
 

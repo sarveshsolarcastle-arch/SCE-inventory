@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatQuantity } from "@/lib/units";
+import { can, currentUser } from "@/lib/permissions";
+import DefectClaimControl from "@/components/DefectClaimControl";
 
 const STATUS_BADGE: Record<string, string> = {
   QUARANTINED: "border-amber-400 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300",
@@ -10,12 +12,25 @@ const STATUS_BADGE: Record<string, string> = {
 
 /** Goods that physically exist but are not stock, held for a supplier claim. */
 export default async function DefectivePage() {
-  const rows = await prisma.defectiveItem.findMany({
-    include: { item: true, site: true, user: true },
-    orderBy: [{ status: "asc" }, { reportedAt: "desc" }],
-  });
+  const [rows, recentDeliveries, user] = await Promise.all([
+    prisma.defectiveItem.findMany({
+      include: { item: true, site: true, user: true, delivery: true, replacedBy: true },
+      orderBy: [{ status: "asc" }, { reportedAt: "desc" }],
+    }),
+    // Offered as the "which delivery replaced it" choice — a replacement is
+    // always an ordinary delivery, never its own special path.
+    prisma.delivery.findMany({ orderBy: { receivedAt: "desc" }, take: 25 }),
+    currentUser(),
+  ]);
 
   const outstanding = rows.filter((r) => r.status !== "REPLACED");
+  const canResolve = can(user?.role, "defect:resolve");
+  const deliveryChoices = recentDeliveries.map((d) => ({
+    id: d.id,
+    label: `${d.reference || d.id.slice(0, 8)} — ${d.receivedAt.toLocaleDateString()}${
+      d.supplier ? ` (${d.supplier})` : ""
+    }`,
+  }));
 
   return (
     <div className="space-y-4">
@@ -46,6 +61,7 @@ export default async function DefectivePage() {
               <th className="px-3 py-2">Reported</th>
               <th className="px-3 py-2">By</th>
               <th className="px-3 py-2">Note</th>
+              {canResolve && <th className="px-3 py-2">Claim</th>}
             </tr>
           </thead>
           <tbody>
@@ -65,9 +81,15 @@ export default async function DefectivePage() {
                     : formatQuantity(row.item, row.quantity)}
                 </td>
                 <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">
-                  {row.source === "RETURN"
-                    ? `Returned${row.site ? ` from ${row.site.name}` : ""}`
-                    : "Damaged on arrival"}
+                  {row.source === "RETURN" ? (
+                    `Returned${row.site ? ` from ${row.site.name}` : ""}`
+                  ) : row.delivery ? (
+                    <Link href={`/deliveries/${row.delivery.id}`} className="hover:underline">
+                      Damaged on arrival ({row.delivery.reference || "no ref"})
+                    </Link>
+                  ) : (
+                    "Damaged on arrival"
+                  )}
                 </td>
                 <td className="px-3 py-2">
                   <span
@@ -75,6 +97,14 @@ export default async function DefectivePage() {
                   >
                     {row.status}
                   </span>
+                  {row.replacedBy && (
+                    <Link
+                      href={`/deliveries/${row.replacedBy.id}`}
+                      className="ml-1 block text-xs text-zinc-500 hover:underline"
+                    >
+                      by {row.replacedBy.reference || "delivery"}
+                    </Link>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">
                   {row.reportedAt.toLocaleDateString()}
@@ -85,11 +115,23 @@ export default async function DefectivePage() {
                 <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">
                   {row.note ?? "—"}
                 </td>
+                {canResolve && (
+                  <td className="px-3 py-2">
+                    <DefectClaimControl
+                      defectiveId={row.id}
+                      status={row.status}
+                      deliveries={deliveryChoices}
+                    />
+                  </td>
+                )}
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-8 text-center text-zinc-500 dark:text-zinc-500">
+                <td
+                  colSpan={canResolve ? 8 : 7}
+                  className="py-8 text-center text-zinc-500 dark:text-zinc-500"
+                >
                   Nothing defective on record.
                 </td>
               </tr>

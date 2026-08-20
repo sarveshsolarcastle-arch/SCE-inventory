@@ -8,6 +8,8 @@ const links: { href: string; label: string; capability: Capability | null }[] = 
   { href: "/dashboard", label: "Dashboard", capability: null },
   { href: "/dispatches/new", label: "Dispatch to Site", capability: "stock:issue" },
   { href: "/dispatches", label: "Dispatches", capability: "ledger:view" },
+  { href: "/deliveries/new", label: "Record Delivery", capability: "delivery:record" },
+  { href: "/deliveries", label: "Deliveries", capability: "ledger:view" },
   { href: "/transactions/new", label: "Issue / Return", capability: "stock:issue" },
   { href: "/items", label: "Items", capability: "ledger:view" },
   { href: "/sites", label: "Sites", capability: "ledger:view" },
