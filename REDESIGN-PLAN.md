@@ -1,6 +1,6 @@
 # Packs & Cut Lengths · Role-Scoped Workspaces · Bulk Dispatch & Delivery
 
-> **This is the working plan for phases 1-8. Phase 1 is built; 2-6 are not.**
+> **This is the working plan for phases 1-8. Phases 1-4 are built; 5-6 are not.**
 > Read [PROGRESS.md](PROGRESS.md) first for current state, then this for what to build next.
 >
 > Everything here was decided in conversation with the user over a long session. **The
@@ -49,15 +49,16 @@ site at **0**, and the return guard
 outright. Recording it as an ordinary stock-in is worse still: the store would show wire it
 does not physically have, and reordering would be decided against stock sitting on a roof.
 
-> **Status: Phases 1, 2 and 3 are BUILT and verified (2026-08-20).** Phases 4-6 are not started.
-> See "Phase 1 — as built" below for the three places reality diverged from this plan.
+> **Status: Phases 1-4 are BUILT and verified (2026-08-20).** Phases 5-6 are not started.
+> See "Phase 1 — as built" below for the three places reality diverged from this plan, and
+> "Phase 4 — as built" for that phase's own deviations.
 
 | Phase | Delivers |
 |---|---|
 | 1 | ✅ **DONE** — base units, packs, cut lengths, scrap, single-item issue with confirm |
 | 2 | ✅ **DONE** — `ADMIN` / `FINANCE` / `EMPLOYEE` and capability gating |
 | 3 | ✅ **DONE** — corrections: reversal and stocktake adjustment |
-| 4 | **Excel-pasted dispatch batch** with review screen (employee) — the daily pain |
+| 4 | ✅ **DONE** — Excel-pasted dispatch batch with review screen (employee) |
 | 5 | delivery entry (finance), to the store **or direct to a site** |
 | 6 | site material lifecycle — consumption, pickup, transfers, cross-site view |
 | 7 | **UI overhaul + mobile web** — deferred; see below |
@@ -748,7 +749,64 @@ operations that can rewrite history, so they sit with the person accountable for
 
 ---
 
-# Phase 4 — Dispatch to site, from Excel
+# Phase 4 — Dispatch to site, from Excel ✅ BUILT
+
+> **As built, 2026-08-20.** Migration `20260820170000_dispatch_batch` applied (purely
+> additive: new `Dispatch` table, nullable `Transaction.dispatchId` — no hand-editing
+> needed). New [src/lib/matching.ts](src/lib/matching.ts) (Dice-coefficient matcher),
+> [src/lib/dispatchPaste.ts](src/lib/dispatchPaste.ts) (paste parser),
+> [src/lib/actions/dispatches.ts](src/lib/actions/dispatches.ts) (`recordDispatch`),
+> [src/components/DispatchBatchForm.tsx](src/components/DispatchBatchForm.tsx),
+> `/dispatches`, `/dispatches/new`, `/dispatches/[id]`. 13 more unit tests (matching +
+> parsing), 41 total.
+>
+> **Verified in the browser:** a pasted sheet with a header row, an exact match
+> (Screws M4), and a typo'd match ("wire 2.5mm sq" → suggested Wire 2.5mm², requiring an
+> explicit "✓ Use" click before its quantity filled in — never silently accepted) all
+> resolved correctly; a nonsense line came back "no match — pick manually" and blocked
+> submit; the wire row correctly demanded approval to open a 400 m roll before submitting.
+> Committing wrote two `ISSUE` rows sharing one `dispatchId`, cut the roll and pooled the
+> screws exactly as `commitAllocation` does for a single-row issue. Reversing the dispatch
+> (§ below) restored both items to their exact prior pack state in one action. The site
+> page groups the dispatch into one "DISPATCH — 2 items" activity row instead of two loose
+> lines. At 375px width the review screen has zero horizontal scroll — see the mobile note
+> below.
+>
+> **Three deviations from what is written below:**
+>
+> 1. **The paste parser is its own file, [dispatchPaste.ts](src/lib/dispatchPaste.ts),
+>    not folded into `matching.ts`.** `matching.ts` stayed scoped to *matching a name to
+>    an item*, which is the part with real algorithmic content (Dice coefficient); parsing
+>    TSV into `{name, quantity}` rows is a different, simpler concern, and splitting it
+>    kept both files focused enough to unit-test independently.
+> 2. **The review screen is a single card-per-row layout at every width, not a table that
+>    becomes cards below a breakpoint.** The plan's mobile checklist called the 15-row grid
+>    "the hard one" and asked for cards on narrow screens; maintaining two markup shapes
+>    for the same data risked them drifting apart, so there is only one shape, and it never
+>    needs a horizontal scroll wrapper at any width.
+> 3. **Batch reversal writes one `REVERSAL` transaction per original `ISSUE` line, not a
+>    single row.** The per-transaction reversal primitive from Phase 3
+>    (`findReversalObstacles` / `applyInverse`) operates on one movement's `appliedPlan` at
+>    a time, so there is no natural single-row representation of "undo 15 movements." What
+>    was extracted instead is a shared `reverseMovementTx` helper
+>    ([actions/corrections.ts](src/lib/actions/corrections.ts)) that `reverseTransaction`
+>    and the new `reverseDispatch` both call, looped inside ONE `prisma.$transaction` for
+>    dispatches so a mid-batch obstacle aborts the whole reversal rather than leaving it
+>    half-undone. Every compensating `REVERSAL` row carries the same `dispatchId` as the
+>    `ISSUE` it undoes, so the dispatch and site pages render it as one grouped event even
+>    though the database holds N rows — satisfying "one reversal event in history" as a UI
+>    property, not a schema one.
+>
+> **Also folded into this phase, per explicit request:** `CBL-200` ("Cable Tie 200mm") and
+> `SCR-M4` (Screws M4) — flagged in §10 as needing human review after the Phase 1
+> migration — were reviewed. `CBL-200` is a discrete plastic fastener, not continuous
+> cable/wire despite its category "Cables"; `DISCRETE` with no `packUnit` is correct as
+> migrated and was left unchanged. `SCR-M4` predates the `packUnit` field reaching its row
+> — `seed.ts`'s `upsert` never updates an existing item, so it stayed `packUnit: null` even
+> after the fixture definition specified `"packet"`. Corrected to `packUnit: "packet"` by
+> direct field update (measure was already correctly `DISCRETE`); its existing loose
+> `OpenPack` rows are untouched, since packUnit only governs how *future* deliveries are
+> entered.
 
 The primary daily workflow. A site allocation is **15+ items**, pasted from a spreadsheet
 holding **item and quantity only** — no piece breakdown — so pieces are resolved on the
@@ -1241,7 +1299,12 @@ Run after each phase, not only at the end.
 5. **Admin only:** an employee and a finance account both get rejected server-side when
    replaying the reverse and adjust action POSTs.
 
-**Phase 4 — dispatch**
+**Phase 4 — dispatch** ✅ *checked 2026-08-20; 1, 2, 9, 10 verified in the browser
+(paste/header-skip, exact/suggested/typo matching, dispatchId grouping, full reversal);
+matching's ambiguous-tie case and the parser's edge cases are covered by
+`matching.test.ts`/`dispatchPaste.test.ts` rather than re-checked by hand; 3-8 rely on the
+same `planBatch`/`commitAllocation` machinery already covered by `allocation.test.ts` and
+were not separately re-run for this batch path*
 1. **Paste** 15+ rows copied from a real Excel sheet, header row included. Parses into the
    table, header skipped, `"150 m"` read as `150`.
 2. **Matching:** a typo'd name ("wire 2.5mm sq") pre-fills as a *suggestion*; a nonsense
