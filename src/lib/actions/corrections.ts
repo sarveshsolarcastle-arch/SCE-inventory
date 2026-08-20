@@ -11,6 +11,7 @@ import {
   parseAppliedPlan,
   type ReversalObstacle,
 } from "@/lib/corrections";
+import { reconcileForMovement } from "@/lib/sitePickups";
 
 export type CorrectionResult = { ok: true } | { ok: false; message: string };
 
@@ -19,6 +20,7 @@ type ReversibleMovement = {
   type: string;
   itemId: string;
   siteId: string | null;
+  fromSiteId: string | null;
   dispatchId: string | null;
   quantity: number;
   appliedPlan: string | null;
@@ -89,6 +91,10 @@ async function reverseMovementTx(
       note: `Reverses ${movement.type} of ${movement.createdAt.toLocaleDateString()}`,
     },
   });
+
+  // Excluding the reversed movement changes what its site holds, so a pickup
+  // flag there may now claim more than is present.
+  await reconcileForMovement(tx, movement.itemId, [movement.siteId, movement.fromSiteId]);
 }
 
 /** Undoes a movement recorded in error by restoring the exact prior state.

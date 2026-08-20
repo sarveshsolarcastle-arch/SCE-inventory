@@ -21,6 +21,8 @@ import {
 import { planAllocation, type AllocationRequest } from "@/lib/allocation";
 import { piecesTotal, type Piece } from "@/lib/units";
 import { serialiseAppliedPlan } from "@/lib/corrections";
+import { itemQuantityAtSite } from "@/lib/stock";
+import { reconcileSitePickups } from "@/lib/sitePickups";
 
 type TxType = "STOCK_IN" | "ISSUE" | "RETURN";
 
@@ -99,17 +101,9 @@ function validate(input: MovementInput, request: AllocationRequest): string | nu
   return null;
 }
 
-/** Net quantity of an item currently at a site (ISSUE − RETURN). */
-async function netAtSite(
-  tx: { transaction: { findMany: typeof prisma.transaction.findMany } },
-  itemId: string,
-  siteId: string
-): Promise<number> {
-  const rows = await tx.transaction.findMany({
-    where: { itemId, siteId, type: { in: ["ISSUE", "RETURN"] }, reversedAt: null },
-  });
-  return rows.reduce((sum, t) => sum + (t.type === "ISSUE" ? t.quantity : -t.quantity), 0);
-}
+// The return guard reads itemQuantityAtSite from stock.ts, so it picked up
+// CONSUME and TRANSFER for free in Phase 6: material already used up on site,
+// or moved on to another site, can no longer be returned from here.
 
 /** Which capability a movement needs depends on its type — a finance account can
  * record incoming stock but must not be able to issue it, and vice versa. */
@@ -146,7 +140,7 @@ export async function recordMovement(input: MovementInput): Promise<MovementResu
       const item = await tx.item.findUniqueOrThrow({ where: { id: input.itemId } });
 
       if (input.type === "RETURN" && siteId) {
-        const atSite = await netAtSite(tx, item.id, siteId);
+        const atSite = await itemQuantityAtSite(tx, item.id, siteId);
         if (atSite < total) {
           throw new AllocationFailedError(
             { cuts: [], opens: [], scrap: [], emptied: [], sealedTaken: [], totalBase: 0, issuedBase: 0, errors: [] },
@@ -232,6 +226,10 @@ export async function recordMovement(input: MovementInput): Promise<MovementResu
         where: { id: movement.id },
         data: { appliedPlan: serialiseAppliedPlan(applied) },
       });
+
+      // A return lowers what the site holds, so a pickup flag on this pair
+      // may now claim more than is there.
+      if (siteId) await reconcileSitePickups(tx, siteId, item.id);
     });
   } catch (error) {
     if (error instanceof StaleApprovalError) {

@@ -1,10 +1,11 @@
 # Inventory Management System — Progress Handover
 
-Last updated: 2026-08-20 (redesign phases 1-5 built — see §9)
+Last updated: 2026-08-20 (**all six functional redesign phases built** — see §9)
 
-> **§1-§8 describe the code as it stands today.** A six-phase redesign is under way;
-> **phases 1-5 are built and folded in above**, phase 6 is not. §9 tracks what is still
-> coming, and §10 is a handover guide for continuing it.
+> **§1-§8 describe the code as it stands today.** The six-phase functional redesign is
+> **complete**; what remains is Phase 7 (UI overhaul + mobile web) and Phase 8 (hosting),
+> both deferred by decision. §9 records what each phase delivered, and §10 is the handover
+> guide.
 
 ## 1. Purpose
 
@@ -35,12 +36,13 @@ All core flows below were manually tested in a running dev server and confirmed 
 | Placement suggestions (usage-frequency based) | ✅ Done |
 | Mobile-responsive layout | ✅ Done |
 | Production build | ✅ Passes |
-| Automated tests | ⚠️ 41 unit tests (`npm test`): allocator, corrections, matching, paste parsing; no coverage of the DB layer or UI |
+| Automated tests | ⚠️ 52 unit tests (`npm test`): allocator, corrections, matching, paste parsing, site balances/FIFO age; **no coverage of the DB layer or UI** |
 | Roles: ADMIN / FINANCE / EMPLOYEE, capability-gated | ✅ Done (Phase 2) |
 | Corrections: reversal and stocktake adjustment | ✅ Done (Phase 3) |
 | Bulk dispatch to site, from Excel paste | ✅ Done (Phase 4) |
 | Delivery entry (to store or direct to site) | ✅ Done (Phase 5) |
-| Site lifecycle: consumption, transfers, pickup flags | ❌ Phase 6 |
+| Site lifecycle: consumption, transfers, pickup flags, cross-site view | ✅ Done (Phase 6) |
+| UI overhaul + mobile web | ❌ Phase 7 — deferred by decision |
 | Deployment | ❌ Not deployed anywhere — runs locally only |
 | Database backups | ⚠️ Manual copies in `backups/` only — no schedule |
 
@@ -87,7 +89,10 @@ A `.claude/launch.json` is present so Claude Code's browser preview tool can sta
 - **OpenPack** — an opened pack, tracked individually with its own `remaining`, because a 30 m and a 50 m offcut are *not* interchangeable. `state` is `OPEN` or `SCRAP`; optionally points at the shelf slot it physically sits in.
 - **DefectiveItem** — goods that exist but are not stock, held for a supplier claim. `source` `DELIVERY` | `RETURN`, `status` `QUARANTINED` | `CLAIMED` | `REPLACED`.
 - **Site** — id, name, location, notes
-- **Transaction** — type (`STOCK_IN` | `ISSUE` | `RETURN` | `OPEN_PACK` | `SCRAP`), quantity **always in the item's baseUnit**, item, optional site, user, note, timestamp, plus display-only `packSize`/`packCount`/`pieces` and a `defectiveQty` on returns.
+- **Transaction** — type (`STOCK_IN` | `ISSUE` | `RETURN` | `OPEN_PACK` | `SCRAP` | `ADJUSTMENT` | `REVERSAL` | `CONSUME` | `TRANSFER`), quantity **always in the item's baseUnit**, item, optional site, user, note, timestamp, plus display-only `packSize`/`packCount`/`pieces`, a `defectiveQty` on returns, `appliedPlan`/`reason`/`reversedAt` for corrections, `dispatchId`/`deliveryId` grouping, and `fromSiteId` (TRANSFER origin; `siteId` is then the destination).
+- **Dispatch** — groups the ISSUE rows of one batch dispatch to a site.
+- **Delivery** — one challan received: supplier, reference, and `siteId` (null = into the store; set = delivered direct to that site).
+- **SitePickup** — material at a site flagged as awaiting collection. `@@unique([siteId, itemId])`. Its `quantity` is clamped by `reconcileSitePickups` after every movement, because at-site balances are derived rather than stored.
 - **Shelf** — id, name, rows, columns (a physical 2-sided shelf unit)
 - **ShelfSlot** — shelf, side, row, column, tagCode (matches the physical sticker), isFrontRow, boxType, optional assigned item. **No quantity column.**
 
@@ -125,8 +130,11 @@ src/
     login/                  sign-in page
     dashboard/              stats, low-stock alerts, recent activity, suggestion panel
     items/                  list, new, [id] detail+edit+history
-    sites/                  list, new, [id] detail+edit+materials-on-site (activity
-                            groups dispatch lines instead of listing them loose)
+    sites/                  list (with on-site summaries), new, [id] detail+edit+
+                            materials panel (consume / transfer / flag for collection);
+                            activity groups dispatch lines instead of listing them loose
+    at-sites/               cross-site "Material at Sites" view — quantities, flagged
+                            amounts, FIFO age; filter by awaiting-collection, sort by age
     transactions/new/       Issue / Return form (single row; Stock In removed in Phase 5)
     dispatches/             list, new (Excel-paste batch review), [id] detail+reverse
     deliveries/             list, new (3-row grid, store or direct-to-site), [id] detail
@@ -142,6 +150,8 @@ src/
     DeliveryForm.tsx        client form: 3-row goods-received grid, store or direct-to-site,
                             per-row defective count
     DefectClaimControl.tsx  QUARANTINED → CLAIMED → REPLACED, linking the replacing delivery
+    SiteMaterialPanel.tsx   per-item consume / transfer / flag-for-collection on a site,
+                            with the "this is marked for collection" warning
     CorrectionPanel.tsx     AdjustStockForm, ReverseButton (shared by items and dispatches)
     ShelfGrid.tsx           client component rendering the 2D shelf map (assign item, box type, front-row)
     NewShelfForm.tsx        client component: two-step shelf creation (size, then per-cell box type)
@@ -162,7 +172,13 @@ src/
     units.ts                pure formatting: formatStock, describeMovement, describeSlotContents
     auth.ts                 NextAuth config (credentials provider, JWT callbacks)
     prisma.ts               Prisma client singleton (with SQLite driver adapter)
-    stock.ts                materialsAtSite() helper
+    siteBalance.ts          PURE site arithmetic — siteDelta (transfer-aware),
+                            oldestContributingDate (FIFO age)
+    siteBalance.test.ts     11 unit tests
+    stock.ts                DB side: materialsAtSite, itemQuantityAtSite,
+                            materialAcrossSites
+    sitePickups.ts          reconcileSitePickups — clamps a collection flag to what the
+                            site really holds; MUST be called by every new movement type
     suggestions.ts          getPlacementSuggestions() — the frequency/placement engine
     boxTypes.ts             shared BOX_TYPES/BoxType
     permissions.ts          capability table — see §"Permissions" below
@@ -170,7 +186,9 @@ src/
                             (recordMovement, openPackAction), shelf.ts (updateSlotBoxType,
                             assignSlotItem), corrections.ts (reverseTransaction,
                             reverseDispatch, adjustStock), dispatches.ts (recordDispatch),
-                            deliveries.ts (recordDelivery, updateDefectiveStatus)
+                            deliveries.ts (recordDelivery, updateDefectiveStatus),
+                            siteLifecycle.ts (consumeAtSite, transferBetweenSites,
+                            markForPickup)
   proxy.ts                  route-protection middleware (Next.js 16 naming)
 prisma/
   schema.prisma
@@ -212,9 +230,9 @@ backups/                    manual dev.db copies (gitignored)
 
 ## 9. Redesign — Phase Status
 
-A six-phase redesign is under way. **Phases 1 (packs, cut lengths, scrap), 2 (roles),
-3 (corrections), 4 (dispatch batch) and 5 (delivery entry) are built**; phase 6 (site
-lifecycle) is not.
+**All six functional phases are built and verified**: 1 (packs, cut lengths, scrap),
+2 (roles), 3 (corrections), 4 (dispatch batch), 5 (delivery entry) and 6 (site lifecycle).
+Phases 7 (UI overhaul + mobile web) and 8 (hosting) remain, both deferred by decision.
 
 ### Phase 1 — built 2026-08-20
 
@@ -261,6 +279,35 @@ picked from — material that never sat on the shelf at all. This is the one pla
 
 Full verification results and the two deviations are in
 [REDESIGN-PLAN.md's "Phase 5 — as built"](REDESIGN-PLAN.md).
+
+### Phase 6 — built 2026-08-20
+
+The last functional phase. Four related things, and the one that finally spends the budget
+every earlier phase preserved:
+
+- **`CONSUME`** — material used up at a site. Zero delta to store `currentStock`; negative
+  against the site. **This is the change to `materialsAtSite` that Phases 1-5 were all shaped
+  around avoiding** — it now reads `ISSUE − RETURN − CONSUME`, plus the transfer terms.
+  Because the return guard reads the same function, it refuses returns of consumed material
+  for free.
+- **`TRANSFER`** — site A → B without passing through the store, with `fromSiteId` as origin
+  and `siteId` as destination. A **dedicated type**, unlike direct-to-site delivery's
+  `STOCK_IN`/`ISSUE` pairing: pairing would create an `OpenPack` on the way in and consume it
+  on the way out, churning pack state for material that never goes near the shelf. A transfer
+  touches **no packs at all**.
+- **`SitePickup`** — "not lost, not consumed, just not worth a trip yet". It exists to stop a
+  specific accident: if `CONSUME` were the only way to clear a site's list, someone tidying up
+  would eventually write off wire sitting retrievable on a roof. Flagging labels material;
+  it never moves it. `reconcileSitePickups` clamps the flag after every movement.
+- **`/at-sites`** — the cross-site view, with FIFO age (see
+  [siteBalance.ts](src/lib/siteBalance.ts)); a plain "earliest issue date" would overstate age
+  whenever material was returned and re-issued.
+- **Reorder annotation** — low-stock alerts now read "+ N at 2 sites (not counted)". Shown,
+  deliberately never counted: reorder levels stay store-only so the app never implies
+  material it cannot hand over today.
+
+Full verification results and the three deviations are in
+[REDESIGN-PLAN.md's "Phase 6 — as built"](REDESIGN-PLAN.md).
 
 ### Deferred by decision: UI overhaul + mobile web (Phase 7), hosting (Phase 8)
 
@@ -314,15 +361,13 @@ SQLite stays; nothing in the code changes. What the server needs:
 - A scheduled backup of the database file — the item most likely to be skipped, and the most
   expensive to have skipped.
 
-### Still to come — what below will change
+### Resolved by the redesign — all of it has now landed
 
-Only one row of this table is still outstanding; the rest have landed.
-
-| Stated above | Changes to |
+| Originally stated | Resolved by |
 |---|---|
 | ~~§7: nothing can be undone or corrected~~ | ✅ reversal + stocktake adjustment (Phase 3) |
 | ~~Stock-in is one row at a time~~ | ✅ dispatch batch (Phase 4) and delivery records (Phase 5) |
-| **Sites accumulate material forever** | consumption, transfers, pickup flags (**Phase 6 — still to come**) |
+| ~~Sites accumulate material forever~~ | ✅ consumption, transfers, pickup flags (Phase 6) |
 
 ### Deviations from the Phase 1 plan, and why
 
@@ -351,7 +396,7 @@ Written for whoever continues this next. Read in this order: **§1-§9 above**, 
 4. **[src/lib/allocation.test.ts](src/lib/allocation.test.ts)** — 18 tests that encode every
    allocation rule as an executable example. **Faster to read than the prose.** `npm test`.
 
-### The four invariants that must not be broken
+### The five invariants that must not be broken
 
 Everything downstream assumes these. Breaking one corrupts stock silently rather than loudly.
 
@@ -365,6 +410,11 @@ Everything downstream assumes these. Breaking one corrupts stock silently rather
    explicit user confirmation. That friction is a feature, not an oversight — see the
    "reconsideration case" in the plan.
 4. **A shelf slot never stores a quantity.** Contents derive from the item's packs.
+5. **A site's holding is derived from the ledger, never stored** — see
+   [siteBalance.ts](src/lib/siteBalance.ts). Anything that writes a movement touching a site
+   must call `reconcileSitePickups`, or a `SitePickup` flag will go on claiming material the
+   site no longer has. **This is the invariant a new movement type is most likely to break**,
+   because nothing enforces it centrally.
 
 ### Traps that are not obvious from the code
 
@@ -384,9 +434,16 @@ Everything downstream assumes these. Breaking one corrupts stock silently rather
 
 ### State of the working copy
 
-- **The database contains test data created while verifying Phases 1-4**, not real
-  inventory: `WIRE-2.5` at 2000 m with a 10 m scrap offcut, `SCR-M4` at 291,
-  `CBL-200` at 89, plus a reversed test dispatch on Borivali Site. Reseed or clear as needed.
+- **The database contains test data created while verifying Phases 1-6**, not real
+  inventory: `WIRE-2.5` around 2430 m across sealed rolls and returned offcuts, `SCR-M4` 291,
+  `CBL-200` 119, `INV-5K` 10; a reversed test dispatch, two test deliveries (one direct to
+  Kandivali, one a claim replacement), a settled defective claim, and consumed/transferred
+  material at Kandivali and Borivali. **Reseed or clear before real stock goes in.**
+- ⚠️ **Another session wrote to this database mid-work on 2026-08-20** — two `STOCK_IN` rows
+  on `CBL-200` (+17, +13) arrived through the old Stock In form while Phase 4/5 were being
+  built. Harmless here since it is all test data, but worth knowing that `dev.db` had
+  concurrent writers, and that the Stock In UI path they used has since been removed
+  (Phase 5). The server action still accepts `STOCK_IN`; only the form option went.
 - ✅ `CBL-200` and `SCR-M4` were reviewed (2026-08-20, during Phase 4). `CBL-200` ("Cable
   Tie 200mm") is a discrete fastener despite its "Cables" category, not continuous wire —
   `DISCRETE`/no `packUnit` was already correct and is unchanged. `SCR-M4` had `packUnit`
@@ -395,26 +452,26 @@ Everything downstream assumes these. Breaking one corrupts stock silently rather
   built" for the reasoning.
 - Backups of `dev.db` are in `backups/` (gitignored). It is the only copy.
 
-### Suggested order
+### What to do next
 
-**Phases 1-5 are built. Phase 6 (site material lifecycle) is the last functional phase**:
-consumption at site, site-to-site transfers, stranded-material pickup flags, and the
-cross-site "Material at Sites" view. It is the phase that stops a site's list growing
-forever, and direct-to-site deliveries (Phase 5) make that drift worse, so it now matters
-more than it did.
+**All six functional phases are built.** The remaining work is Phases 7 (UI overhaul +
+mobile web) and 8 (hosting), both deferred by decision — and one thing that is neither.
 
-Two things to know before starting it, both recorded in the plan:
+**Before this goes into real use, cover the DB layer with tests.** This is now the single
+most valuable outstanding item, and the justification for deferring it has run out. The
+argument was always "the app is not in real use until the remaining phases land" — they have
+landed. Meanwhile the untested surface has grown considerably: `packs.ts` (including
+`commitAllocation`'s synthetic `new:<i>` pack-id resolution, still the subtlest code in the
+project), `recordDispatch`, `recordDelivery`, and the whole of Phase 6. The pure modules are
+well covered at 52 tests; **everything that actually writes to the database has none**.
 
-- It **forces the one change to [stock.ts](src/lib/stock.ts)** earlier phases avoided —
-  `materialsAtSite` becomes `ISSUE − RETURN − CONSUME`, plus the transfer terms. Every
-  Phase 1-5 decision was shaped by *not* touching that function; Phase 6 spends that budget
-  deliberately.
-- `TRANSFER` gets a **dedicated transaction type**, unlike direct-to-site delivery which
-  reused a `STOCK_IN`/`ISSUE` pair. That is not an inconsistency — the plan explains why the
-  pairing argument is already spent by then, and why routing a transfer through the store
-  would churn pack state for material that never goes near a shelf.
+The other pre-live items, in rough order of cost-to-skip:
 
-After that, Phases 7 (UI overhaul + mobile web) and 8 (hosting) are deferred by decision.
+1. **A scheduled backup of `dev.db`** — cheapest thing in this document, most expensive to
+   have skipped. Currently manual copies only.
+2. **Change the seeded passwords** before anyone else has an account.
+3. Phase 8's deployment checklist (§9), where `DATABASE_URL` pointing outside the deploy
+   directory is the item that silently destroys all history if missed.
 
 ## 11. Related Documents
 
