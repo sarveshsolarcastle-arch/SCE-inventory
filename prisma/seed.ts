@@ -9,18 +9,26 @@ const adapter = new PrismaBetterSqlite3({
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  const passwordHash = await bcrypt.hash("admin123", 10);
+  // One account per role, so each workspace can be tried without inventing users.
+  const accounts = [
+    { name: "Admin", email: "admin@example.com", role: "ADMIN" as const, password: "admin123" },
+    { name: "Finance", email: "finance@example.com", role: "FINANCE" as const, password: "finance123" },
+    { name: "Employee", email: "employee@example.com", role: "EMPLOYEE" as const, password: "employee123" },
+  ];
 
-  await prisma.user.upsert({
-    where: { email: "admin@example.com" },
-    update: {},
-    create: {
-      name: "Admin",
-      email: "admin@example.com",
-      passwordHash,
-      role: "ADMIN",
-    },
-  });
+  for (const account of accounts) {
+    await prisma.user.upsert({
+      where: { email: account.email },
+      // Role is refreshed so re-seeding fixes an account left on an old role.
+      update: { role: account.role },
+      create: {
+        name: account.name,
+        email: account.email,
+        passwordHash: await bcrypt.hash(account.password, 10),
+        role: account.role,
+      },
+    });
+  }
 
   // Fixtures covering the three shapes the pack model has to handle, so the
   // verification steps have something to run against on a fresh database.
@@ -70,7 +78,9 @@ async function main() {
     if (!existing) await prisma.site.create({ data: { name } });
   }
 
-  console.log("Seeded admin user: admin@example.com / admin123");
+  for (const a of accounts) {
+    console.log(`  ${a.role.padEnd(8)} ${a.email} / ${a.password}`);
+  }
   console.log(`Seeded ${fixtures.length} items and 2 sites (stock starts at zero)`);
 }
 

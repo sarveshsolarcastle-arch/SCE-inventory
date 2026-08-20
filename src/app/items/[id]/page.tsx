@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { updateItem } from "@/lib/actions/items";
 import { openPackAction } from "@/lib/actions/transactions";
 import { describeMovement, formatQuantity, formatStock } from "@/lib/units";
+import { can, currentUser } from "@/lib/permissions";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -33,6 +34,11 @@ export default async function ItemDetailPage({
     .filter((p) => p.state === "OPEN")
     .map((p) => p.remaining);
   const sealedSizes = item.packStock.filter((g) => g.sealedCount > 0);
+  // Cosmetic only — openPackAction enforces this itself, since a server action
+  // can be invoked regardless of what the page chose to render.
+  const user = await currentUser();
+  const canOpenPacks = can(user?.role, "stock:issue");
+  const canEdit = can(user?.role, "item:manage");
 
   return (
     <div className="space-y-6">
@@ -61,7 +67,7 @@ export default async function ItemDetailPage({
           </p>
         )}
 
-        {sealedSizes.length > 0 && (
+        {sealedSizes.length > 0 && canOpenPacks && (
           <form action={openPackAction} className="mt-2 flex flex-wrap items-center gap-2">
             <input type="hidden" name="itemId" value={item.id} />
             <label className="text-sm text-zinc-600 dark:text-zinc-400">
@@ -113,7 +119,7 @@ export default async function ItemDetailPage({
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <div className="space-y-4 rounded border border-zinc-200 p-4 dark:border-zinc-800">
+        <div className={`space-y-4 rounded border border-zinc-200 p-4 dark:border-zinc-800 ${canEdit ? "" : "hidden"}`}>
           <h2 className="font-medium text-zinc-900 dark:text-zinc-50">
             Edit Item
           </h2>

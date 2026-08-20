@@ -49,13 +49,13 @@ site at **0**, and the return guard
 outright. Recording it as an ordinary stock-in is worse still: the store would show wire it
 does not physically have, and reordering would be decided against stock sitting on a roof.
 
-> **Status: Phase 1 is BUILT and verified (2026-08-20).** Phases 2-6 are not started.
+> **Status: Phases 1 and 2 are BUILT and verified (2026-08-20).** Phases 3-6 are not started.
 > See "Phase 1 — as built" below for the three places reality diverged from this plan.
 
 | Phase | Delivers |
 |---|---|
 | 1 | ✅ **DONE** — base units, packs, cut lengths, scrap, single-item issue with confirm |
-| 2 | `ADMIN` / `FINANCE` / `EMPLOYEE` and capability gating |
+| 2 | ✅ **DONE** — `ADMIN` / `FINANCE` / `EMPLOYEE` and capability gating |
 | 3 | **corrections** — reversal and stocktake adjustment, before bulk entry exists |
 | 4 | **Excel-pasted dispatch batch** with review screen (employee) — the daily pain |
 | 5 | delivery entry (finance), to the store **or direct to a site** |
@@ -554,7 +554,28 @@ this is a two-minute job; it would not be at two hundred.
 
 ---
 
-# Phase 2 — Roles and workspaces
+# Phase 2 — Roles and workspaces ✅ BUILT
+
+> **As built, 2026-08-20.** Migration `20260820150000_roles_finance_employee` (hand-edited to
+> map `STAFF` → `EMPLOYEE`; Prisma's diff copies the column verbatim, which would leave rows
+> holding a value the client cannot decode — and SQLite stores enums as plain TEXT, so that
+> fails at *read* time rather than at migration time, which is worse).
+> [permissions.ts](src/lib/permissions.ts) added; the `requireAdmin` helper deleted from all
+> three action files. `proxy.ts` gates routes, `NavBar` filters links, the dashboard offers
+> only the actions a role holds, and the seed creates one account per role.
+>
+> **Verified:** finance sees no "Issue / Return" and is bounced from `/transactions/new` and
+> `/sites/new`; employee is bounced from `/items/new`. Critically, the item page's "Open a
+> pack" button was *rendered* for finance and the server **still rejected the action** with
+> `NotPermittedError(stock:issue)`, stock unchanged — proving the guard is the action, not
+> the hidden button. The button is now also hidden, for UX rather than safety.
+>
+> Seeded accounts: `admin@example.com` / `admin123`, `finance@example.com` / `finance123`,
+> `employee@example.com` / `employee123`.
+>
+> **Deviation:** `HOME_FOR_ROLE` points every role at `/dashboard` rather than separate
+> landing pages — the dashboard already reshapes itself per role, so separate homes would
+> add a redirect without adding anything.
 
 `Role` becomes `ADMIN | FINANCE | EMPLOYEE`. Role is already in the JWT
 ([auth.ts:31-43](src/lib/auth.ts:31)), so route gating needs no DB query — the plumbing

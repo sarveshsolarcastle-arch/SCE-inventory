@@ -1,20 +1,13 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
+import { requireCapability } from "@/lib/permissions";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
-async function requireAdmin() {
-  const session = await auth();
-  if ((session?.user as { role?: string } | undefined)?.role !== "ADMIN") {
-    throw new Error("Only admins can manage items");
-  }
-}
-
 export async function createItem(formData: FormData) {
   "use server";
-  await requireAdmin();
+  await requireCapability("item:manage");
 
   const fields = readItemFields(formData);
 
@@ -56,7 +49,7 @@ function readItemFields(formData: FormData) {
 
 export async function updateItem(itemId: string, formData: FormData) {
   "use server";
-  await requireAdmin();
+  await requireCapability("item:manage");
 
   const fields = readItemFields(formData);
 

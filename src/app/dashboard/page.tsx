@@ -1,8 +1,22 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getPlacementSuggestions } from "@/lib/suggestions";
+import { can, currentUser } from "@/lib/permissions";
+
+/** The dashboard is one page that reshapes itself: each role gets the actions
+ * it can actually perform, so an account is not shown doors it cannot open. */
+function actionsFor(role: Parameters<typeof can>[0]) {
+  const all = [
+    { href: "/transactions/new", label: "Issue / Return", capability: "stock:issue" as const },
+    { href: "/items/new", label: "New item", capability: "item:manage" as const },
+  ];
+  return all.filter((a) => can(role, a.capability));
+}
 
 export default async function DashboardPage() {
+  const user = await currentUser();
+  const actions = actionsFor(user?.role);
+
   const [itemCount, allItems, recentTx, suggestions] = await Promise.all([
     prisma.item.count(),
     prisma.item.findMany({ orderBy: { name: "asc" } }),
@@ -25,9 +39,22 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-        Dashboard
-      </h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+          Dashboard
+        </h1>
+        <div className="flex flex-wrap gap-2">
+          {actions.map((a) => (
+            <Link
+              key={a.href}
+              href={a.href}
+              className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900"
+            >
+              {a.label}
+            </Link>
+          ))}
+        </div>
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard label="Total Items" value={itemCount} />
