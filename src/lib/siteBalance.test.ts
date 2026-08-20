@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { siteDelta, oldestContributingDate } from "./siteBalance.ts";
+import { siteDelta, oldestContributingDate, effectiveFlagged } from "./siteBalance.ts";
 
 const A = "site-a";
 const B = "site-b";
@@ -106,4 +106,37 @@ test("nothing left means no age at all", () => {
     A
   );
   assert.equal(date, null);
+});
+
+/* effectiveFlagged is the structural guarantee behind the pickup flag: the
+ * stored SitePickup.quantity is an intent, and what anyone reads is derived
+ * from the balance, so a stale flag cannot be shown even if a writer forgot
+ * to reconcile. The failure it prevents is silent, which is why it is not
+ * left to a documented convention. */
+
+test("a flag within the balance is shown as-is", () => {
+  assert.equal(effectiveFlagged(150, 200), 150);
+});
+
+test("a stale flag can never exceed what the site holds", () => {
+  // The exact case a forgotten reconcile call would leave behind: 150 was
+  // flagged, then material left and nobody clamped the stored row.
+  assert.equal(effectiveFlagged(150, 100), 100);
+});
+
+test("a flag against an empty site reads as nothing flagged", () => {
+  assert.equal(effectiveFlagged(150, 0), 0);
+});
+
+test("a negative balance cannot produce a negative flag", () => {
+  assert.equal(effectiveFlagged(150, -20), 0);
+});
+
+test("no flag means nothing flagged, whatever the balance", () => {
+  assert.equal(effectiveFlagged(0, 500), 0);
+});
+
+test("garbage in the stored flag degrades to nothing flagged", () => {
+  assert.equal(effectiveFlagged(Number.NaN, 100), 0);
+  assert.equal(effectiveFlagged(-5, 100), 0);
 });

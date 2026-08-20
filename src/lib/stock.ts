@@ -5,6 +5,7 @@ import {
   siteDelta,
   netAtSite,
   oldestContributingDate,
+  effectiveFlagged,
 } from "@/lib/siteBalance";
 
 /* -------------------------------------------------------------------------
@@ -21,7 +22,12 @@ import {
  * material already booked as consumed or transferred away.
  * ---------------------------------------------------------------------- */
 
-export { siteDelta, netAtSite, oldestContributingDate } from "@/lib/siteBalance";
+export {
+  siteDelta,
+  netAtSite,
+  oldestContributingDate,
+  effectiveFlagged,
+} from "@/lib/siteBalance";
 
 /** Rows that could affect this site's balance, from either direction. */
 function whereTouchingSite(siteId: string): Prisma.TransactionWhereInput {
@@ -113,12 +119,16 @@ export async function materialAcrossSites() {
     }
 
     const items = [...byItem.entries()]
-      .map(([itemId, rows]) => ({
-        item: rows[0].item,
-        quantity: netAtSite(rows, siteId),
-        flagged: flagged.get(`${siteId}:${itemId}`)?.quantity ?? 0,
-        oldest: oldestContributingDate(rows, siteId),
-      }))
+      .map(([itemId, rows]) => {
+        const quantity = netAtSite(rows, siteId);
+        return {
+          item: rows[0].item,
+          quantity,
+          // Derived, never the stored number — see effectiveFlagged.
+          flagged: effectiveFlagged(flagged.get(`${siteId}:${itemId}`)?.quantity ?? 0, quantity),
+          oldest: oldestContributingDate(rows, siteId),
+        };
+      })
       .filter((e) => e.quantity > 0)
       .sort((a, b) => a.item.name.localeCompare(b.item.name));
 

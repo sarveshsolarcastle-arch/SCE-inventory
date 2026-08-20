@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { updateSite } from "@/lib/actions/sites";
-import { materialsAtSite, oldestContributingDate } from "@/lib/stock";
+import { materialsAtSite, oldestContributingDate, effectiveFlagged } from "@/lib/stock";
 import { can, currentUser } from "@/lib/permissions";
 import SiteMaterialPanel, { type HeldRow } from "@/components/SiteMaterialPanel";
 import { notFound } from "next/navigation";
@@ -80,7 +80,8 @@ export default async function SiteDetailPage({
     name: item.name,
     baseUnit: item.baseUnit,
     quantity,
-    flagged: flaggedByItem.get(item.id) ?? 0,
+    // Derived from the balance, never the stored flag — see effectiveFlagged.
+    flagged: effectiveFlagged(flaggedByItem.get(item.id) ?? 0, quantity),
     oldestISO:
       oldestContributingDate(
         ageMovements.filter((t) => t.itemId === item.id),

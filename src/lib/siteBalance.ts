@@ -42,6 +42,29 @@ export function netAtSite(
   return movements.reduce((sum, t) => sum + siteDelta(t, siteId), 0);
 }
 
+/** How much of a site's holding is actually awaiting collection.
+ *
+ * `SitePickup.quantity` is an **intent**, not a fact. At-site balances are
+ * derived from the ledger rather than stored, so a stored flag goes stale the
+ * moment material is returned, consumed, or transferred away — and the
+ * failure is silent: a flag quietly claims material the site no longer has,
+ * and nothing errors.
+ *
+ * `reconcileSitePickups` tidies the stored rows after a movement, but relying
+ * on that alone would make correctness depend on every current and future
+ * writer remembering to call it. So the number anyone actually READS is
+ * derived here instead, and cannot exceed the balance no matter what the
+ * database holds. Same reasoning as ShelfSlot storing no quantity: derived
+ * contents cannot drift.
+ *
+ * A negative or absent balance means nothing is flagged.
+ */
+export function effectiveFlagged(storedFlag: number, held: number): number {
+  if (!Number.isFinite(storedFlag) || storedFlag <= 0) return 0;
+  if (!Number.isFinite(held) || held <= 0) return 0;
+  return Math.min(storedFlag, held);
+}
+
 /** How long the material still at a site has been sitting there.
  *
  * Computed FIFO: walk the movements chronologically keeping lots, letting
