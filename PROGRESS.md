@@ -203,15 +203,15 @@ backups/                    manual dev.db copies (gitignored)
 ## 7. Known Gaps / Suggested Next Steps
 
 - **Not deployed yet** — local-only for now. **Decided: a real server behind real HTTPS on a proper domain, not serverless.** SQLite therefore stays and **no code changes are needed** for hosting. (Serverless would have forced a Postgres port: new datasource provider, a swapped driver adapter, and every migration regenerated, since the existing SQL is SQLite-specific — `PRAGMA`, the table-rebuild pattern, `TEXT` enums. Avoided.) See §9 for the deployment checklist.
-- **Change the seeded admin password** and consider adding a "change password" flow — there isn't one yet.
-- **Test coverage stops at the pure planner.** [allocation.ts](src/lib/allocation.ts) has 18 unit tests; [packs.ts](src/lib/packs.ts), which executes those plans against the database, has none. The subtlest code in the project lives there — `commitAllocation` resolves the planner's synthetic `new:<i>` pack ids onto rows it creates inside the same transaction. Deliberately deferred: the app is not in real use until the remaining phases land, so this is the thing to cover *before* it goes live, not now.
-- **Nothing can be undone or corrected.** No delete, reverse, or adjust operation exists anywhere. Auto-scrap makes this sharper: a mistaken issue permanently writes off the offcut. Phase 3.
+- **Change the seeded passwords** — all three accounts (`admin`/`finance`/`employee`), not just admin — and consider adding a "change password" flow, since there isn't one yet.
+- **⚠️ Test coverage stops at the pure modules, and the reason for deferring the rest has expired.** The 58 tests cover [allocation.ts](src/lib/allocation.ts), [corrections.ts](src/lib/corrections.ts), [matching.ts](src/lib/matching.ts), [dispatchPaste.ts](src/lib/dispatchPaste.ts) and [siteBalance.ts](src/lib/siteBalance.ts). **Everything that writes to the database has none**: [packs.ts](src/lib/packs.ts), `recordDispatch`, `recordDelivery`, and the whole site lifecycle. The subtlest code in the project is in there — `commitAllocation` resolves the planner's synthetic `new:<i>` pack ids onto rows it creates inside the same transaction. This was deferred on the grounds that "the app is not in real use until the remaining phases land"; **they have all landed**, and the untested surface grew with each one. This is now the single most valuable outstanding item.
+- ✅ **Corrections exist** (Phase 3): a movement can be reversed — restoring the exact prior pack state, and refusing when the packs have moved on since — and a physical count can be recorded as an `ADJUSTMENT` with a mandatory reason. Both are `ADMIN`-only. A whole dispatch can be reversed atomically (Phase 4).
 - ✅ **Existing items reviewed after the Phase 1 migration** (2026-08-20, during Phase 4). `CBL-200` and `SCR-M4` were the two that predated the pack model; both checked — see §9's Phase 4 note and §10's "State of the working copy". Any *new* item added later still needs `measure`, `packUnit` and `scrapThreshold` set correctly at creation, same as always.
 - **Shelf tag codes are auto-generated and not editable** (`F1-1`, `B2-3`, etc., generated at shelf-creation time). If physical stickers don't match this scheme, either the seed logic needs adjusting or an edit-tag UI needs adding.
 - **No file/photo attachments** on items or transactions — not requested, but a common ask for this type of tool.
 - **No CSV export / reporting page** — dashboard covers the "what do we have / what's low / what's issued where" questions live, but there's no printable/exportable report yet.
 - **npm audit** flags 3 high-severity issues, all in `prisma`'s own dev-time config-merging dependency (`deepmerge-ts`), not in runtime code — safe to ignore for now, but worth revisiting on the next `npm audit` pass since a fix will likely ship in a future Prisma release.
-- **Shelf slot occupancy/quantity is transaction-driven, not manually editable** — see the design record in §8. Per-slot quantity is **not** reconciled against `Item.currentStock`; it is informational only.
+- ✅ **Shelf slots no longer store a quantity at all** (Phase 1), so the drift this entry used to warn about is gone: a box's contents are *derived* from the item's packs. See §5 and the design record in §8, whose last three points this reversed.
 
 ## 8. Design Record — Condition-Based Shelving
 
@@ -227,7 +227,17 @@ backups/                    manual dev.db copies (gitignored)
 - **No automated below-threshold rule.** Whether an offcut is "rarely useful" was judged a human call — staff decide and physically move it to the Recyclable box. No numeric field, no computed logic.
 - **Slot occupancy is transaction-driven** (added same day, superseding an earlier version where staff typed quantities directly into slots). `applyTransactionToSlot()` in [transactions.ts](src/lib/actions/transactions.ts) applies a transaction's quantity as a delta to a chosen slot; Stock In and Return add, Issue draws down, a slot reaching zero empties itself. The shelf page offers only box-type relabeling and front-row marking. Per-slot quantity is informational and never reconciled against `Item.currentStock`.
 
-**Status:** all of the above is built and working. The last three points are superseded by the planned work — see §9.
+**Status: this is a historical record of what was decided on 2026-08-19, kept because it
+explains *why* — three of its five decisions have since been reversed, and the reasoning is
+what stops them being re-derived.** What actually holds today:
+
+| Decision above | Now |
+|---|---|
+| Three fixed box types `FRESH`/`OPENED`/`RECYCLABLE` | ✅ still true |
+| Box type chosen per-cell at shelf creation | ✅ still true |
+| One slot per item per box type (`@@unique([itemId, boxType])`) | ❌ **reversed in Phase 1** — the unique constraint is gone, so a large arrival can fill several boxes of one condition |
+| No automated below-threshold rule; staff decide what is scrap | ❌ **reversed in Phase 1** — an offcut at or below `scrapThreshold` leaves stock automatically. Deliberate: back then `currentStock` was a single number with no concept of an offcut, so there was nothing to automate against |
+| Slot occupancy is transaction-driven via `applyTransactionToSlot` | ❌ **reversed in Phase 1** — `ShelfSlot.quantity` and `applyTransactionToSlot` were both **deleted**. Contents are derived from the item's packs, so the map cannot drift. Carrying the old behaviour forward would have got worse, since a 15-row dispatch skips slots entirely |
 
 ## 9. Redesign — Phase Status
 
