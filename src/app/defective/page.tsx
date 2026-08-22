@@ -3,12 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { formatQuantity } from "@/lib/units";
 import { can, currentUser } from "@/lib/permissions";
 import DefectClaimControl from "@/components/DefectClaimControl";
-
-const STATUS_BADGE: Record<string, string> = {
-  QUARANTINED: "border-amber-400 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300",
-  CLAIMED: "border-blue-400 bg-blue-50 text-blue-800 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-300",
-  REPLACED: "border-emerald-400 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
-};
+import PageHeader from "@/components/ui/PageHeader";
+import { Card } from "@/components/ui/Card";
+import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
+import Badge from "@/components/ui/Badge";
+import EmptyState from "@/components/ui/EmptyState";
+import { DEFECT_STATUS_TONE } from "@/components/ui/tones";
 
 /** Goods that physically exist but are not stock, held for a supplier claim. */
 export default async function DefectivePage() {
@@ -34,111 +34,88 @@ export default async function DefectivePage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-        Defective Goods
-      </h1>
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Damaged on arrival, or returned damaged from a site. Not counted in
-        stock and never issued — held so the supplier can be chased.
-        {outstanding.length > 0 && (
+      <PageHeader
+        title="Defective Goods"
+        subtitle={
           <>
-            {" "}
-            <strong className="text-zinc-900 dark:text-zinc-50">
-              {outstanding.length} outstanding.
-            </strong>
+            Damaged on arrival, or returned damaged from a site. Not counted in stock and never
+            issued — held so the supplier can be chased.
+            {outstanding.length > 0 && <> {outstanding.length} outstanding.</>}
           </>
-        )}
-      </p>
+        }
+      />
 
-      <div className="overflow-x-auto rounded border border-zinc-200 dark:border-zinc-800">
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-100 text-left dark:bg-zinc-900">
-            <tr>
-              <th className="px-3 py-2">Item</th>
-              <th className="px-3 py-2">Quantity</th>
-              <th className="px-3 py-2">Source</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2">Reported</th>
-              <th className="px-3 py-2">By</th>
-              <th className="px-3 py-2">Note</th>
-              {canResolve && <th className="px-3 py-2">Claim</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.id} className="border-t border-zinc-200 dark:border-zinc-800">
-                <td className="px-3 py-2">
-                  <Link
-                    href={`/items/${row.item.id}`}
-                    className="font-medium text-zinc-900 hover:underline dark:text-zinc-50"
-                  >
-                    {row.item.name}
-                  </Link>
-                </td>
-                <td className="px-3 py-2">
-                  {row.packCount && row.packSize
-                    ? `${row.packCount} × ${row.packSize} ${row.item.baseUnit}`
-                    : formatQuantity(row.item, row.quantity)}
-                </td>
-                <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">
-                  {row.source === "RETURN" ? (
-                    `Returned${row.site ? ` from ${row.site.name}` : ""}`
-                  ) : row.delivery ? (
-                    <Link href={`/deliveries/${row.delivery.id}`} className="hover:underline">
-                      Damaged on arrival ({row.delivery.reference || "no ref"})
-                    </Link>
-                  ) : (
-                    "Damaged on arrival"
-                  )}
-                </td>
-                <td className="px-3 py-2">
-                  <span
-                    className={`rounded border px-1.5 py-0.5 text-xs ${STATUS_BADGE[row.status]}`}
-                  >
-                    {row.status}
-                  </span>
-                  {row.replacedBy && (
-                    <Link
-                      href={`/deliveries/${row.replacedBy.id}`}
-                      className="ml-1 block text-xs text-zinc-500 hover:underline"
-                    >
-                      by {row.replacedBy.reference || "delivery"}
-                    </Link>
-                  )}
-                </td>
-                <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">
-                  {row.reportedAt.toLocaleDateString()}
-                </td>
-                <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">
-                  {row.user.name}
-                </td>
-                <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">
-                  {row.note ?? "—"}
-                </td>
-                {canResolve && (
-                  <td className="px-3 py-2">
-                    <DefectClaimControl
-                      defectiveId={row.id}
-                      status={row.status}
-                      deliveries={deliveryChoices}
-                    />
-                  </td>
-                )}
-              </tr>
-            ))}
-            {rows.length === 0 && (
+      <Card>
+        <TableWrap>
+          <Table>
+            <THead>
               <tr>
-                <td
-                  colSpan={canResolve ? 8 : 7}
-                  className="py-8 text-center text-zinc-500 dark:text-zinc-500"
-                >
-                  Nothing defective on record.
-                </td>
+                <Th>Item</Th>
+                <Th>Quantity</Th>
+                <Th>Source</Th>
+                <Th>Status</Th>
+                <Th>Reported</Th>
+                <Th>By</Th>
+                <Th>Note</Th>
+                {canResolve && <Th>Claim</Th>}
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </THead>
+            <tbody>
+              {rows.map((row) => (
+                <Tr key={row.id}>
+                  <Td>
+                    <Link href={`/items/${row.item.id}`} className="font-bold text-ink hover:text-accent">
+                      {row.item.name}
+                    </Link>
+                  </Td>
+                  <Td className="font-mono">
+                    {row.packCount && row.packSize
+                      ? `${row.packCount} × ${row.packSize} ${row.item.baseUnit}`
+                      : formatQuantity(row.item, row.quantity)}
+                  </Td>
+                  <Td className="text-ink-subtle">
+                    {row.source === "RETURN" ? (
+                      `Returned${row.site ? ` from ${row.site.name}` : ""}`
+                    ) : row.delivery ? (
+                      <Link href={`/deliveries/${row.delivery.id}`} className="hover:text-accent">
+                        Damaged on arrival ({row.delivery.reference || "no ref"})
+                      </Link>
+                    ) : (
+                      "Damaged on arrival"
+                    )}
+                  </Td>
+                  <Td>
+                    <Badge tone={DEFECT_STATUS_TONE[row.status as keyof typeof DEFECT_STATUS_TONE]}>
+                      {row.status}
+                    </Badge>
+                    {row.replacedBy && (
+                      <Link
+                        href={`/deliveries/${row.replacedBy.id}`}
+                        className="mt-1 block text-xs font-semibold text-ink-subtle hover:text-accent"
+                      >
+                        by {row.replacedBy.reference || "delivery"}
+                      </Link>
+                    )}
+                  </Td>
+                  <Td className="text-ink-subtle">{row.reportedAt.toLocaleDateString()}</Td>
+                  <Td className="text-ink-subtle">{row.user.name}</Td>
+                  <Td className="text-ink-subtle">{row.note ?? "—"}</Td>
+                  {canResolve && (
+                    <Td>
+                      <DefectClaimControl
+                        defectiveId={row.id}
+                        status={row.status}
+                        deliveries={deliveryChoices}
+                      />
+                    </Td>
+                  )}
+                </Tr>
+              ))}
+            </tbody>
+          </Table>
+        </TableWrap>
+        {rows.length === 0 && <EmptyState>Nothing defective on record.</EmptyState>}
+      </Card>
     </div>
   );
 }

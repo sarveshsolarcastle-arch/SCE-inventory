@@ -1,3 +1,4 @@
+import { Pencil, Clock } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { updateItem } from "@/lib/actions/items";
 import { openPackAction } from "@/lib/actions/transactions";
@@ -7,6 +8,14 @@ import { adjustStock, reverseTransaction } from "@/lib/actions/corrections";
 import { AdjustStockForm, ReverseButton } from "@/components/CorrectionPanel";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import PageHeader from "@/components/ui/PageHeader";
+import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
+import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
+import { Field, Input, Select } from "@/components/ui/Field";
+import Button from "@/components/ui/Button";
+import Badge from "@/components/ui/Badge";
+import Alert from "@/components/ui/Alert";
+import EmptyState from "@/components/ui/EmptyState";
 
 export default async function ItemDetailPage({
   params,
@@ -61,74 +70,66 @@ export default async function ItemDetailPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-          {item.name}
-        </h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Current stock: {formatQuantity(item, item.currentStock)}
-          {item.currentStock < item.minStock && (
-            <span className="ml-2 rounded bg-red-100 px-2 py-0.5 text-red-700 dark:bg-red-950 dark:text-red-300">
-              Below minimum ({item.minStock})
+      <div className="space-y-2">
+        <PageHeader
+          title={item.name}
+          subtitle={
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="font-mono">Current stock: {formatQuantity(item, item.currentStock)}</span>
+              {item.currentStock < item.minStock && (
+                <Badge tone="danger">Below minimum ({item.minStock})</Badge>
+              )}
             </span>
-          )}
-        </p>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          }
+        />
+        <p className="text-sm font-semibold text-ink-subtle">
           {formatStock(item, item.packStock, openRemaining)}
         </p>
         {item.scrapStock > 0 && (
-          <p className="text-sm text-amber-700 dark:text-amber-400">
+          <Alert tone="warn">
             Plus {formatQuantity(item, item.scrapStock)} in{" "}
-            <Link href="/recycle" className="underline">
+            <Link href="/recycle" className="font-bold underline">
               recycle
             </Link>{" "}
             — below the scrap threshold, not counted as stock.
-          </p>
+          </Alert>
         )}
 
         {sealedSizes.length > 0 && canOpenPacks && (
-          <form action={openPackAction} className="mt-2 flex flex-wrap items-center gap-2">
+          <form action={openPackAction} className="flex flex-wrap items-center gap-2 pt-1">
             <input type="hidden" name="itemId" value={item.id} />
-            <label className="text-sm text-zinc-600 dark:text-zinc-400">
+            <label className="text-sm font-semibold text-ink-muted">
               Open a sealed {item.packUnit ?? "pack"}:
             </label>
-            <select
-              name="packSize"
-              className="rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-            >
+            <Select name="packSize" className="w-auto">
               {sealedSizes.map((g) => (
                 <option key={g.packSize} value={g.packSize}>
                   {g.packSize} {item.baseUnit} ({g.sealedCount} left)
                 </option>
               ))}
-            </select>
-            <button
-              type="submit"
-              className="rounded border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-            >
+            </Select>
+            <Button type="submit" variant="secondary" size="sm">
               Open one
-            </button>
+            </Button>
           </form>
         )}
-        <div className="text-sm text-zinc-600 dark:text-zinc-400">
+        <div className="text-sm font-semibold text-ink-subtle">
           Shelf locations:{" "}
           {item.shelfSlots.length === 0 ? (
             <>
               Unassigned —{" "}
-              <Link href="/shelf" className="underline">
+              <Link href="/shelf" className="font-bold text-accent hover:text-accent-hover">
                 assign on a shelf map
               </Link>
             </>
           ) : (
-            <ul className="mt-1 list-inside list-disc">
+            <ul className="mt-1 space-y-1">
               {item.shelfSlots.map((slot) => (
-                <li key={slot.id}>
-                  <span className="rounded border border-zinc-300 px-1.5 py-0.5 text-xs dark:border-zinc-700">
-                    {slot.boxType}
-                  </span>{" "}
-                  <Link href={`/shelf/${slot.shelfId}`} className="underline">
-                    {slot.shelf.name} · {slot.side} · row {slot.row}, col{" "}
-                    {slot.column} (tag {slot.tagCode})
+                <li key={slot.id} className="flex items-center gap-1.5">
+                  <Badge tone="neutral">{slot.boxType}</Badge>
+                  <Link href={`/shelf/${slot.shelfId}`} className="font-bold text-accent hover:text-accent-hover">
+                    {slot.shelf.name} · {slot.side} · row {slot.row}, col {slot.column} (tag{" "}
+                    {slot.tagCode})
                   </Link>
                 </li>
               ))}
@@ -145,106 +146,93 @@ export default async function ItemDetailPage({
         />
       )}
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <div className={`space-y-4 rounded border border-zinc-200 p-4 dark:border-zinc-800 ${canEdit ? "" : "hidden"}`}>
-          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">
-            Edit Item
-          </h2>
-          <form action={updateWithId} className="space-y-3">
-            <Field label="Name" name="name" defaultValue={item.name} required />
-            <Field label="SKU" name="sku" defaultValue={item.sku} required />
-            <Field
-              label="Category"
-              name="category"
-              defaultValue={item.category ?? ""}
-            />
-            <Field
-              label="Base unit (what stock is counted in — m, pcs)"
-              name="baseUnit"
-              defaultValue={item.baseUnit}
-            />
-            <Field
-              label="Pack unit (roll, packet — blank if not packaged)"
-              name="packUnit"
-              defaultValue={item.packUnit ?? ""}
-            />
-            <div className="space-y-1">
-              <label className="text-sm text-zinc-600 dark:text-zinc-400">
-                Measure
-              </label>
-              <select
-                name="measure"
-                defaultValue={item.measure}
-                className="w-full rounded border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-              >
-                <option value="DISCRETE">
-                  Discrete — countable units that pool freely (screws)
-                </option>
-                <option value="CONTINUOUS">
-                  Continuous — a length must come from one pack (wire)
-                </option>
-              </select>
-            </div>
-            <Field
-              label="Scrap threshold (continuous only — offcuts at or below this stop being stock)"
-              name="scrapThreshold"
-              type="number"
-              defaultValue={item.scrapThreshold === null ? "" : String(item.scrapThreshold)}
-            />
-            <Field
-              label="Minimum stock"
-              name="minStock"
-              type="number"
-              defaultValue={String(item.minStock)}
-            />
-            <button
-              type="submit"
-              className="rounded bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900"
-            >
-              Save
-            </button>
-          </form>
-        </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        {canEdit && (
+          <Card>
+            <CardHeader>
+              <CardTitle tone="info" icon={<Pencil size={13} />}>
+                Edit Item
+              </CardTitle>
+            </CardHeader>
+            <CardBody>
+              <form action={updateWithId} className="space-y-3">
+                <Field label="Name">
+                  <Input name="name" defaultValue={item.name} required />
+                </Field>
+                <Field label="SKU">
+                  <Input name="sku" defaultValue={item.sku} required />
+                </Field>
+                <Field label="Category">
+                  <Input name="category" defaultValue={item.category ?? ""} />
+                </Field>
+                <Field label="Base unit (what stock is counted in — m, pcs)">
+                  <Input name="baseUnit" defaultValue={item.baseUnit} />
+                </Field>
+                <Field label="Pack unit (roll, packet — blank if not packaged)">
+                  <Input name="packUnit" defaultValue={item.packUnit ?? ""} />
+                </Field>
+                <Field label="Measure">
+                  <Select name="measure" defaultValue={item.measure}>
+                    <option value="DISCRETE">
+                      Discrete — countable units that pool freely (screws)
+                    </option>
+                    <option value="CONTINUOUS">
+                      Continuous — a length must come from one pack (wire)
+                    </option>
+                  </Select>
+                </Field>
+                <Field label="Scrap threshold (continuous only — offcuts at or below this stop being stock)">
+                  <Input
+                    name="scrapThreshold"
+                    type="number"
+                    defaultValue={item.scrapThreshold === null ? "" : String(item.scrapThreshold)}
+                  />
+                </Field>
+                <Field label="Minimum stock">
+                  <Input name="minStock" type="number" defaultValue={String(item.minStock)} />
+                </Field>
+                <Button type="submit">Save</Button>
+              </form>
+            </CardBody>
+          </Card>
+        )}
 
-        <div className="space-y-2 rounded border border-zinc-200 p-4 dark:border-zinc-800">
-          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">
-            Transaction History
-          </h2>
-          <div className="max-h-96 overflow-x-auto overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-zinc-500 dark:text-zinc-500">
+        <Card>
+          <CardHeader>
+            <CardTitle tone="ok" icon={<Clock size={13} />}>
+              Transaction History
+            </CardTitle>
+          </CardHeader>
+          <TableWrap className="max-h-96 overflow-y-auto">
+            <Table>
+              <THead>
                 <tr>
-                  <th className="py-1">Date</th>
-                  <th className="py-1">Type</th>
-                  <th className="py-1">Qty</th>
-                  <th className="py-1">Site</th>
-                  <th className="py-1">By</th>
-                  <th className="py-1" />
+                  <Th>Date</Th>
+                  <Th>Type</Th>
+                  <Th>Qty</Th>
+                  <Th>Site</Th>
+                  <Th>By</Th>
+                  <Th />
                 </tr>
-              </thead>
+              </THead>
               <tbody>
                 {item.transactions.map((t) => (
-                  <tr
-                    key={t.id}
-                    className="border-t border-zinc-200 dark:border-zinc-800"
-                  >
-                    <td className="py-1">
-                      {t.createdAt.toLocaleDateString()}
-                    </td>
-                    <td className="py-1">{t.type}</td>
-                    <td className="py-1">
+                  <Tr key={t.id}>
+                    <Td className="text-ink-subtle">{t.createdAt.toLocaleDateString()}</Td>
+                    <Td>{t.type}</Td>
+                    <Td>
                       {describeMovement(item, t)}
                       {t.defectiveQty ? (
-                        <span className="ml-1 text-amber-700 dark:text-amber-400">
+                        <span className="ml-1 font-semibold text-warn-ink">
                           ({t.defectiveQty} defective)
                         </span>
                       ) : null}
-                    </td>
-                    <td className="py-1">{t.site?.name ?? "—"}</td>
-                    <td className="py-1">{t.user.name}</td>
-                    <td className="py-1">
+                    </Td>
+                    <Td className="text-ink-subtle">{t.site?.name ?? "—"}</Td>
+                    <Td className="text-ink-subtle">{t.user.name}</Td>
+                    <Td>
                       {t.reversedAt ? (
-                        <span className="text-zinc-500 line-through">reversed</span>
+                        <span className="text-ink-subtle line-through">reversed</span>
                       ) : canReverse &&
                         t.type !== "REVERSAL" &&
                         t.type !== "ADJUSTMENT" &&
@@ -254,51 +242,15 @@ export default async function ItemDetailPage({
                           label={`this ${t.type} of ${describeMovement(item, t)}`}
                         />
                       ) : null}
-                    </td>
-                  </tr>
+                    </Td>
+                  </Tr>
                 ))}
-                {item.transactions.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={6}
-                      className="py-4 text-center text-zinc-500 dark:text-zinc-500"
-                    >
-                      No transactions yet.
-                    </td>
-                  </tr>
-                )}
               </tbody>
-            </table>
-          </div>
-        </div>
+            </Table>
+          </TableWrap>
+          {item.transactions.length === 0 && <EmptyState>No transactions yet.</EmptyState>}
+        </Card>
       </div>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  name,
-  type = "text",
-  required,
-  defaultValue,
-}: {
-  label: string;
-  name: string;
-  type?: string;
-  required?: boolean;
-  defaultValue?: string;
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="text-sm text-zinc-600 dark:text-zinc-400">{label}</label>
-      <input
-        name={name}
-        type={type}
-        required={required}
-        defaultValue={defaultValue}
-        className="w-full rounded border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-      />
     </div>
   );
 }

@@ -53,26 +53,32 @@ npx prisma migrate dev --name <description>
 
 - **[PROGRESS.md](PROGRESS.md)** — current state, data model, where things live, known gaps,
   and the design record. **Start here.** §10 is the handover guide.
-- **[REDESIGN-PLAN.md](REDESIGN-PLAN.md)** — the redesign. **Phases 1-6 (all the functional
-  work) are built**; 7 (UI overhaul + mobile web) and 8 (hosting) are deferred by decision.
-  Each phase carries an "as built" note. **It records rejected alternatives and why** —
-  re-deriving those rules from first principles lands on the rejected answer, so read the
-  reasoning before changing one.
+- **[REDESIGN-PLAN.md](REDESIGN-PLAN.md)** — the redesign. **Phases 1-7 are built**
+  (functional redesign, then the UI overhaul + mobile web); 8 (hosting) is deferred by
+  decision. Each built phase carries an "as built" note. **It records rejected alternatives
+  and why** — re-deriving those rules from first principles lands on the rejected answer, so
+  read the reasoning before changing one.
 - [inventory_management.md.txt](inventory_management.md.txt) — the original problem statement.
 - [storeroom-heavy-stock-plan.md](storeroom-heavy-stock-plan.md) — physical storage plan for
   heavy and humidity-sensitive stock. Procurement only; no bearing on the code.
 
 ## Status
 
-All six functional phases are built and verified in the browser; `npx tsc --noEmit` and
-`npm run build` pass, and `npm test` runs 58 unit tests.
+All seven phases — the six-phase functional redesign and the Phase 7 UI overhaul — are built
+and verified in the browser; `npx tsc --noEmit` and `npm run build` pass, and `npm test` runs
+63 unit tests.
+
+**Phase 7 — the UI overhaul — is built (2026-08-21).** Light-first theme with a user dark
+toggle, a grouped left sidebar, a teal accent, and a real `src/components/ui/` primitives
+layer. See [REDESIGN-PLAN.md's Phase 7 section](REDESIGN-PLAN.md) for the design record and
+the as-built note.
 
 **Not production-ready yet.** Before real stock goes in:
 
-- **The database layer has no test coverage.** The 58 tests cover the pure modules
-  (allocation, corrections, matching, paste parsing, site balances). Everything that writes
-  to the database — `packs.ts`, `recordDispatch`, `recordDelivery`, the site lifecycle — has
-  none. This is the largest outstanding risk.
+- **The database layer has no test coverage.** The 63 tests cover the pure modules
+  (allocation, corrections, matching, paste parsing, site balances, nav active-link
+  matching). Everything that writes to the database — `packs.ts`, `recordDispatch`,
+  `recordDelivery`, the site lifecycle — has none. This is the largest outstanding risk.
 - **Not deployed**, and the SQLite file has **no scheduled backup** — cheapest thing to fix,
   most expensive to skip.
 - The seeded passwords above are still in place.

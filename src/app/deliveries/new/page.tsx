@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import DeliveryForm, { type FormItem } from "@/components/DeliveryForm";
+import PageHeader from "@/components/ui/PageHeader";
 
 export default async function NewDeliveryPage() {
   const [items, sites] = await Promise.all([
@@ -23,14 +24,10 @@ export default async function NewDeliveryPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-        Record a Delivery
-      </h1>
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Goods received from a supplier. Deliveries only ever add material, so
-        nothing here cuts or opens a pack. A pack size new to an item is fine —
-        just type it.
-      </p>
+      <PageHeader
+        title="Record a Delivery"
+        subtitle="Goods received from a supplier. Deliveries only ever add material, so nothing here cuts or opens a pack. A pack size new to an item is fine — just type it."
+      />
       <DeliveryForm items={itemsForForm} sites={sites} />
     </div>
   );

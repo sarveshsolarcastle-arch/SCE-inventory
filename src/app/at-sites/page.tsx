@@ -1,5 +1,11 @@
 import Link from "next/link";
 import { materialAcrossSites } from "@/lib/stock";
+import PageHeader from "@/components/ui/PageHeader";
+import { Card } from "@/components/ui/Card";
+import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
+import Badge from "@/components/ui/Badge";
+import EmptyState from "@/components/ui/EmptyState";
+import FilterPills from "@/components/ui/FilterPills";
 
 /** "What is still out there, and where" — answering it used to mean opening
  * every site page in turn. Age is what turns this from a list into a pickup
@@ -12,6 +18,7 @@ export default async function AtSitesPage({
   const { filter, sort } = await searchParams;
   const flaggedOnly = filter === "flagged";
   const sortByAge = sort === "age";
+  const active = flaggedOnly ? "flagged" : sortByAge ? "age" : "all";
 
   const sites = await materialAcrossSites();
 
@@ -38,113 +45,89 @@ export default async function AtSitesPage({
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-        Material at Sites
-      </h1>
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Everything issued or delivered to a site and not yet returned, consumed
-        or transferred on. This material is <strong>not</strong> counted in
-        store stock — it cannot be handed out today — so reorder levels ignore
-        it.
-      </p>
+      <PageHeader
+        title="Material at Sites"
+        subtitle="Everything issued or delivered to a site and not yet returned, consumed or transferred on. Not counted in store stock — it cannot be handed out today — so reorder levels ignore it."
+      />
 
-      <div className="flex flex-wrap gap-2 text-sm">
-        <Filter href="/at-sites" label="All material" active={!flaggedOnly && !sortByAge} />
-        <Filter
-          href="/at-sites?filter=flagged"
-          label={`Awaiting collection${totalFlagged ? ` (${totalFlagged})` : ""}`}
-          active={flaggedOnly}
-        />
-        <Filter href="/at-sites?sort=age" label="Oldest first" active={sortByAge} />
-      </div>
+      <FilterPills
+        active={active}
+        options={[
+          { value: "all", label: "All material", href: "/at-sites" },
+          {
+            value: "flagged",
+            label: `Awaiting collection${totalFlagged ? ` (${totalFlagged})` : ""}`,
+            href: "/at-sites?filter=flagged",
+          },
+          { value: "age", label: "Oldest first", href: "/at-sites?sort=age" },
+        ]}
+      />
 
       {visible.length === 0 && (
-        <p className="rounded border border-zinc-200 py-8 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-500">
-          {flaggedOnly
-            ? "Nothing is flagged for collection."
-            : "No site is currently holding material."}
-        </p>
+        <Card>
+          <EmptyState>
+            {flaggedOnly
+              ? "Nothing is flagged for collection."
+              : "No site is currently holding material."}
+          </EmptyState>
+        </Card>
       )}
 
       <div className="space-y-4">
         {visible.map(({ site, items }) => (
-          <div
-            key={site.id}
-            className="space-y-2 rounded border border-zinc-200 p-4 dark:border-zinc-800"
-          >
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <Link
-                href={`/sites/${site.id}`}
-                className="font-medium text-zinc-900 hover:underline dark:text-zinc-50"
-              >
+          <Card key={site.id}>
+            <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line px-4 py-3">
+              <Link href={`/sites/${site.id}`} className="font-bold text-ink hover:text-accent">
                 {site.name}
               </Link>
-              <span className="text-sm text-zinc-500 dark:text-zinc-500">
+              <span className="text-sm font-semibold text-ink-subtle">
                 {site.location ?? "no location set"} · {items.length} item
                 {items.length === 1 ? "" : "s"}
               </span>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="text-left text-zinc-500 dark:text-zinc-500">
+            <TableWrap>
+              <Table>
+                <THead>
                   <tr>
-                    <th className="py-1">Item</th>
-                    <th className="py-1">At site</th>
-                    <th className="py-1">Awaiting collection</th>
-                    <th className="py-1">Oldest here</th>
+                    <Th>Item</Th>
+                    <Th>At site</Th>
+                    <Th>Awaiting collection</Th>
+                    <Th>Oldest here</Th>
                   </tr>
-                </thead>
+                </THead>
                 <tbody>
                   {items.map((entry) => (
-                    <tr
-                      key={entry.item.id}
-                      className="border-t border-zinc-200 dark:border-zinc-800"
-                    >
-                      <td className="py-1">
-                        <Link href={`/items/${entry.item.id}`} className="hover:underline">
+                    <Tr key={entry.item.id}>
+                      <Td>
+                        <Link href={`/items/${entry.item.id}`} className="font-semibold text-ink hover:text-accent">
                           {entry.item.name}
                         </Link>
-                      </td>
-                      <td className="py-1">
+                      </Td>
+                      <Td className="font-mono">
                         {entry.quantity} {entry.item.baseUnit}
-                      </td>
-                      <td className="py-1">
+                      </Td>
+                      <Td>
                         {entry.flagged > 0 ? (
-                          <span className="rounded bg-sky-100 px-2 py-0.5 text-xs text-sky-800 dark:bg-sky-950 dark:text-sky-300">
+                          <Badge tone="info">
                             {entry.flagged} {entry.item.baseUnit}
-                          </span>
+                          </Badge>
                         ) : (
-                          <span className="text-zinc-500">—</span>
+                          <span className="text-ink-subtle">—</span>
                         )}
-                      </td>
-                      <td className="py-1 text-zinc-600 dark:text-zinc-400">
+                      </Td>
+                      <Td className="text-ink-subtle">
                         {entry.oldest ? describeAge(entry.oldest) : "—"}
-                      </td>
-                    </tr>
+                      </Td>
+                    </Tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
-          </div>
+              </Table>
+            </TableWrap>
+          </Card>
         ))}
       </div>
     </div>
-  );
-}
-
-function Filter({ href, label, active }: { href: string; label: string; active: boolean }) {
-  return (
-    <Link
-      href={href}
-      className={`rounded px-3 py-1.5 ${
-        active
-          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-          : "border border-zinc-300 dark:border-zinc-700"
-      }`}
-    >
-      {label}
-    </Link>
   );
 }
 

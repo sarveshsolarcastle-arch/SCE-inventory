@@ -1,6 +1,10 @@
 import { signIn } from "@/lib/auth";
 import { AuthError } from "next-auth";
 import { redirect } from "next/navigation";
+import ThemeToggle from "@/components/ThemeToggle";
+import { Field, Input } from "@/components/ui/Field";
+import Button from "@/components/ui/Button";
+import Alert from "@/components/ui/Alert";
 
 async function login(formData: FormData) {
   "use server";
@@ -26,43 +30,34 @@ export default async function LoginPage({
   const { error } = await searchParams;
 
   return (
-    <div className="flex min-h-[70vh] items-center justify-center">
+    <div className="relative flex min-h-[70vh] items-center justify-center">
+      <div className="absolute top-0 right-0">
+        <ThemeToggle />
+      </div>
       <form
         action={login}
-        className="w-full max-w-sm space-y-4 rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
+        className="w-full max-w-sm space-y-4 rounded-card border border-line bg-surface p-6 shadow-raised"
       >
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-          Sign in
-        </h1>
-        {error && (
-          <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
-            Invalid email or password.
-          </p>
-        )}
-        <div className="space-y-1">
-          <label className="text-sm text-zinc-600 dark:text-zinc-400">Email</label>
-          <input
-            name="email"
-            type="email"
-            required
-            className="w-full rounded border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-          />
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-accent">
+            <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="white" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6.5 10 3l7 3.5-7 3.5-7-3.5Z" />
+              <path d="M3 6.5v7L10 17l7-3.5v-7" />
+              <path d="M10 10.5V17" />
+            </svg>
+          </div>
+          <h1 className="text-lg font-extrabold text-ink">Sign in</h1>
         </div>
-        <div className="space-y-1">
-          <label className="text-sm text-zinc-600 dark:text-zinc-400">Password</label>
-          <input
-            name="password"
-            type="password"
-            required
-            className="w-full rounded border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-          />
-        </div>
-        <button
-          type="submit"
-          className="w-full rounded bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-        >
+        {error && <Alert tone="danger">Invalid email or password.</Alert>}
+        <Field label="Email">
+          <Input name="email" type="email" required />
+        </Field>
+        <Field label="Password">
+          <Input name="password" type="password" required />
+        </Field>
+        <Button type="submit" className="w-full">
           Sign in
-        </button>
+        </Button>
       </form>
     </div>
   );

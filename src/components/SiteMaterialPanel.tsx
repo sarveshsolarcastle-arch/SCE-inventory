@@ -2,18 +2,18 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Boxes } from "lucide-react";
 import {
   consumeAtSite,
   markForPickup,
   transferBetweenSites,
 } from "@/lib/actions/siteLifecycle";
-
-const INPUT =
-  "w-full rounded border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900";
-const PRIMARY =
-  "rounded bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900";
-const SECONDARY =
-  "rounded border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900";
+import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
+import { Input, Select } from "@/components/ui/Field";
+import Button from "@/components/ui/Button";
+import Alert from "@/components/ui/Alert";
+import Badge from "@/components/ui/Badge";
+import EmptyState from "@/components/ui/EmptyState";
 
 export type HeldRow = {
   itemId: string;
@@ -89,71 +89,62 @@ export default function SiteMaterialPanel({
   }
 
   return (
-    <div className="space-y-3 rounded border border-zinc-200 p-4 dark:border-zinc-800">
-      <h2 className="font-medium text-zinc-900 dark:text-zinc-50">
-        Materials Currently at This Site
-      </h2>
+    <Card>
+      <CardHeader>
+        <CardTitle tone="special" icon={<Boxes size={13} />}>
+          Materials Currently at This Site
+        </CardTitle>
+      </CardHeader>
+      <CardBody className="space-y-3">
+        {error && <Alert tone="danger">{error}</Alert>}
 
-      {error && (
-        <p role="alert" className="text-sm text-red-700 dark:text-red-300">
-          {error}
-        </p>
-      )}
+        {warning && (
+          <Alert tone="warn" className="space-y-2">
+            <p>{warning}</p>
+            <div className="flex gap-2">
+              <Button type="button" onClick={() => setWarning(null)} variant="secondary" size="sm">
+                Go back
+              </Button>
+              <Button
+                type="button"
+                onClick={() => submitConsume(true)}
+                disabled={pending}
+                variant="secondary"
+                size="sm"
+              >
+                Consume anyway
+              </Button>
+            </div>
+          </Alert>
+        )}
 
-      {warning && (
-        <div className="space-y-2 rounded border border-amber-400 bg-amber-50 p-2 text-sm dark:border-amber-700 dark:bg-amber-950">
-          <p className="text-amber-800 dark:text-amber-300">{warning}</p>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => setWarning(null)} className={SECONDARY}>
-              Go back
-            </button>
-            <button
-              type="button"
-              onClick={() => submitConsume(true)}
-              disabled={pending}
-              className={SECONDARY}
-            >
-              Consume anyway
-            </button>
-          </div>
+        {rows.length === 0 && <EmptyState>Nothing currently at this site.</EmptyState>}
+
+        <div className="space-y-2">
+          {rows.map((row) => (
+            <MaterialRow
+              key={row.itemId}
+              siteId={siteId}
+              row={row}
+              otherSites={otherSites}
+              canConsume={canConsume}
+              canTransfer={canTransfer}
+              canFlag={canFlag}
+              consumedValue={consumed[row.itemId] ?? ""}
+              onConsumedChange={(v) => setConsumed((p) => ({ ...p, [row.itemId]: v }))}
+            />
+          ))}
         </div>
-      )}
 
-      {rows.length === 0 && (
-        <p className="py-4 text-center text-sm text-zinc-500 dark:text-zinc-500">
-          Nothing currently at this site.
-        </p>
-      )}
-
-      <div className="space-y-2">
-        {rows.map((row) => (
-          <MaterialRow
-            key={row.itemId}
-            siteId={siteId}
-            row={row}
-            otherSites={otherSites}
-            canConsume={canConsume}
-            canTransfer={canTransfer}
-            canFlag={canFlag}
-            consumedValue={consumed[row.itemId] ?? ""}
-            onConsumedChange={(v) => setConsumed((p) => ({ ...p, [row.itemId]: v }))}
-          />
-        ))}
-      </div>
-
-      {canConsume && rows.length > 0 && (
-        <button
-          type="button"
-          onClick={() => submitConsume()}
-          disabled={pending || !lines.length}
-          className={PRIMARY}
-        >
-          {pending
-            ? "Recording…"
-            : `Record consumption${lines.length ? ` (${lines.length} item${lines.length === 1 ? "" : "s"})` : ""}`}
-        </button>
-      )}
-    </div>
+        {canConsume && rows.length > 0 && (
+          <Button type="button" onClick={() => submitConsume()} disabled={pending || !lines.length}>
+            {pending
+              ? "Recording…"
+              : `Record consumption${lines.length ? ` (${lines.length} item${lines.length === 1 ? "" : "s"})` : ""}`}
+          </Button>
+        )}
+      </CardBody>
+    </Card>
   );
 }
 
@@ -217,73 +208,71 @@ function MaterialRow({
   }
 
   return (
-    <div className="space-y-2 rounded border border-zinc-200 p-2 dark:border-zinc-800">
+    <div className="space-y-2 rounded-control border border-line p-2.5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="font-medium text-zinc-900 dark:text-zinc-50">{row.name}</span>
-        <span className="text-sm text-zinc-600 dark:text-zinc-400">
+        <span className="font-bold text-ink">{row.name}</span>
+        <span className="text-sm font-semibold text-ink-muted">
           {row.quantity} {row.baseUnit}
-          {age && <span className="ml-2 text-xs text-zinc-500">· here {age}</span>}
+          {age && <span className="ml-2 text-xs text-ink-subtle">· here {age}</span>}
         </span>
       </div>
 
       {row.flagged > 0 && (
-        <p className="text-xs text-sky-700 dark:text-sky-400">
+        <Badge tone="info">
           {row.flagged} {row.baseUnit} awaiting collection · {inUse} {row.baseUnit} in use
-        </p>
+        </Badge>
       )}
 
-      {error && (
-        <p role="alert" className="text-xs text-red-700 dark:text-red-300">
-          {error}
-        </p>
-      )}
+      {error && <Alert tone="danger" className="text-xs">{error}</Alert>}
 
       <div className="flex flex-wrap items-center gap-2">
         {canConsume && (
-          <label className="flex items-center gap-1 text-xs text-zinc-600 dark:text-zinc-400">
+          <label className="flex items-center gap-1.5 text-xs font-semibold text-ink-muted">
             consumed
-            <input
+            <Input
               type="number"
               min={0}
               max={row.quantity}
               inputMode="numeric"
               value={consumedValue}
               onChange={(e) => onConsumedChange(e.target.value)}
-              className={`${INPUT} w-24`}
+              className="w-24"
             />
           </label>
         )}
         {canTransfer && otherSites.length > 0 && (
-          <button
+          <Button
             type="button"
             onClick={() => setPanel(panel === "transfer" ? "none" : "transfer")}
-            className={SECONDARY}
+            variant="secondary"
+            size="sm"
           >
             Transfer
-          </button>
+          </Button>
         )}
         {canFlag && (
-          <button
+          <Button
             type="button"
             onClick={() => setPanel(panel === "flag" ? "none" : "flag")}
-            className={SECONDARY}
+            variant="secondary"
+            size="sm"
           >
             {row.flagged > 0 ? "Update collection flag" : "Flag for collection"}
-          </button>
+          </Button>
         )}
       </div>
 
       {panel === "transfer" && (
         <form action={runTransfer} className="flex flex-wrap items-end gap-2">
-          <select name="toSiteId" required className={`${INPUT} w-auto`}>
+          <Select name="toSiteId" required className="w-auto">
             <option value="">Transfer to…</option>
             {otherSites.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
               </option>
             ))}
-          </select>
-          <input
+          </Select>
+          <Input
             name="quantity"
             type="number"
             min={1}
@@ -291,22 +280,22 @@ function MaterialRow({
             inputMode="numeric"
             required
             placeholder={row.baseUnit}
-            className={`${INPUT} w-24`}
+            className="w-24"
           />
-          <button type="submit" disabled={pending} className={SECONDARY}>
+          <Button type="submit" disabled={pending} variant="secondary" size="sm">
             {pending ? "…" : "Move it"}
-          </button>
+          </Button>
         </form>
       )}
 
       {panel === "flag" && (
         <form action={runFlag} className="space-y-2">
-          <p className="text-xs text-zinc-500 dark:text-zinc-500">
-            Flagging labels material as not worth a trip yet. It stays company
-            property and is never written off — set 0 to clear the flag.
+          <p className="text-xs font-semibold text-ink-subtle">
+            Flagging labels material as not worth a trip yet. It stays company property and is
+            never written off — set 0 to clear the flag.
           </p>
           <div className="flex flex-wrap items-end gap-2">
-            <input
+            <Input
               name="quantity"
               type="number"
               min={0}
@@ -315,12 +304,12 @@ function MaterialRow({
               defaultValue={row.flagged || ""}
               required
               placeholder={row.baseUnit}
-              className={`${INPUT} w-24`}
+              className="w-24"
             />
-            <input name="note" placeholder="note (optional)" className={`${INPUT} w-48`} />
-            <button type="submit" disabled={pending} className={SECONDARY}>
+            <Input name="note" placeholder="note (optional)" className="w-48" />
+            <Button type="submit" disabled={pending} variant="secondary" size="sm">
               {pending ? "…" : "Save"}
-            </button>
+            </Button>
           </div>
         </form>
       )}

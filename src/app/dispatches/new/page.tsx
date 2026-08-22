@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import DispatchBatchForm, { type FormItem } from "@/components/DispatchBatchForm";
+import PageHeader from "@/components/ui/PageHeader";
 
 export default async function NewDispatchPage() {
   const [items, sites] = await Promise.all([
@@ -34,14 +35,10 @@ export default async function NewDispatchPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-        Dispatch to Site
-      </h1>
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Paste an item list from Excel, or add rows by hand. Nothing is
-        recorded until every row is matched, priced against stock, and any
-        pack that needs opening is approved.
-      </p>
+      <PageHeader
+        title="Dispatch to Site"
+        subtitle="Paste an item list from Excel, or add rows by hand. Nothing is recorded until every row is matched, priced against stock, and any pack that needs opening is approved."
+      />
       <DispatchBatchForm items={itemsForForm} sites={sites} />
     </div>
   );

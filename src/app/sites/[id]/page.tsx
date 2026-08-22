@@ -1,3 +1,4 @@
+import { Pencil, Clock } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { updateSite } from "@/lib/actions/sites";
 import { materialsAtSite, oldestContributingDate, effectiveFlagged } from "@/lib/stock";
@@ -5,6 +6,12 @@ import { can, currentUser } from "@/lib/permissions";
 import SiteMaterialPanel, { type HeldRow } from "@/components/SiteMaterialPanel";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import PageHeader from "@/components/ui/PageHeader";
+import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
+import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
+import { Field, Input } from "@/components/ui/Field";
+import Button from "@/components/ui/Button";
+import EmptyState from "@/components/ui/EmptyState";
 
 export default async function SiteDetailPage({
   params,
@@ -91,31 +98,30 @@ export default async function SiteDetailPage({
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-        {site.name}
-      </h1>
+      <PageHeader title={site.name} />
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <div className="space-y-4 rounded border border-zinc-200 p-4 dark:border-zinc-800">
-          <h2 className="font-medium text-zinc-900 dark:text-zinc-50">
-            Edit Site
-          </h2>
-          <form action={updateWithId} className="space-y-3">
-            <Field label="Name" name="name" defaultValue={site.name} required />
-            <Field
-              label="Location"
-              name="location"
-              defaultValue={site.location ?? ""}
-            />
-            <Field label="Notes" name="notes" defaultValue={site.notes ?? ""} />
-            <button
-              type="submit"
-              className="rounded bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900"
-            >
-              Save
-            </button>
-          </form>
-        </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle tone="info" icon={<Pencil size={13} />}>
+              Edit Site
+            </CardTitle>
+          </CardHeader>
+          <CardBody>
+            <form action={updateWithId} className="space-y-3">
+              <Field label="Name">
+                <Input name="name" defaultValue={site.name} required />
+              </Field>
+              <Field label="Location">
+                <Input name="location" defaultValue={site.location ?? ""} />
+              </Field>
+              <Field label="Notes">
+                <Input name="notes" defaultValue={site.notes ?? ""} />
+              </Field>
+              <Button type="submit">Save</Button>
+            </form>
+          </CardBody>
+        </Card>
 
         <SiteMaterialPanel
           siteId={id}
@@ -127,103 +133,72 @@ export default async function SiteDetailPage({
         />
       </div>
 
-      <div className="space-y-2 rounded border border-zinc-200 p-4 dark:border-zinc-800">
-        <h2 className="font-medium text-zinc-900 dark:text-zinc-50">
-          Recent Activity
-        </h2>
-        <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="text-left text-zinc-500 dark:text-zinc-500">
-            <tr>
-              <th className="py-1">Date</th>
-              <th className="py-1">Type</th>
-              <th className="py-1">Item</th>
-              <th className="py-1">Qty</th>
-              <th className="py-1">By</th>
-            </tr>
-          </thead>
-          <tbody>
-            {activity.map((entry) => {
-              if (entry.kind === "single") {
-                const t = entry.tx;
-                // A transfer is one row seen from two sides, so it has to say
-                // which way it went relative to THIS site.
-                const label =
-                  t.type === "TRANSFER"
-                    ? t.siteId === id
-                      ? `TRANSFER IN${t.fromSite ? ` from ${t.fromSite.name}` : ""}`
-                      : `TRANSFER OUT${t.site ? ` to ${t.site.name}` : ""}`
-                    : t.type;
-                return (
-                  <tr key={t.id} className="border-t border-zinc-200 dark:border-zinc-800">
-                    <td className="py-1">{t.createdAt.toLocaleDateString()}</td>
-                    <td className="py-1">{label}</td>
-                    <td className="py-1">{t.item.name}</td>
-                    <td className="py-1">{t.quantity}</td>
-                    <td className="py-1">{t.user.name}</td>
-                  </tr>
-                );
-              }
-              // Only the ISSUE lines describe what was dispatched — a
-              // REVERSAL sharing the same dispatchId is the undo of one of
-              // them, not a second item, so it must not double the count.
-              const issued = entry.lines.filter((t) => t.type === "ISSUE");
-              const total = issued.reduce((s, t) => s + t.quantity, 0);
-              const allReversed = issued.length > 0 && issued.every((t) => t.reversedAt);
-              return (
-                <tr key={entry.id} className="border-t border-zinc-200 dark:border-zinc-800">
-                  <td className="py-1">{issued[0].createdAt.toLocaleDateString()}</td>
-                  <td className="py-1">DISPATCH</td>
-                  <td className="py-1">
-                    <Link href={`/dispatches/${entry.id}`} className="hover:underline">
-                      {entry.reference || "Dispatch"} — {issued.length} item
-                      {issued.length === 1 ? "" : "s"}
-                      {allReversed && " (reversed)"}
-                    </Link>
-                  </td>
-                  <td className="py-1">{total}</td>
-                  <td className="py-1">{issued[0].user.name}</td>
-                </tr>
-              );
-            })}
-            {activityRows.length === 0 && (
+      <Card>
+        <CardHeader>
+          <CardTitle tone="ok" icon={<Clock size={13} />}>
+            Recent Activity
+          </CardTitle>
+        </CardHeader>
+        <TableWrap>
+          <Table>
+            <THead>
               <tr>
-                <td
-                  colSpan={5}
-                  className="py-4 text-center text-zinc-500 dark:text-zinc-500"
-                >
-                  No activity yet.
-                </td>
+                <Th>Date</Th>
+                <Th>Type</Th>
+                <Th>Item</Th>
+                <Th>Qty</Th>
+                <Th>By</Th>
               </tr>
-            )}
-          </tbody>
-        </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  name,
-  required,
-  defaultValue,
-}: {
-  label: string;
-  name: string;
-  required?: boolean;
-  defaultValue?: string;
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="text-sm text-zinc-600 dark:text-zinc-400">{label}</label>
-      <input
-        name={name}
-        required={required}
-        defaultValue={defaultValue}
-        className="w-full rounded border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-      />
+            </THead>
+            <tbody>
+              {activity.map((entry) => {
+                if (entry.kind === "single") {
+                  const t = entry.tx;
+                  // A transfer is one row seen from two sides, so it has to say
+                  // which way it went relative to THIS site.
+                  const label =
+                    t.type === "TRANSFER"
+                      ? t.siteId === id
+                        ? `TRANSFER IN${t.fromSite ? ` from ${t.fromSite.name}` : ""}`
+                        : `TRANSFER OUT${t.site ? ` to ${t.site.name}` : ""}`
+                      : t.type;
+                  return (
+                    <Tr key={t.id}>
+                      <Td className="text-ink-subtle">{t.createdAt.toLocaleDateString()}</Td>
+                      <Td>{label}</Td>
+                      <Td className="font-semibold text-ink">{t.item.name}</Td>
+                      <Td className="font-mono">{t.quantity}</Td>
+                      <Td className="text-ink-subtle">{t.user.name}</Td>
+                    </Tr>
+                  );
+                }
+                // Only the ISSUE lines describe what was dispatched — a
+                // REVERSAL sharing the same dispatchId is the undo of one of
+                // them, not a second item, so it must not double the count.
+                const issued = entry.lines.filter((t) => t.type === "ISSUE");
+                const total = issued.reduce((s, t) => s + t.quantity, 0);
+                const allReversed = issued.length > 0 && issued.every((t) => t.reversedAt);
+                return (
+                  <Tr key={entry.id}>
+                    <Td className="text-ink-subtle">{issued[0].createdAt.toLocaleDateString()}</Td>
+                    <Td>DISPATCH</Td>
+                    <Td>
+                      <Link href={`/dispatches/${entry.id}`} className="font-semibold text-ink hover:text-accent">
+                        {entry.reference || "Dispatch"} — {issued.length} item
+                        {issued.length === 1 ? "" : "s"}
+                        {allReversed && " (reversed)"}
+                      </Link>
+                    </Td>
+                    <Td className="font-mono">{total}</Td>
+                    <Td className="text-ink-subtle">{issued[0].user.name}</Td>
+                  </Tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        </TableWrap>
+        {activityRows.length === 0 && <EmptyState>No activity yet.</EmptyState>}
+      </Card>
     </div>
   );
 }
