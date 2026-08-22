@@ -1,12 +1,29 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import PageHeader from "@/components/ui/PageHeader";
+import SearchBar from "@/components/ui/SearchBar";
+import { buttonClasses } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { TableWrap, Table, THead, Tr, Td } from "@/components/ui/Table";
+import SortableTh from "@/components/ui/SortableTh";
+import Badge from "@/components/ui/Badge";
+import EmptyState from "@/components/ui/EmptyState";
+
+const SORT_FIELDS = { name: "name", sku: "sku", category: "category", stock: "currentStock" } as const;
+type SortKey = keyof typeof SORT_FIELDS;
+
+function isSortKey(v: string | undefined): v is SortKey {
+  return !!v && v in SORT_FIELDS;
+}
 
 export default async function ItemsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; sort?: string; dir?: string }>;
 }) {
-  const { q } = await searchParams;
+  const { q, sort, dir } = await searchParams;
+  const sortKey: SortKey = isSortKey(sort) ? sort : "name";
+  const sortDir: "asc" | "desc" = dir === "desc" ? "desc" : "asc";
 
   const items = await prisma.item.findMany({
     where: q
@@ -18,107 +35,74 @@ export default async function ItemsPage({
           ],
         }
       : undefined,
-    orderBy: { name: "asc" },
+    orderBy: { [SORT_FIELDS[sortKey]]: sortDir },
     include: { shelfSlots: { include: { shelf: true } } },
   });
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-          Items
-        </h1>
-        <Link
-          href="/items/new"
-          className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900"
-        >
-          + New Item
-        </Link>
-      </div>
+      <PageHeader
+        title="Items"
+        subtitle={`${items.length} item${items.length === 1 ? "" : "s"}${q ? ` matching "${q}"` : ""}`}
+        actions={
+          <Link href="/items/new" className={buttonClasses("primary", "md")}>
+            <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M10 4v12M4 10h12" /></svg>
+            New Item
+          </Link>
+        }
+      />
 
-      <form className="flex gap-2">
-        <input
-          name="q"
-          defaultValue={q ?? ""}
-          placeholder="Search by name, SKU, or category"
-          className="w-full max-w-sm rounded border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-        />
-        <button
-          type="submit"
-          className="rounded border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-        >
-          Search
-        </button>
-      </form>
+      <SearchBar name="q" defaultValue={q ?? ""} placeholder="Search by name, SKU, or category" />
 
-      <div className="overflow-x-auto rounded border border-zinc-200 dark:border-zinc-800">
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-100 text-left dark:bg-zinc-900">
-            <tr>
-              <th className="px-3 py-2">Name</th>
-              <th className="px-3 py-2">SKU</th>
-              <th className="px-3 py-2">Category</th>
-              <th className="px-3 py-2">Stock</th>
-              <th className="px-3 py-2">Shelf</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item) => {
-              const low = item.currentStock < item.minStock;
-              return (
-                <tr
-                  key={item.id}
-                  className="border-t border-zinc-200 dark:border-zinc-800"
-                >
-                  <td className="px-3 py-2">
-                    <Link
-                      href={`/items/${item.id}`}
-                      className="font-medium text-zinc-900 hover:underline dark:text-zinc-50"
-                    >
-                      {item.name}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">
-                    {item.sku}
-                  </td>
-                  <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">
-                    {item.category ?? "—"}
-                  </td>
-                  <td className="px-3 py-2">
-                    <span
-                      className={
-                        low
-                          ? "rounded bg-red-100 px-2 py-0.5 text-red-700 dark:bg-red-950 dark:text-red-300"
-                          : ""
-                      }
-                    >
-                      {item.currentStock} {item.baseUnit}
-                      {low && " (low)"}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">
-                    {item.shelfSlots.length > 0
-                      ? item.shelfSlots
-                          .map((s) => `${s.shelf.name} · ${s.tagCode} (${s.boxType})`)
-                          .join(", ")
-                      : "Unassigned"}
-                  </td>
-                </tr>
-              );
-            })}
-            {items.length === 0 && (
+      <Card>
+        <TableWrap>
+          <Table>
+            <THead>
               <tr>
-                <td
-                  colSpan={5}
-                  className="px-3 py-6 text-center text-zinc-500 dark:text-zinc-500"
-                >
-                  No items found.
-                </td>
+                <SortableTh label="Name" sortKey="name" currentSort={sortKey} currentDir={sortDir} basePath="/items" searchParams={{ q }} />
+                <SortableTh label="SKU" sortKey="sku" currentSort={sortKey} currentDir={sortDir} basePath="/items" searchParams={{ q }} />
+                <SortableTh label="Category" sortKey="category" currentSort={sortKey} currentDir={sortDir} basePath="/items" searchParams={{ q }} />
+                <SortableTh label="Stock" sortKey="stock" currentSort={sortKey} currentDir={sortDir} basePath="/items" searchParams={{ q }} />
+                <th className="border-b border-line px-4 py-2.5 text-left text-[11px] font-bold tracking-wide text-ink-subtle uppercase">Shelf</th>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </THead>
+            <tbody>
+              {items.map((item) => {
+                const low = item.currentStock < item.minStock;
+                return (
+                  <Tr key={item.id}>
+                    <Td>
+                      <Link href={`/items/${item.id}`} className="font-bold text-ink hover:text-accent">
+                        {item.name}
+                      </Link>
+                    </Td>
+                    <Td className="font-mono text-xs text-ink-subtle">{item.sku}</Td>
+                    <Td>
+                      {item.category ? <Badge tone="neutral">{item.category}</Badge> : <span className="text-ink-subtle">—</span>}
+                    </Td>
+                    <Td>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-ink">
+                          {item.currentStock} {item.baseUnit}
+                        </span>
+                        {low && <Badge tone="danger">Low stock</Badge>}
+                      </div>
+                    </Td>
+                    <Td className="text-ink-subtle">
+                      {item.shelfSlots.length > 0
+                        ? item.shelfSlots
+                            .map((s) => `${s.shelf.name} · ${s.tagCode} (${s.boxType})`)
+                            .join(", ")
+                        : "Unassigned"}
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        </TableWrap>
+        {items.length === 0 && <EmptyState>No items found.</EmptyState>}
+      </Card>
     </div>
   );
 }

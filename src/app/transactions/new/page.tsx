@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import TransactionForm, { type FormItem } from "@/components/TransactionForm";
+import PageHeader from "@/components/ui/PageHeader";
 
 export default async function NewTransactionPage() {
   const [items, sites] = await Promise.all([
@@ -35,13 +36,10 @@ export default async function NewTransactionPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-        Issue / Return
-      </h1>
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Move material to and from a site. Incoming deliveries are recorded
-        separately.
-      </p>
+      <PageHeader
+        title="Issue / Return"
+        subtitle="Move material to and from a site. Incoming deliveries are recorded separately."
+      />
       <TransactionForm items={itemsForForm} sites={sites} />
     </div>
   );

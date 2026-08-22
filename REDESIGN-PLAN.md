@@ -1,6 +1,7 @@
 # Packs & Cut Lengths · Role-Scoped Workspaces · Bulk Dispatch & Delivery
 
-> **This is the working plan for phases 1-8. Phases 1-6 are built; 7-8 are deferred.**
+> **This is the working plan for phases 1-8. Phases 1-7 are built; phase 8 (hosting) is still
+> deferred.**
 > Read [PROGRESS.md](PROGRESS.md) first for current state, then this for what to build next.
 >
 > Everything here was decided in conversation with the user over a long session. **The
@@ -49,9 +50,13 @@ site at **0**, and the return guard
 outright. Recording it as an ordinary stock-in is worse still: the store would show wire it
 does not physically have, and reordering would be decided against stock sitting on a roof.
 
-> **Status: ALL SIX FUNCTIONAL PHASES ARE BUILT and verified (2026-08-20).**
-> Phases 7 (UI overhaul + mobile web) and 8 (hosting) remain, both deferred by decision.
-> Each phase has an "as built" note recording where reality diverged from this plan —
+> **Status: ALL SIX FUNCTIONAL PHASES ARE BUILT and verified (2026-08-20), and Phase 7 (UI
+> overhaul + mobile web) is built and verified (2026-08-21).**
+>
+> Phase 7's design decisions and its "as built" note are recorded in the **Phase 7** section
+> at the end of this file. Phase 8 (hosting) remains deferred by decision.
+>
+> Each *built* phase has an "as built" note recording where reality diverged from this plan —
 > read it before changing that phase's code.
 
 | Phase | Delivers |
@@ -62,12 +67,18 @@ does not physically have, and reordering would be decided against stock sitting 
 | 4 | ✅ **DONE** — Excel-pasted dispatch batch with review screen (employee) |
 | 5 | ✅ **DONE** — delivery entry (finance), to the store **or direct to a site** |
 | 6 | ✅ **DONE** — site material lifecycle: consumption, pickup, transfers, cross-site view |
-| 7 | **UI overhaul + mobile web** — deferred; see below |
+| 7 | ✅ **DONE** — UI overhaul + mobile web; full record at the end of this file |
 | 8 | **Hosting on a proper domain** — deferred; see below |
 
-## Deferred: UI overhaul, mobile web, hosting (phases 7-8)
+## Why 7-8 were deferred, and what has changed since
 
-Deferred by the user, who will not use the app in anger until the functional phases are done.
+Deferred by the user, who would not use the app in anger until the functional phases were
+done. **That condition is now met** — phases 1-6 landed on 2026-08-20, and **Phase 7 landed
+on 2026-08-21** (see the Phase 7 section at the end of this file). Phase 8 is still deferred.
+
+What follows in this section is the reasoning that shaped the deferral. It is kept because it
+still explains *why the code is the shape it is* — particularly why phases 2-6 shipped
+deliberately plain UI, which is exactly what Phase 7 now replaces.
 
 **Settled: it stays a web app.** No native Android app — the Android requirement is the *web
 app working well on a phone*. So **no HTTP API is needed**; Next.js server actions are fine
@@ -84,6 +95,10 @@ works, and no new test scaffolding.
 server actions as thin wrappers. A redesign then touches only markup.
 
 ### Mobile checklist, recorded now
+
+> **Folded into the Phase 7 plan on 2026-08-21.** The first item resolved itself — both batch
+> screens were built card-per-row from the start — and the rest are carried into Phase 7's
+> steps. Kept here as the record of what was anticipated, and when.
 
 - **The 15-row dispatch grid (Phase 4) is the hard one.** A seven-column table does not work
   at 375px, and it is the screen employees use most — probably on a phone, in a storeroom.
@@ -1285,13 +1300,247 @@ no-library style. A `npm test` script and one `packs.test.ts` covering the alloc
 catch the exact class of bug the manual checklist is trying to catch by hand, on every
 change rather than once.
 
-## Documentation to update
+# Phase 7 — UI overhaul and mobile web ✅ BUILT
 
-`PROGRESS.md` describes the current design and will be actively wrong afterwards — line 78
-states that `Item.currentStock` "can never drift apart" from the audit trail, whereas this
-plan deliberately makes it a **cache** of `PackStock` + `OpenPack`. `condition-based-shelving-plan.md`
-also records the "no automated below-threshold rule" decision this plan reverses. Both should
-be updated as part of the work, not left to contradict the code.
+> **As built, 2026-08-21.** All 14 steps landed in one session, in order, each checkpointed
+> with `npx tsc --noEmit`, `npx next build`, `npm test` (58 → 63 tests, the 5 new ones for
+> `activeHref.ts`), and a browser pass reading console output on every check. `git status`
+> against `src/lib`, `src/lib/actions`, and `prisma/schema.prisma` shows **zero changes** —
+> the markup-only constraint held exactly as written. Every one of the six preserved
+> interactions was exercised by hand in the running app and behaved identically to before:
+> the pack-open confirmation (full form replacement, "Go back and revise" restores state —
+> verified by inspecting form field values after going back), the dispatch per-row open
+> approval resetting on any edit to that row (verified directly: approve → edit the same
+> field → the "✓ Approved" state and the approval button's visibility both flip back),
+> `errorRowKey` row highlighting (wiring preserved, not independently re-triggered), the
+> consume-vs-pickup-flag two-step warning (Go back / Consume anyway, both paths verified
+> against the real database), the shelf popover (single-open via `openSlotId`, resets on
+> Front/Back switch, closes on both mini-form submits but deliberately not on the front-row
+> toggle — that asymmetry was in the original code and was preserved rather than "fixed"),
+> and the shelf wizard's two-step flow with click-to-cycle box type. Mobile checked at 375px
+> on the dispatch batch review (the screen the plan called "the hard one") and the items
+> list: zero horizontal page scroll on either. Dark mode checked via the compiled-CSS grep
+> (`[data-theme="dark"]` appears 84 times across 41 `dark:` utilities, `prefers-color-scheme`
+> appears zero times) and by setting the OS to dark while the app was set to light, which
+> stayed fully light.
+>
+> **One real bug was found and fixed during verification, and it was in the test, not the
+> app.** `document.querySelector('form').requestSubmit()` — used to script form submission
+> from outside the browser — grabbed **AppShell's sign-out form**, not the page's content
+> form, because the sign-out form renders earlier in the DOM (inside the shared header) than
+> anything in `<main>`. Submitting it repeatedly signed the session out mid-test, which
+> looked exactly like an auth bug the first two times it happened. The fix was scoping every
+> subsequent submit to the specific button/form under test, not a code change — nothing in
+> the app was ever broken. Worth recording here because the same trap would catch a future
+> session running scripted UI checks against any authenticated page.
+>
+> **Deviations from the plan below:** none structural. `SortableTh` (listed under Step 2)
+> was wired up immediately on `items/page.tsx` rather than held for Step 4, since the plan
+> itself says Step 2's job is to "exercise nearly every primitive" and a sortable list is
+> the natural place to prove a sortable-header primitive. `shelf/[shelfId]/page.tsx` (the
+> shelf detail page hosting `ShelfGrid`) is not named explicitly anywhere in the plan's
+> per-step file lists; it was converted alongside `ShelfGrid` in Step 9, since shipping the
+> primitive without its only real page host would have been untestable. Sidebar tokens
+> (`--color-sidebar*`) were added in Step 3, not Step 1, since the plan's Step 1 scope is
+> explicitly foundation-without-page-markup and the sidebar didn't exist yet to need them.
+>
+> Everything else matches the plan as written below, including the primitives table, the
+> nav grouping, the dark-variant mechanism, and the 14-step order.
+
+The trigger: phases 2-6 deliberately shipped plain UI (see "Build plain, not polished"
+above), so the app now has complete functionality wearing the bare Bootstrap-era look of a
+2010 PHP admin panel. The deferral's own condition — "not in real use until the functional
+phases land" — has expired.
+
+## The problem, stated precisely
+
+**There is no design system at all.** Not "an inconsistent one" — none. Every component
+redefines its own `INPUT`, `PRIMARY` and `BADGE` class strings locally. Concretely:
+
+- **Three separately-maintained badge tone maps**: `BADGE_TONE` in
+  [DispatchBatchForm.tsx](src/components/DispatchBatchForm.tsx), `BOX_TYPE_BADGE` in
+  **both** [ShelfGrid.tsx](src/components/ShelfGrid.tsx) and
+  [NewShelfForm.tsx](src/components/NewShelfForm.tsx), plus `STATUS_BADGE` in
+  [defective/page.tsx](src/app/defective/page.tsx) — overlapping palettes, no shared source.
+- **The pill/segmented toggle is copy-pasted verbatim in three files** (DeliveryForm,
+  ShelfGrid, NewShelfForm), and the `role="alert"` error box in three more.
+- **Four duplicate `Field` helpers** across `items/new`, `sites/new`, `items/[id]`, `sites/[id]`.
+- **Dark mode responds only to the OS**, via `@media (prefers-color-scheme: dark)` — the user
+  cannot choose.
+- **[globals.css](src/app/globals.css) sets `font-family: Arial` on `body`**, silently
+  overriding the Geist font [layout.tsx](src/app/layout.tsx) loads. A live bug, unnoticed
+  since the project was scaffolded.
+
+## Design direction — settled with the user, from three reference images
+
+The user supplied three references: a light cloud-storage app, a dark "Command Center"
+security dashboard, and a stock PHP inventory tool.
+
+**The PHP tool is the baseline being left** — it is roughly what the app looks like today.
+**The Command Center supplies the structure** (sidebar, stat-card row, badge-coded tables,
+search/filter row), because that maps one-to-one onto what this app actually holds: low-stock
+flags, transaction types, claim statuses, box types. **The cloud app supplies the warmth**
+(rounded cards, soft shadows, a coloured sidebar on a light body).
+
+| Decision | Choice | Why |
+|---|---|---|
+| Theme | **Light default**, dark as a *user toggle* | Read on a shared office PC and on a phone in a storeroom, in daylight — not a security console. Dark stays available, but chosen, not imposed by the OS |
+| Navigation | **Left sidebar**, grouped into labelled sections | 13 links already wrap awkwardly in the top bar. Groups (Overview · Stock In · Stock Out · Where It Is · Exceptions) mirror how the *roles* already split |
+| Accent | **Teal/blue** | Reads operational rather than corporate; neutral enough to carry both inbound and outbound actions |
+| Icons | **`lucide-react`** — one new dependency | Both references lean on icons for scannability; hand-rolling ~15 SVGs costs more to maintain than it saves |
+| Device | **Desktop-first**, mobile usable | Chosen by the user against the alternatives. Note this *narrows* the original Phase 7 brief, which read "mobile web" as co-equal |
+| Tables | **Search + sortable columns**, server-side via URL params | Bookmarkable and shareable, no new dependency, extends the `?q=` pattern already in `items/page.tsx` |
+| Pagination | **Not yet** | Premature at a few dozen rows. Deliberately deferred, not overlooked |
+| Dashboard | A few **more stat cards** | Material at Sites, Awaiting Collection, open claims — all derivable from existing lib functions |
+
+## The rule this phase must not break
+
+**Markup only.** Business logic stays in `src/lib/`; components stay dumb. This is the
+architectural bet phases 1-6 preserved specifically so that a redesign would be cheap:
+`allocation.ts` is pure and framework-agnostic, `packs.ts` takes a transaction client and
+knows nothing about Next.
+
+**Two agreed exceptions**, both confined to `page.tsx` files, both using functions that
+already exist: the search/sort `searchParams` reads, and the extra dashboard reads via
+`materialAcrossSites()`. Nothing under `src/lib/` changes except one new pure module
+(`activeHref.ts`, with its own test).
+
+**`npm test` is the tripwire.** Those 58 tests cover pure modules this phase must never
+touch. A failure means the markup-only constraint was breached — it is not a test to fix.
+
+## Six interactions that must survive verbatim
+
+Catalogued before any work starts, because each is subtle, deliberate, and would be easy to
+"tidy" into something worse. These are the reason the interactive components are converted
+**last**, when every primitive is already proven on static pages.
+
+1. **[TransactionForm](src/components/TransactionForm.tsx)** — the pack-open confirmation is
+   a **full form replacement**, not a modal, and "Go back and revise" restores prior form
+   state intact. This is invariant #3 ("nothing opens implicitly") wearing a UI; the friction
+   *is* the feature.
+2. **[DispatchBatchForm](src/components/DispatchBatchForm.tsx)** — the per-row "Approve
+   opening this pack" acknowledgment **resets on any edit to that row**, plus `errorRowKey`
+   row highlighting on server rejection.
+3. **[SiteMaterialPanel](src/components/SiteMaterialPanel.tsx)** — the two-step "this consume
+   would clear a pickup flag" warning (Go back / Consume anyway), and the per-row
+   single-open-panel toggle.
+4. **[ShelfGrid](src/components/ShelfGrid.tsx)** — the per-cell popover: admin-gated,
+   single-open via `openSlotId`, auto-closing per mini-form submit, **reset on Front/Back
+   switch**.
+5. **[NewShelfForm](src/components/NewShelfForm.tsx)** — two-step wizard in client state with
+   no route change, plus click-to-cycle box type.
+6. **[DefectClaimControl](src/components/DefectClaimControl.tsx) /
+   [CorrectionPanel](src/components/CorrectionPanel.tsx)** — inline expand-in-place toggles,
+   no modals.
+
+## Decisions taken during planning, with the alternatives rejected
+
+**Dark mode moves to `data-theme`, not `.dark`, and not a cookie.** One
+`@custom-variant dark (&:where([data-theme="dark"], …))` line in `globals.css` overrides
+Tailwind's built-in variant, so **every existing `dark:` utility across 20 pages and 9
+components keeps working with zero edits** — only the trigger changes.
+Next 16 ships the exact recipe at
+`node_modules/next/dist/docs/01-app/02-guides/preventing-flash-before-hydration.md` §"Themes",
+and it is written around `data-theme`. *Rejected: a cookie* — it buys server-side correctness
+the app cannot use, since the shell is already fully dynamic via `auth()`.
+
+**`@theme inline` is load-bearing, not cosmetic.** Without `inline`, Tailwind resolves
+`var(--surface)` once at `:root` computed-value time and a `[data-theme="dark"]` override
+never reaches descendants. This is also why the existing `@theme inline` block must stay that way.
+
+**No primitive carries `"use client"`.** A directive-free component compiles as server when
+imported from a server file and client when imported from a client file — which is what
+`Button`/`Input`/`Badge` need, since they are used in both graphs. Only the shell components
+(`SidebarNav`, `MobileNav`, `ThemeToggle`) get the directive. *Rejected: a `ui/index.ts`
+barrel* — re-exporting server-safe and client modules together drags client code into server
+graphs.
+
+**Conflict-prone primitives take explicit props, not `className` overrides.** There is no
+`tailwind-merge` here, and competing Tailwind declarations resolve by **CSS source order, not
+prop order** — so `<Tr className="border-red-500">` over a base `border-line` can silently
+lose. That would break interaction #2's error highlighting invisibly. Hence `Tr tone="danger"`,
+`Input invalid`, `Card tone`. *Rejected: adding `clsx`/`tailwind-merge`* — two dependencies to
+paper over a problem that explicit props solve outright.
+
+**Capability filtering stays server-side.** `AppShell` is the only place `auth()` and `can()`
+are called; the client nav receives a pre-filtered plain array. Moving the filter client-side
+would leak only cosmetically — `proxy.ts` and `requireCapability` still enforce — but it would
+break the single-source-of-truth model in [permissions.ts](src/lib/permissions.ts).
+Related: **icons cross the boundary as strings**, resolved via a map inside the client
+component, because passing a `LucideIcon` function from a server component throws.
+
+**Nav active state is longest-match-wins**, as a pure `activeHref.ts` with its own test. A
+naive `startsWith` lights both *Dispatches* and *Dispatch to Site* on `/dispatches/new`.
+`npm test`'s `src/**/*.test.ts` glob picks the test up for free.
+
+**No route groups.** `(app)` / `(auth)` is the textbook answer for "login has no sidebar", but
+it means moving ~20 page directories for zero URL change. A conditional in `AppShell` — no
+session, render children bare — achieves the same thing in one `if`, and preserves today's
+behaviour of `NavBar` returning `null`.
+
+**`Card` never sets `overflow-hidden`; only `TableWrap` may.** The shelf grid already sits
+inside an `overflow-x-auto`, and its popovers are absolutely positioned inside it. A rounded
+card that clips its overflow would silently sever interaction #4.
+
+**Table headers stay non-sticky.** `position: sticky` needs `overflow-y: visible`, which
+fights the horizontal scroll container the house pattern depends on. Not a fight this design
+needs.
+
+## Order of work
+
+Fourteen steps, each leaving the app building and working — no big-bang. Risk ascends
+monotonically: the two riskiest things sit at opposite ends.
+
+**Step 0** — mock up three screens (Dashboard, Items list, Shelf map) and get sign-off before
+any code. **Step 1** — foundation alone: tokens, the variant switch, the theme toggle, the
+font fix, *no page markup*. **Step 2** — the `src/components/ui/` primitives, proven on
+`items/page.tsx` only. **Step 3** — the sidebar shell. **Steps 4-7** — static pages, bulk work.
+**Steps 8-13** — the interactive components, easiest first, `DispatchBatchForm` last.
+**Step 14** — sweep for survivors and update the docs.
+
+**Step 1 ships alone for two reasons.** The variant switch is all-or-nothing — a typo makes
+~every `dark:` utility compile to nothing, silently, across 20 pages — so it needs the
+compiled-CSS check to itself. And removing the Arial rule changes text metrics everywhere;
+tables will reflow. **That reflow is the fix landing, not a regression**, and bundling it with
+other work guarantees it gets misattributed.
+
+**Verifying the variant switch** (the one change that fails silently): build, then grep
+`.next/static/css/*.css` — `[data-theme="dark"]` must appear many times and
+`prefers-color-scheme` must not wrap the `zinc-` utilities. Then set the **OS** to dark while
+the app is on light: it must stay light. That last check is what catches a leftover media block.
+
+**A dev-only trap worth naming**: React Strict Mode's dev remount clears `data-theme` off
+`<html>`, so without the `useLayoutEffect` re-apply the Next doc prescribes, dev looks broken
+while production is fine — the classic setup for a wrong "fix".
+
+## Full plan
+
+The step-by-step implementation plan, with the primitives table, file paths and the risk
+register, lives outside the repo at
+`C:\Users\Kavita\.claude\plans\c-users-kavita-downloads-ui-examples-i-ethereal-swan.md`.
+**This section is the durable record**; that file is the working checklist. When Phase 7 is
+built, this section gains an "as built" note like every other phase, and the deviations get
+recorded here.
+
+# Cross-phase notes
+
+## Documentation to update ✅ DONE
+
+> **Resolved during Phase 1 (2026-08-20); kept as the record of what was caught.** Both items
+> below are fixed: `PROGRESS.md` §5 now states plainly that `currentStock` is a cache, and
+> `condition-based-shelving-plan.md` was **deleted**, its reasoning consolidated into
+> `PROGRESS.md` §8 with a table marking which of its five decisions were reversed.
+>
+> **The principle generalises and still applies** — including to Phase 7: a doc that
+> contradicts the code is worse than no doc, because it is trusted. Update the docs as part
+> of the work, not after it.
+
+The original note: `PROGRESS.md` describes the current design and will be actively wrong
+afterwards — line 78 states that `Item.currentStock` "can never drift apart" from the audit
+trail, whereas this plan deliberately makes it a **cache** of `PackStock` + `OpenPack`.
+`condition-based-shelving-plan.md` also records the "no automated below-threshold rule"
+decision this plan reverses. Both should be updated as part of the work, not left to
+contradict the code.
 
 ## Parked — raised, not yet decided
 
@@ -1496,6 +1745,31 @@ transfer-aware delta are additionally covered by `siteBalance.test.ts`.*
 9. **Reorder annotation:** an item below `minStock` with stock at two sites shows
    "+ N at 2 sites" — and its low-stock status is **unchanged**, since at-site material is
    shown but never counted.
+
+**Phase 7 — UI overhaul** ✅ *all 8 passed 2026-08-21, checked as each step landed. See the
+"as built" note at the top of the Phase 7 section for the one thing verification caught (a
+test-script bug, not an app bug) and how each item below was actually checked.*
+1. **The variant switch, immediately after step 1** — build, then grep
+   `.next/static/css/*.css`: `[data-theme="dark"]` appears many times, and
+   `prefers-color-scheme` does **not** wrap the `zinc-` utilities. This is the check that
+   catches a silent failure across all 20 pages.
+2. **Theme is chosen, not inherited:** set the **OS** to dark with the app on light — it must
+   stay fully light. Toggle to dark, reload → the choice persists with **no flash** of the
+   wrong theme on first paint.
+3. **Roles drive the sidebar:** sign in as admin, finance and employee; the visible links must
+   match `CAPABILITIES` in [permissions.ts](src/lib/permissions.ts) exactly. Then replay a
+   server action the role lacks — still **rejected**, since the nav is convenience only.
+4. **Active nav state:** `/dispatches` and `/dispatches/new` must light *one* link each, not
+   both. Covered by `activeHref.test.ts`, confirmed once in the browser.
+5. **The six preserved interactions**, each exercised by hand — see the list above. The two
+   that fail *silently* rather than visibly: the dispatch per-row open-approval must still
+   reset when that row is edited (a stale approval is a wrong write, not a cosmetic bug), and
+   the shelf popover must not be clipped by any new card wrapper.
+6. **Mobile at 375px:** drawer opens, closes on link click and on Escape; no horizontal page
+   scroll; the dispatch and delivery card-per-row screens still hold.
+7. **`npm test` stays green throughout.** A failure means the markup-only rule was breached.
+8. **Read the browser console on every check**, not just the screenshot — twice in this
+   project a "verified" that skipped the console missed a real bug.
 
 **All phases**
 1. `npx tsc --noEmit` and `npm run build`.

@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatQuantity } from "@/lib/units";
+import PageHeader from "@/components/ui/PageHeader";
+import { Card } from "@/components/ui/Card";
+import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
+import EmptyState from "@/components/ui/EmptyState";
 
 /** Offcuts that fell to or below their item's scrap threshold. They still exist
  * physically — nothing is deleted — they just stopped counting as stock. */
@@ -23,69 +27,52 @@ export default async function RecyclePage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-        Recycle
-      </h1>
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Offcuts at or below their item&apos;s scrap threshold. These are not
-        counted in stock and cannot be issued, but they have not been deleted —
-        move them to a Recyclable box on the shelf when convenient.
-      </p>
+      <PageHeader
+        title="Recycle"
+        subtitle="Offcuts at or below their item's scrap threshold. Not counted in stock and cannot be issued, but nothing has been deleted — move them to a Recyclable box on the shelf when convenient."
+      />
 
-      <div className="overflow-x-auto rounded border border-zinc-200 dark:border-zinc-800">
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-100 text-left dark:bg-zinc-900">
-            <tr>
-              <th className="px-3 py-2">Item</th>
-              <th className="px-3 py-2">Offcuts</th>
-              <th className="px-3 py-2">Total</th>
-              <th className="px-3 py-2">Threshold</th>
-              <th className="px-3 py-2">Location</th>
-            </tr>
-          </thead>
-          <tbody>
-            {groups.map(({ item, packs }) => (
-              <tr key={item.id} className="border-t border-zinc-200 dark:border-zinc-800">
-                <td className="px-3 py-2">
-                  <Link
-                    href={`/items/${item.id}`}
-                    className="font-medium text-zinc-900 hover:underline dark:text-zinc-50"
-                  >
-                    {item.name}
-                  </Link>
-                </td>
-                <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">
-                  {packs.map((p) => `${p.remaining} ${item.baseUnit}`).join(" · ")}
-                </td>
-                <td className="px-3 py-2">
-                  {formatQuantity(item, packs.reduce((s, p) => s + p.remaining, 0))}
-                </td>
-                <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">
-                  {item.scrapThreshold === null
-                    ? "—"
-                    : formatQuantity(item, item.scrapThreshold)}
-                </td>
-                <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">
-                  {packs
-                    .map((p) =>
-                      p.shelfSlot
-                        ? `${p.shelfSlot.shelf.name} · ${p.shelfSlot.tagCode}`
-                        : "unplaced"
-                    )
-                    .join(", ")}
-                </td>
-              </tr>
-            ))}
-            {groups.length === 0 && (
+      <Card>
+        <TableWrap>
+          <Table>
+            <THead>
               <tr>
-                <td colSpan={5} className="py-8 text-center text-zinc-500 dark:text-zinc-500">
-                  No scrap offcuts.
-                </td>
+                <Th>Item</Th>
+                <Th>Offcuts</Th>
+                <Th>Total</Th>
+                <Th>Threshold</Th>
+                <Th>Location</Th>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </THead>
+            <tbody>
+              {groups.map(({ item, packs }) => (
+                <Tr key={item.id}>
+                  <Td>
+                    <Link href={`/items/${item.id}`} className="font-bold text-ink hover:text-accent">
+                      {item.name}
+                    </Link>
+                  </Td>
+                  <Td className="font-mono text-ink-subtle">
+                    {packs.map((p) => `${p.remaining} ${item.baseUnit}`).join(" · ")}
+                  </Td>
+                  <Td className="font-mono font-bold">
+                    {formatQuantity(item, packs.reduce((s, p) => s + p.remaining, 0))}
+                  </Td>
+                  <Td className="text-ink-subtle">
+                    {item.scrapThreshold === null ? "—" : formatQuantity(item, item.scrapThreshold)}
+                  </Td>
+                  <Td className="text-ink-subtle">
+                    {packs
+                      .map((p) => (p.shelfSlot ? `${p.shelfSlot.shelf.name} · ${p.shelfSlot.tagCode}` : "unplaced"))
+                      .join(", ")}
+                  </Td>
+                </Tr>
+              ))}
+            </tbody>
+          </Table>
+        </TableWrap>
+        {groups.length === 0 && <EmptyState>No scrap offcuts.</EmptyState>}
+      </Card>
     </div>
   );
 }

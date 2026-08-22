@@ -3,11 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateDefectiveStatus } from "@/lib/actions/deliveries";
-
-const INPUT =
-  "w-full rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900";
-const SECONDARY =
-  "rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900";
+import { Select } from "@/components/ui/Field";
+import Button from "@/components/ui/Button";
+import Alert from "@/components/ui/Alert";
 
 /** Moves one defective row along its claim lifecycle. A replacement always
  * arrives as an ordinary delivery — there is no separate "replacement" path —
@@ -37,13 +35,13 @@ export default function DefectClaimControl({
     });
   }
 
-  if (status === "REPLACED") return <span className="text-xs text-zinc-500">settled</span>;
+  if (status === "REPLACED") return <span className="text-xs font-semibold text-ink-subtle">settled</span>;
 
   if (!open) {
     return (
-      <button onClick={() => setOpen(true)} className={SECONDARY}>
+      <Button onClick={() => setOpen(true)} variant="secondary" size="sm">
         {status === "QUARANTINED" ? "Mark claimed" : "Mark replaced"}
-      </button>
+      </Button>
     );
   }
 
@@ -52,14 +50,14 @@ export default function DefectClaimControl({
     return (
       <form action={run} className="space-y-1">
         <input type="hidden" name="status" value="CLAIMED" />
-        {error && <p className="text-xs text-red-700 dark:text-red-300">{error}</p>}
+        {error && <Alert tone="danger" className="text-xs">{error}</Alert>}
         <div className="flex gap-1">
-          <button type="button" onClick={() => setOpen(false)} className={SECONDARY}>
+          <Button type="button" onClick={() => setOpen(false)} variant="secondary" size="sm">
             Cancel
-          </button>
-          <button type="submit" disabled={pending} className={SECONDARY}>
+          </Button>
+          <Button type="submit" disabled={pending} variant="secondary" size="sm">
             {pending ? "…" : "Confirm claimed"}
-          </button>
+          </Button>
         </div>
       </form>
     );
@@ -68,27 +66,27 @@ export default function DefectClaimControl({
   return (
     <form action={run} className="space-y-1">
       <input type="hidden" name="status" value="REPLACED" />
-      <select name="replacedByDeliveryId" required className={INPUT}>
+      <Select name="replacedByDeliveryId" required>
         <option value="">Which delivery replaced it?</option>
         {deliveries.map((d) => (
           <option key={d.id} value={d.id}>
             {d.label}
           </option>
         ))}
-      </select>
+      </Select>
       {deliveries.length === 0 && (
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs font-semibold text-ink-subtle">
           Record the supplier&apos;s replacement as an ordinary delivery first.
         </p>
       )}
-      {error && <p className="text-xs text-red-700 dark:text-red-300">{error}</p>}
+      {error && <Alert tone="danger" className="text-xs">{error}</Alert>}
       <div className="flex gap-1">
-        <button type="button" onClick={() => setOpen(false)} className={SECONDARY}>
+        <Button type="button" onClick={() => setOpen(false)} variant="secondary" size="sm">
           Cancel
-        </button>
-        <button type="submit" disabled={pending} className={SECONDARY}>
+        </Button>
+        <Button type="submit" disabled={pending} variant="secondary" size="sm">
           {pending ? "…" : "Confirm replaced"}
-        </button>
+        </Button>
       </div>
     </form>
   );

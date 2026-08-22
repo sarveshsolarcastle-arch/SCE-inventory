@@ -1,5 +1,11 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import PageHeader from "@/components/ui/PageHeader";
+import { buttonClasses } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
+import Badge from "@/components/ui/Badge";
+import EmptyState from "@/components/ui/EmptyState";
 
 export default async function DispatchesPage() {
   const dispatches = await prisma.dispatch.findMany({
@@ -13,74 +19,60 @@ export default async function DispatchesPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-          Dispatches
-        </h1>
-        <Link
-          href="/dispatches/new"
-          className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900"
-        >
-          + New Dispatch
-        </Link>
-      </div>
+      <PageHeader
+        title="Dispatches"
+        subtitle={`${dispatches.length} dispatch${dispatches.length === 1 ? "" : "es"}`}
+        actions={
+          <Link href="/dispatches/new" className={buttonClasses("primary", "md")}>
+            <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M10 4v12M4 10h12" /></svg>
+            New Dispatch
+          </Link>
+        }
+      />
 
-      <div className="overflow-x-auto rounded border border-zinc-200 dark:border-zinc-800">
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-100 text-left dark:bg-zinc-900">
-            <tr>
-              <th className="px-3 py-2">Date</th>
-              <th className="px-3 py-2">Reference</th>
-              <th className="px-3 py-2">Site</th>
-              <th className="px-3 py-2">Lines</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2">By</th>
-            </tr>
-          </thead>
-          <tbody>
-            {dispatches.map((d) => {
-              const active = d.transactions.filter((t) => !t.reversedAt);
-              const reversed = active.length === 0 && d.transactions.length > 0;
-              return (
-                <tr key={d.id} className="border-t border-zinc-200 dark:border-zinc-800">
-                  <td className="px-3 py-2">{d.dispatchedAt.toLocaleDateString()}</td>
-                  <td className="px-3 py-2">
-                    <Link
-                      href={`/dispatches/${d.id}`}
-                      className="font-medium text-zinc-900 hover:underline dark:text-zinc-50"
-                    >
-                      {d.reference || "(no reference)"}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{d.site.name}</td>
-                  <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">
-                    {d.transactions.length}
-                  </td>
-                  <td className="px-3 py-2">
-                    {reversed ? (
-                      <span className="rounded bg-zinc-200 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-                        Reversed
-                      </span>
-                    ) : (
-                      <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                        Active
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{d.user.name}</td>
-                </tr>
-              );
-            })}
-            {dispatches.length === 0 && (
+      <Card>
+        <TableWrap>
+          <Table>
+            <THead>
               <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-zinc-500 dark:text-zinc-500">
-                  No dispatches recorded yet.
-                </td>
+                <Th>Date</Th>
+                <Th>Reference</Th>
+                <Th>Site</Th>
+                <Th>Lines</Th>
+                <Th>Status</Th>
+                <Th>By</Th>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </THead>
+            <tbody>
+              {dispatches.map((d) => {
+                const active = d.transactions.filter((t) => !t.reversedAt);
+                const reversed = active.length === 0 && d.transactions.length > 0;
+                return (
+                  <Tr key={d.id}>
+                    <Td className="text-ink-subtle">{d.dispatchedAt.toLocaleDateString()}</Td>
+                    <Td>
+                      <Link href={`/dispatches/${d.id}`} className="font-bold text-ink hover:text-accent">
+                        {d.reference || "(no reference)"}
+                      </Link>
+                    </Td>
+                    <Td className="text-ink-subtle">{d.site.name}</Td>
+                    <Td className="text-ink-subtle">{d.transactions.length}</Td>
+                    <Td>
+                      {reversed ? (
+                        <Badge tone="neutral">Reversed</Badge>
+                      ) : (
+                        <Badge tone="ok">Active</Badge>
+                      )}
+                    </Td>
+                    <Td className="text-ink-subtle">{d.user.name}</Td>
+                  </Tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        </TableWrap>
+        {dispatches.length === 0 && <EmptyState>No dispatches recorded yet.</EmptyState>}
+      </Card>
     </div>
   );
 }

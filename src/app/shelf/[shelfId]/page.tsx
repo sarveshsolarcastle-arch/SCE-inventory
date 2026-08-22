@@ -4,6 +4,9 @@ import { updateSlotBoxType, toggleFrontRow, assignSlotItem } from "@/lib/actions
 import ShelfGrid from "@/components/ShelfGrid";
 import { describeSlotContents } from "@/lib/units";
 import { notFound } from "next/navigation";
+import PageHeader from "@/components/ui/PageHeader";
+import { Card, CardBody } from "@/components/ui/Card";
+import Badge from "@/components/ui/Badge";
 
 export default async function ShelfDetailPage({
   params,
@@ -66,29 +69,31 @@ export default async function ShelfDetailPage({
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-        {shelf.name}
-      </h1>
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        This map matches your physical stickers.{" "}
-        <span className="inline-block rounded border border-emerald-400 bg-emerald-50 px-1.5 dark:border-emerald-700 dark:bg-emerald-950">
-          green
-        </span>{" "}
-        boxes are marked as easily-accessible (front-row) positions. Quantities
-        are not stored here — a box shows whatever its item&apos;s packs
-        currently hold, so the map cannot drift out of step with stock. A Fresh
-        box shows sealed packs, an Opened box shows the individual open packs
-        placed in it, and a Recyclable box shows offcuts below the item&apos;s
-        scrap threshold. You can relabel a box&apos;s condition here as material
-        is opened or used up.
-      </p>
-      <ShelfGrid
-        rows={shelf.rows}
-        columns={shelf.columns}
-        slots={slots}
-        items={items}
-        isAdmin={isAdmin}
+      <PageHeader
+        title={shelf.name}
+        subtitle={
+          <>
+            This map matches your physical stickers. <Badge tone="ok">green</Badge> boxes are
+            marked as easily-accessible (front-row) positions. Quantities are not stored here — a
+            box shows whatever its item&apos;s packs currently hold, so the map cannot drift out
+            of step with stock. A Fresh box shows sealed packs, an Opened box shows the individual
+            open packs placed in it, and a Recyclable box shows offcuts below the item&apos;s
+            scrap threshold. You can relabel a box&apos;s condition here as material is opened or
+            used up.
+          </>
+        }
       />
+      <Card>
+        <CardBody>
+          <ShelfGrid
+            rows={shelf.rows}
+            columns={shelf.columns}
+            slots={slots}
+            items={items}
+            isAdmin={isAdmin}
+          />
+        </CardBody>
+      </Card>
     </div>
   );
 }

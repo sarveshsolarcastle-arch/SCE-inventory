@@ -1,11 +1,11 @@
 # Inventory Management System — Progress Handover
 
-Last updated: 2026-08-20 (**all six functional redesign phases built** — see §9)
+Last updated: 2026-08-21 (**Phase 7 UI overhaul built and verified** — see §9)
 
-> **§1-§8 describe the code as it stands today.** The six-phase functional redesign is
-> **complete**; what remains is Phase 7 (UI overhaul + mobile web) and Phase 8 (hosting),
-> both deferred by decision. §9 records what each phase delivered, and §10 is the handover
-> guide.
+> **§1-§8 describe the code as it stands today, including the Phase 7 UI.** The six-phase
+> functional redesign and Phase 7 (UI overhaul + mobile web) are both **complete** as of
+> 2026-08-21. Phase 8 (hosting) is still deferred. §9 records what each phase delivered,
+> including Phase 7's as-built note, and §10 is the handover guide.
 
 ## 1. Purpose
 
@@ -36,13 +36,13 @@ All core flows below were manually tested in a running dev server and confirmed 
 | Placement suggestions (usage-frequency based) | ✅ Done |
 | Mobile-responsive layout | ✅ Done |
 | Production build | ✅ Passes |
-| Automated tests | ⚠️ 58 unit tests (`npm test`): allocator, corrections, matching, paste parsing, site balances/FIFO age/pickup clamp; **no coverage of the DB layer or UI** |
+| Automated tests | ⚠️ 63 unit tests (`npm test`): allocator, corrections, matching, paste parsing, site balances/FIFO age/pickup clamp, nav active-link matching; **no coverage of the DB layer or UI** |
 | Roles: ADMIN / FINANCE / EMPLOYEE, capability-gated | ✅ Done (Phase 2) |
 | Corrections: reversal and stocktake adjustment | ✅ Done (Phase 3) |
 | Bulk dispatch to site, from Excel paste | ✅ Done (Phase 4) |
 | Delivery entry (to store or direct to site) | ✅ Done (Phase 5) |
 | Site lifecycle: consumption, transfers, pickup flags, cross-site view | ✅ Done (Phase 6) |
-| UI overhaul + mobile web | ❌ Phase 7 — deferred by decision |
+| UI overhaul + mobile web | ✅ Done (Phase 7) — light theme + user dark toggle, grouped sidebar, `src/components/ui/` primitives |
 | Deployment | ❌ Not deployed anywhere — runs locally only |
 | Database backups | ⚠️ Manual copies in `backups/` only — no schedule |
 
@@ -143,7 +143,21 @@ src/
     defective/              damaged goods held for a supplier claim
     api/auth/[...nextauth]/ NextAuth route handler
   components/
-    NavBar.tsx              top nav, shown only when logged in
+    AppShell.tsx            server component: the only place auth()/can() are called for nav;
+                            renders the sidebar + mobile drawer + topbar, or children bare when
+                            logged out. Replaced NavBar.tsx (deleted in Phase 7).
+    ThemeScript.tsx         inline <script> that applies the saved theme before first paint
+    ThemeToggle.tsx         "use client" light/dark toggle, mounted in the sidebar footer and
+                            on the login page
+    nav/                    navLinks.ts (data), icons.ts (IconName → LucideIcon, client-only),
+                            activeHref.ts (PURE, longest-match-wins + activeHref.test.ts),
+                            SidebarNav.tsx, MobileNav.tsx
+    ui/                     the Phase 7 primitives layer — Button, Card, Badge, tones.ts, Field
+                            (+Input/Select/Textarea), Table (+SortableTh), PillToggle, Alert,
+                            PageHeader, StatCard, EmptyState, FilterPills, SearchBar. No
+                            primitive carries "use client"; conflict-prone ones take explicit
+                            props (Tr tone, Input invalid) rather than relying on className
+                            override order.
     TransactionForm.tsx     client form: pack/pieces entry + the open-pack confirmation screen
     DispatchBatchForm.tsx   client form: paste → parse → match → plan → review, one card per
                             row at every viewport width (mobile-first, no table)
@@ -204,9 +218,12 @@ backups/                    manual dev.db copies (gitignored)
 
 - **Not deployed yet** — local-only for now. **Decided: a real server behind real HTTPS on a proper domain, not serverless.** SQLite therefore stays and **no code changes are needed** for hosting. (Serverless would have forced a Postgres port: new datasource provider, a swapped driver adapter, and every migration regenerated, since the existing SQL is SQLite-specific — `PRAGMA`, the table-rebuild pattern, `TEXT` enums. Avoided.) See §9 for the deployment checklist.
 - **Change the seeded passwords** — all three accounts (`admin`/`finance`/`employee`), not just admin — and consider adding a "change password" flow, since there isn't one yet.
-- **⚠️ Test coverage stops at the pure modules, and the reason for deferring the rest has expired.** The 58 tests cover [allocation.ts](src/lib/allocation.ts), [corrections.ts](src/lib/corrections.ts), [matching.ts](src/lib/matching.ts), [dispatchPaste.ts](src/lib/dispatchPaste.ts) and [siteBalance.ts](src/lib/siteBalance.ts). **Everything that writes to the database has none**: [packs.ts](src/lib/packs.ts), `recordDispatch`, `recordDelivery`, and the whole site lifecycle. The subtlest code in the project is in there — `commitAllocation` resolves the planner's synthetic `new:<i>` pack ids onto rows it creates inside the same transaction. This was deferred on the grounds that "the app is not in real use until the remaining phases land"; **they have all landed**, and the untested surface grew with each one. This is now the single most valuable outstanding item.
+- **⚠️ Test coverage stops at the pure modules, and the reason for deferring the rest has expired.** The 63 tests cover [allocation.ts](src/lib/allocation.ts), [corrections.ts](src/lib/corrections.ts), [matching.ts](src/lib/matching.ts), [dispatchPaste.ts](src/lib/dispatchPaste.ts), [siteBalance.ts](src/lib/siteBalance.ts) and [activeHref.ts](src/components/nav/activeHref.ts). **Everything that writes to the database has none**: [packs.ts](src/lib/packs.ts), `recordDispatch`, `recordDelivery`, and the whole site lifecycle. The subtlest code in the project is in there — `commitAllocation` resolves the planner's synthetic `new:<i>` pack ids onto rows it creates inside the same transaction. This was deferred on the grounds that "the app is not in real use until the remaining phases land"; **they have all landed**, and the untested surface grew with each one. This is now the single most valuable outstanding item.
 - ✅ **Corrections exist** (Phase 3): a movement can be reversed — restoring the exact prior pack state, and refusing when the packs have moved on since — and a physical count can be recorded as an `ADJUSTMENT` with a mandatory reason. Both are `ADMIN`-only. A whole dispatch can be reversed atomically (Phase 4).
 - ✅ **Existing items reviewed after the Phase 1 migration** (2026-08-20, during Phase 4). `CBL-200` and `SCR-M4` were the two that predated the pack model; both checked — see §9's Phase 4 note and §10's "State of the working copy". Any *new* item added later still needs `measure`, `packUnit` and `scrapThreshold` set correctly at creation, same as always.
+- ✅ **The Arial-font bug is fixed** (Phase 7): [globals.css](src/app/globals.css) no longer sets `font-family: Arial` on `body`, so the Geist font [layout.tsx](src/app/layout.tsx) loads now actually renders.
+- ✅ **Dark mode is now a user toggle** (Phase 7), not OS-only. `@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));` in globals.css overrides Tailwind's built-in `dark:` variant, an inline `<script>` (`ThemeScript.tsx`) applies the saved choice before first paint, and `ThemeToggle.tsx` (sidebar footer + login page) flips `data-theme` and persists to `localStorage`.
+- ✅ **`src/components/ui/` now exists** (Phase 7) — Button, Card, Badge, Field/Input/Select/Textarea, Table/SortableTh, PillToggle, Alert, PageHeader, StatCard, EmptyState, FilterPills, SearchBar, plus `tones.ts` as the single badge-tone source of truth. The three separate badge tone maps, the copy-pasted pill toggle, and the four duplicate `Field` helpers are gone.
 - **Shelf tag codes are auto-generated and not editable** (`F1-1`, `B2-3`, etc., generated at shelf-creation time). If physical stickers don't match this scheme, either the seed logic needs adjusting or an edit-tag UI needs adding.
 - **No file/photo attachments** on items or transactions — not requested, but a common ask for this type of tool.
 - **No CSV export / reporting page** — dashboard covers the "what do we have / what's low / what's issued where" questions live, but there's no printable/exportable report yet.
@@ -243,7 +260,8 @@ what stops them being re-derived.** What actually holds today:
 
 **All six functional phases are built and verified**: 1 (packs, cut lengths, scrap),
 2 (roles), 3 (corrections), 4 (dispatch batch), 5 (delivery entry) and 6 (site lifecycle).
-Phases 7 (UI overhaul + mobile web) and 8 (hosting) remain, both deferred by decision.
+**Phase 7 (UI overhaul + mobile web) is also built and verified**, on 2026-08-21 — see its
+as-built note below. Phase 8 (hosting) remains deferred by decision.
 
 ### Phase 1 — built 2026-08-20
 
@@ -320,11 +338,46 @@ every earlier phase preserved:
 Full verification results and the three deviations are in
 [REDESIGN-PLAN.md's "Phase 6 — as built"](REDESIGN-PLAN.md).
 
-### Deferred by decision: UI overhaul + mobile web (Phase 7), hosting (Phase 8)
+### Phase 7 — UI overhaul + mobile web ✅ BUILT 2026-08-21
 
-Neither is started, and the app will not be in real use until the functional phases land.
-Phases 2-6 therefore build **plain UI in the existing house style** — a later redesign would
-discard any polish added now.
+**Built in one session, all 14 steps, in order.** Phases 2-6 deliberately built **plain UI in
+the existing house style**, on the grounds that a later redesign would discard any polish
+added then. All six had landed, so Phase 7 was planned, approved, and then built on
+2026-08-21.
+
+Full design record — the direction, the decisions, the alternatives rejected, and the
+as-built note — is in [REDESIGN-PLAN.md's "Phase 7" section](REDESIGN-PLAN.md). The
+step-by-step working checklist that guided the build lives outside the repo at
+`C:\Users\Kavita\.claude\plans\c-users-kavita-downloads-ui-examples-i-ethereal-swan.md`.
+
+**What changed**, in one paragraph: light theme by default with a *user* dark toggle (dark
+previously followed the OS only), a grouped left sidebar (`AppShell` + `nav/`) replacing the
+13-link top bar, a teal accent, and a real `src/components/ui/` primitives layer. There had
+been **no design system at all** — three separate badge tone maps, the pill toggle
+copy-pasted in three files, four duplicate `Field` helpers — all now gone. Search and
+sortable columns landed on the items list; the dashboard gained three more stat cards
+(Material at Sites, Awaiting Collection, Open Claims).
+
+**Two live bugs fixed along the way:** [globals.css](src/app/globals.css) no longer sets
+`font-family: Arial` on `body` — the Geist font [layout.tsx](src/app/layout.tsx) loads now
+actually renders — and dark mode is now a user choice, not OS-only.
+
+**The constraint held: markup only.** `git status` against `src/lib`, `src/lib/actions`, and
+`prisma/schema.prisma` shows zero changes. The two agreed exceptions were used exactly as
+scoped — the search/sort `searchParams` reads in `items/page.tsx`, and the extra dashboard
+reads via `materialAcrossSites()` plus one `prisma.defectiveItem.count()` call for the Open
+Claims stat, both inside `dashboard/page.tsx`. **`npm test` stayed green throughout** (58 → 63,
+the 5 new ones covering the pure `activeHref.ts`) — the tripwire never tripped.
+
+**All six interactions that had to survive verbatim were exercised by hand and confirmed
+unchanged** — the pack-open confirmation screen (full form replacement; "Go back and revise"
+restores state exactly), the dispatch per-row open approval (resets on any edit to that row —
+verified directly), the consume-vs-pickup-flag warning (both "Go back" and "Consume anyway"
+paths verified against the real database), the shelf popover (single-open, resets on
+Front/Back switch), the shelf wizard, and the inline expand-in-place forms. See
+REDESIGN-PLAN.md's Phase 7 "as built" note for exactly how each was checked, and for the one
+bug verification found — which was in a test script, not the app (a generic
+`document.querySelector('form')` grabbing the sign-out form instead of the intended one).
 
 **Settled: this stays a web app.** No native Android app, so **no HTTP API is needed** — the
 existing Next.js server actions are fine, and nothing about phases 2-6 has to change to
@@ -335,19 +388,19 @@ proper domain.
 out of server actions. `allocation.ts` is pure and framework-agnostic; `packs.ts` takes a
 transaction client and knows nothing about Next. A redesign then touches only markup.
 
-**Mobile checklist for the overhaul** (recorded now so it is not rediscovered later):
+**Mobile checklist for the overhaul** (recorded before planning so it was not rediscovered
+later — folded into the Phase 7 plan on 2026-08-21). **Scope note: the user chose
+desktop-first, mobile-usable**, which narrows the original "mobile web" brief. These items
+still apply; re-optimising layouts for the phone does not.
 
 - ✅ **Both batch screens were built card-per-row from the start** — the dispatch review
   (Phase 4) and the delivery grid (Phase 5), no table markup at all at any width, each
   confirmed at 375px with zero horizontal scroll and `inputMode="numeric"` on every number
   field. These were the two screens the checklist worried about, and neither needs
   retrofitting.
-- `inputMode="numeric"` on the remaining quantity/length fields — the single-row
-  [TransactionForm.tsx](src/components/TransactionForm.tsx) still lacks it. Summons the
-  number keypad on Android instead of the full keyboard; trivial, and a large daily
-  difference.
-- Touch targets on the shelf grid cells and their popover, which are currently sized for a
-  mouse.
+- ✅ **`inputMode="numeric"` added to every quantity/length field in [TransactionForm.tsx](src/components/TransactionForm.tsx)** (Phase 7) — summons the number keypad on Android instead of the full keyboard.
+- Touch targets on the shelf grid cells and their popover — carried forward from the
+  original sizing (the grid cells were already 96px tall; not deliberately revisited).
 - Keep the existing `overflow-x-auto` wrapper on every table; it is already the house pattern
   and is what stops wide tables breaking the page.
 - `<datalist>` typeahead (used by the item pickers) works on Android Chrome — no replacement
@@ -388,18 +441,29 @@ Three things came up in the build that the plan had wrong:
 2. **Assigning an item to an Opened/Recyclable box adopts its unplaced packs.** Nothing else ever set `OpenPack.shelfSlotId`, so those boxes would have stayed permanently empty.
 3. **Empty boxes say what kind of stock is missing** ("no sealed packs", "nothing open here") rather than "empty", which read as though the item had no stock when it merely had none of that condition.
 
-## 10. Handover — Picking Up Phases 2-6
+## 10. Handover — Picking Up Phase 8 and What Remains
 
 Written for whoever continues this next. Read in this order: **§1-§9 above**, then
-**[REDESIGN-PLAN.md](REDESIGN-PLAN.md)**, then the four source files named below.
+**[REDESIGN-PLAN.md](REDESIGN-PLAN.md)**, then the source files named below.
+
+**Phases 1-7 are all built.** What remains is Phase 8 (hosting, §9's deployment checklist)
+and — more urgently — **DB-layer test coverage**, which is still the largest outstanding
+risk. See "What to do next" below.
+
+**If you are changing the UI**, read [REDESIGN-PLAN.md's Phase 7 section](REDESIGN-PLAN.md)
+first, especially the six interactions that must survive verbatim and the markup-only
+constraint. Both still bind: they describe how the UI is built, not merely how it was built
+once. Items 3 and 4 below matter less for UI work than for anything touching stock, but the
+invariants in the next subsection always bind.
 
 ### Read these before touching anything
 
 1. **[AGENTS.md](AGENTS.md)** — this is **not** the Next.js you may know. Version 16 renamed
    `middleware.ts` to `proxy.ts`, and Prisma 7 requires an explicit driver adapter. Read the
    bundled docs in `node_modules/next/dist/docs/` before writing framework code; do not go
-   from memory.
-2. **[REDESIGN-PLAN.md](REDESIGN-PLAN.md)** — all six phases, with per-phase verification
+   from memory. **Phase 7 depends on this directly** — the theme-without-flash recipe it
+   needs is at `node_modules/next/dist/docs/01-app/02-guides/preventing-flash-before-hydration.md`.
+2. **[REDESIGN-PLAN.md](REDESIGN-PLAN.md)** — all phases, with per-phase verification
    steps. **It records rejected alternatives and why.** Re-deriving those rules from scratch
    lands on the rejected answer; the reasoning is the valuable part.
 3. **[src/lib/allocation.ts](src/lib/allocation.ts)** — the pure planner. The heart of the
@@ -468,16 +532,20 @@ Everything downstream assumes these. Breaking one corrupts stock silently rather
 
 ### What to do next
 
-**All six functional phases are built.** The remaining work is Phases 7 (UI overhaul +
-mobile web) and 8 (hosting), both deferred by decision — and one thing that is neither.
+**Phases 1-7 are all built.** Phase 8 (hosting) is still deferred by decision.
 
-**Before this goes into real use, cover the DB layer with tests.** This is now the single
+**Phase 7 was UI work and did not close the biggest gap.** That gap is below, and it is now
+the top of the list — the app finally looks finished, which makes it *more* likely someone
+puts real stock in it before the untested write path is covered.
+
+**Before this goes into real use, cover the DB layer with tests.** This is still the single
 most valuable outstanding item, and the justification for deferring it has run out. The
-argument was always "the app is not in real use until the remaining phases land" — they have
-landed. Meanwhile the untested surface has grown considerably: `packs.ts` (including
-`commitAllocation`'s synthetic `new:<i>` pack-id resolution, still the subtlest code in the
-project), `recordDispatch`, `recordDelivery`, and the whole of Phase 6. The pure modules are
-well covered at 52 tests; **everything that actually writes to the database has none**.
+argument was always "the app is not in real use until the remaining phases land" — the
+functional ones have landed. Meanwhile the untested surface has grown considerably:
+`packs.ts` (including `commitAllocation`'s synthetic `new:<i>` pack-id resolution, still the
+subtlest code in the project), `recordDispatch`, `recordDelivery`, and the whole of Phase 6.
+The pure modules are well covered at 63 tests; **everything that actually writes to the
+database has none**.
 
 The other pre-live items, in rough order of cost-to-skip:
 
@@ -489,6 +557,7 @@ The other pre-live items, in rough order of cost-to-skip:
 
 ## 11. Related Documents
 
-- **[REDESIGN-PLAN.md](REDESIGN-PLAN.md)** — the six-phase plan, with verification steps and, importantly, the alternatives that were rejected and why. **The main document for continuing work.**
+- **[REDESIGN-PLAN.md](REDESIGN-PLAN.md)** — the phase plan (1-6 built, **7 planned**, 8 deferred), with verification steps and, importantly, the alternatives that were rejected and why. **The main document for continuing work.**
+- `C:\Users\Kavita\.claude\plans\c-users-kavita-downloads-ui-examples-i-ethereal-swan.md` — the Phase 7 step-by-step working checklist. **Outside the repo**, so it is not a durable record; REDESIGN-PLAN.md's Phase 7 section is.
 - [inventory_management.md.txt](inventory_management.md.txt) — the original problem statement the project was built from.
 - [storeroom-heavy-stock-plan.md](storeroom-heavy-stock-plan.md) — physical storage plan for heavy and humidity-sensitive stock (racking spec, VCI/sealed-case protection). Procurement and physical handling only; no bearing on the code.

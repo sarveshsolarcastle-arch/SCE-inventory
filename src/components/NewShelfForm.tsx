@@ -2,18 +2,20 @@
 
 import { useState } from "react";
 import { createShelf } from "@/lib/actions/shelf";
+import { Field, Input } from "@/components/ui/Field";
+import Button from "@/components/ui/Button";
+import PillToggle from "@/components/ui/PillToggle";
+import { BOX_TYPE_TONE } from "@/components/ui/tones";
+import Badge from "@/components/ui/Badge";
 
 type BoxType = "FRESH" | "OPENED" | "RECYCLABLE";
 
 const BOX_TYPE_CYCLE: BoxType[] = ["FRESH", "OPENED", "RECYCLABLE"];
 
-const BOX_TYPE_BADGE: Record<BoxType, string> = {
-  FRESH:
-    "border-sky-400 bg-sky-50 text-sky-700 dark:border-sky-700 dark:bg-sky-950 dark:text-sky-300",
-  OPENED:
-    "border-amber-400 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300",
-  RECYCLABLE:
-    "border-violet-400 bg-violet-50 text-violet-700 dark:border-violet-700 dark:bg-violet-950 dark:text-violet-300",
+const CELL_TONE_CLASSES: Record<BoxType, string> = {
+  FRESH: "border-ok-line bg-ok-soft",
+  OPENED: "border-warn-line bg-warn-soft",
+  RECYCLABLE: "border-special-line bg-special-soft",
 };
 
 export default function NewShelfForm() {
@@ -41,47 +43,32 @@ export default function NewShelfForm() {
         }}
         className="space-y-4"
       >
-        <div className="space-y-1">
-          <label className="text-sm text-zinc-600 dark:text-zinc-400">Name</label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            className="w-full rounded border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-          />
-        </div>
+        <Field label="Name">
+          <Input value={name} onChange={(e) => setName(e.target.value)} required />
+        </Field>
         <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <label className="text-sm text-zinc-600 dark:text-zinc-400">Rows</label>
-            <input
+          <Field label="Rows">
+            <Input
               type="number"
               min={1}
               max={20}
               value={rows}
               onChange={(e) => setRows(Number(e.target.value))}
               required
-              className="w-full rounded border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
             />
-          </div>
-          <div className="space-y-1">
-            <label className="text-sm text-zinc-600 dark:text-zinc-400">Columns</label>
-            <input
+          </Field>
+          <Field label="Columns">
+            <Input
               type="number"
               min={1}
               max={20}
               value={columns}
               onChange={(e) => setColumns(Number(e.target.value))}
               required
-              className="w-full rounded border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
             />
-          </div>
+          </Field>
         </div>
-        <button
-          type="submit"
-          className="rounded bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900"
-        >
-          Next: set box types
-        </button>
+        <Button type="submit">Next: set box types</Button>
       </form>
     );
   }
@@ -93,27 +80,19 @@ export default function NewShelfForm() {
       <input type="hidden" name="columns" value={columns} />
       <input type="hidden" name="boxTypes" value={JSON.stringify(boxTypes)} />
 
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Click each box to set its type: Fresh → Opened → Recyclable. Defaults to
-        Fresh. Set both sides before creating — switch with the buttons below.
+      <p className="text-sm font-semibold text-ink-subtle">
+        Click each box to set its type: Fresh → Opened → Recyclable. Defaults to Fresh. Set both
+        sides before creating — switch with the buttons below.
       </p>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {(["FRONT", "BACK"] as const).map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setSide(s)}
-            className={`rounded px-3 py-1.5 text-sm ${
-              side === s
-                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                : "border border-zinc-300 dark:border-zinc-700"
-            }`}
-          >
-            {s === "FRONT" ? "Front side" : "Back side"}
-          </button>
-        ))}
-      </div>
+      <PillToggle
+        value={side}
+        onChange={(v) => setSide(v)}
+        options={[
+          { value: "FRONT", label: "Front side" },
+          { value: "BACK", label: "Back side" },
+        ]}
+      />
 
       <div className="overflow-x-auto pb-2">
         <div
@@ -131,13 +110,15 @@ export default function NewShelfForm() {
                   type="button"
                   key={key}
                   onClick={() => cycleCell(key)}
-                  className={`flex h-16 w-full flex-col items-center justify-center gap-1 rounded border p-1 text-center text-[10px] ${BOX_TYPE_BADGE[boxType]}`}
+                  className={`flex h-16 w-full flex-col items-center justify-center gap-1 rounded-control border p-1 text-center text-[10px] ${CELL_TONE_CLASSES[boxType]}`}
                 >
-                  <span className="font-mono text-zinc-500 dark:text-zinc-400">
+                  <span className="font-mono text-ink-subtle">
                     {side === "FRONT" ? "F" : "B"}
                     {row}-{column}
                   </span>
-                  <span className="font-medium">{boxType}</span>
+                  <Badge tone={BOX_TYPE_TONE[boxType]} className="px-1.5 py-0">
+                    {boxType}
+                  </Badge>
                 </button>
               );
             })
@@ -146,19 +127,10 @@ export default function NewShelfForm() {
       </div>
 
       <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => setStep("size")}
-          className="rounded border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700"
-        >
+        <Button type="button" onClick={() => setStep("size")} variant="secondary">
           Back
-        </button>
-        <button
-          type="submit"
-          className="rounded bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900"
-        >
-          Create Shelf
-        </button>
+        </Button>
+        <Button type="submit">Create Shelf</Button>
       </div>
     </form>
   );

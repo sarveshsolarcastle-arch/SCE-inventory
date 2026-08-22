@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   recordDispatch,
@@ -19,6 +19,11 @@ import { parseDispatchPaste } from "@/lib/dispatchPaste";
 import { matchItem, type MatchCandidate } from "@/lib/matching";
 import { formatQuantity, piecesTotal, type Piece } from "@/lib/units";
 import type { MeasureType } from "@/generated/prisma/enums";
+import { Field, Input, Select, Textarea } from "@/components/ui/Field";
+import Button from "@/components/ui/Button";
+import Alert from "@/components/ui/Alert";
+import Badge from "@/components/ui/Badge";
+import { MATCH_STATUS_TONE } from "@/components/ui/tones";
 
 export type FormItem = {
   id: string;
@@ -52,20 +57,6 @@ type DispatchRowState = {
   /** Reset to false on every edit — a stale approval must not survive a
    * change to what it was approving. */
   acknowledgedOpen: boolean;
-};
-
-const INPUT =
-  "w-full rounded border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900";
-const PRIMARY =
-  "rounded bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900";
-const SECONDARY =
-  "rounded border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900";
-const BADGE = "inline-block rounded px-2 py-0.5 text-xs font-medium";
-const BADGE_TONE: Record<"exact" | "suggested" | "ambiguous" | "unmatched", string> = {
-  exact: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
-  suggested: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-  ambiguous: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300",
-  unmatched: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
 };
 
 let keyCounter = 0;
@@ -346,53 +337,41 @@ export default function DispatchBatchForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {error && (
-        <p
-          role="alert"
-          className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
-        >
-          {error}
-        </p>
-      )}
+      {error && <Alert tone="danger">{error}</Alert>}
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <Labelled label="Site">
-          <select
-            value={siteId}
-            onChange={(e) => setSiteId(e.target.value)}
-            required
-            className={INPUT}
-          >
+        <Field label="Site">
+          <Select value={siteId} onChange={(e) => setSiteId(e.target.value)} required>
             <option value="">Select a site…</option>
             {sites.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
               </option>
             ))}
-          </select>
-        </Labelled>
-        <Labelled label="Reference / challan no. (optional)">
-          <input value={reference} onChange={(e) => setReference(e.target.value)} className={INPUT} />
-        </Labelled>
-        <Labelled label="Note (optional)">
-          <input value={note} onChange={(e) => setNote(e.target.value)} className={INPUT} />
-        </Labelled>
+          </Select>
+        </Field>
+        <Field label="Reference / challan no. (optional)">
+          <Input value={reference} onChange={(e) => setReference(e.target.value)} />
+        </Field>
+        <Field label="Note (optional)">
+          <Input value={note} onChange={(e) => setNote(e.target.value)} />
+        </Field>
       </div>
 
-      <div className="space-y-2 rounded border border-dashed border-zinc-300 p-3 dark:border-zinc-700">
-        <label className="text-sm text-zinc-600 dark:text-zinc-400">
+      <div className="space-y-2 rounded-card border border-dashed border-line-strong p-3.5">
+        <label className="text-sm font-semibold text-ink-muted">
           Paste from Excel — one item per line, name and quantity (extra columns are fine)
         </label>
-        <textarea
+        <Textarea
           value={pasteText}
           onChange={(e) => setPasteText(e.target.value)}
           rows={4}
           placeholder={"Wire 2.5mm\t150\nScrews M4\t60"}
-          className={`${INPUT} font-mono`}
+          className="font-mono"
         />
-        <button type="button" onClick={handleParse} disabled={!pasteText.trim()} className={SECONDARY}>
+        <Button type="button" onClick={handleParse} disabled={!pasteText.trim()} variant="secondary">
           Parse into rows
-        </button>
+        </Button>
       </div>
 
       <datalist id="dispatch-items">
@@ -421,12 +400,12 @@ export default function DispatchBatchForm({
         ))}
       </div>
 
-      <button type="button" onClick={addRow} className={SECONDARY}>
+      <Button type="button" onClick={addRow} variant="secondary">
         Add row
-      </button>
+      </Button>
 
-      <div className="space-y-2 rounded border border-zinc-200 p-3 text-sm dark:border-zinc-800">
-        <p className="text-zinc-700 dark:text-zinc-300">
+      <div className="space-y-2 rounded-card border border-line p-3.5 text-sm">
+        <p className="font-semibold text-ink">
           {activeRows.length} row{activeRows.length === 1 ? "" : "s"} entered
           {summary.unmatched > 0 && ` · ${summary.unmatched} unmatched`}
           {summary.ambiguous > 0 && ` · ${summary.ambiguous} ambiguous`}
@@ -435,9 +414,9 @@ export default function DispatchBatchForm({
           {summary.needsOpen > 0 && ` · ${summary.needsOpen} need a roll opened`}
           {summary.outOfStock > 0 && ` · ${summary.outOfStock} out of stock`}
         </p>
-        <button type="submit" disabled={pending || blocked} className={PRIMARY}>
+        <Button type="submit" disabled={pending || blocked}>
           {pending ? "Recording…" : "Record dispatch"}
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -476,21 +455,19 @@ function DispatchRowCard({
 
   return (
     <div
-      className={`space-y-3 rounded border p-3 ${
-        highlighted
-          ? "border-red-400 bg-red-50 dark:border-red-700 dark:bg-red-950"
-          : "border-zinc-200 dark:border-zinc-800"
+      className={`space-y-3 rounded-card border p-3.5 ${
+        highlighted ? "border-danger-line bg-danger-soft" : "border-line bg-surface"
       }`}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="text-xs text-zinc-500 dark:text-zinc-500">
+        <span className="text-xs font-semibold text-ink-subtle">
           Row {index + 1}
           {row.sourceText && ` · pasted "${row.sourceText}"`}
         </span>
         <button
           type="button"
           onClick={onRemove}
-          className="text-xs text-zinc-500 hover:text-red-600"
+          className="text-xs font-semibold text-ink-subtle hover:text-danger-ink"
           aria-label="Remove row"
         >
           Remove
@@ -498,7 +475,7 @@ function DispatchRowCard({
       </div>
 
       <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
-        <input
+        <Input
           list="dispatch-items"
           value={row.itemQuery}
           onChange={(e) => {
@@ -511,42 +488,32 @@ function DispatchRowCard({
             else onQuery(value);
           }}
           placeholder="Item name…"
-          className={INPUT}
         />
         {resolution.status !== "unmatched" && resolution.status !== "ambiguous" && item && (
-          <span className={`${BADGE} ${BADGE_TONE[resolution.status]}`}>
+          <Badge tone={MATCH_STATUS_TONE[resolution.status]}>
             {resolution.status === "exact" ? item.name : `suggested: ${item.name}`}
-          </span>
+          </Badge>
         )}
         {resolution.status === "unmatched" && row.itemQuery.trim() !== "" && (
-          <span className={`${BADGE} ${BADGE_TONE.unmatched}`}>no match — pick manually</span>
+          <Badge tone={MATCH_STATUS_TONE.unmatched}>no match — pick manually</Badge>
         )}
         {resolution.status === "ambiguous" && (
-          <span className={`${BADGE} ${BADGE_TONE.ambiguous}`}>ambiguous — pick one</span>
+          <Badge tone={MATCH_STATUS_TONE.ambiguous}>ambiguous — pick one</Badge>
         )}
       </div>
 
       {resolution.status === "suggested" && item && (
-        <button
-          type="button"
-          onClick={() => onChoose(resolution.itemId)}
-          className={SECONDARY}
-        >
+        <Button type="button" onClick={() => onChoose(resolution.itemId)} variant="secondary" size="sm">
           ✓ Use {item.name} ({item.sku})
-        </button>
+        </Button>
       )}
 
       {resolution.status === "ambiguous" && (
         <div className="flex flex-wrap gap-2">
           {resolution.candidates.map((c) => (
-            <button
-              key={c.itemId}
-              type="button"
-              onClick={() => onChoose(c.itemId)}
-              className={SECONDARY}
-            >
+            <Button key={c.itemId} type="button" onClick={() => onChoose(c.itemId)} variant="secondary" size="sm">
               {c.name} ({c.sku})
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -555,11 +522,7 @@ function DispatchRowCard({
         <>
           {item.packUnit && item.packs.sealed.some((g) => g.sealedCount > 0) && (
             <div className="grid grid-cols-[1fr_1fr] gap-2">
-              <select
-                value={row.sealedSize}
-                onChange={(e) => onUpdate({ sealedSize: e.target.value })}
-                className={INPUT}
-              >
+              <Select value={row.sealedSize} onChange={(e) => onUpdate({ sealedSize: e.target.value })}>
                 <option value="">whole sealed {item.packUnit}: none</option>
                 {item.packs.sealed
                   .filter((g) => g.sealedCount > 0)
@@ -568,15 +531,14 @@ function DispatchRowCard({
                       {g.packSize} {item.baseUnit} ({g.sealedCount} available)
                     </option>
                   ))}
-              </select>
-              <input
+              </Select>
+              <Input
                 type="number"
                 min={1}
                 inputMode="numeric"
                 value={row.sealedCount}
                 onChange={(e) => onUpdate({ sealedCount: e.target.value })}
                 placeholder="how many"
-                className={INPUT}
               />
             </div>
           )}
@@ -585,7 +547,7 @@ function DispatchRowCard({
             <div className="space-y-2">
               {row.pieces.map((piece, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <input
+                  <Input
                     type="number"
                     min={1}
                     inputMode="numeric"
@@ -598,10 +560,9 @@ function DispatchRowCard({
                       })
                     }
                     placeholder={`length (${item.baseUnit})`}
-                    className={INPUT}
                   />
-                  <span className="text-sm text-zinc-500">×</span>
-                  <input
+                  <span className="text-sm text-ink-subtle">×</span>
+                  <Input
                     type="number"
                     min={1}
                     inputMode="numeric"
@@ -614,35 +575,33 @@ function DispatchRowCard({
                       })
                     }
                     placeholder="pieces"
-                    className={INPUT}
                   />
                   <button
                     type="button"
                     onClick={() => onUpdate({ pieces: row.pieces.filter((_, j) => j !== i) })}
-                    className="px-2 text-sm text-zinc-500 hover:text-red-600"
+                    className="px-2 text-sm text-ink-subtle hover:text-danger-ink"
                     aria-label="Remove length"
                   >
                     ×
                   </button>
                 </div>
               ))}
-              <button
+              <Button
                 type="button"
                 onClick={() => onUpdate({ pieces: [...row.pieces, { length: 0, count: 1 }] })}
-                className={SECONDARY}
+                variant="secondary"
               >
                 Add cut length
-              </button>
+              </Button>
             </div>
           ) : (
-            <input
+            <Input
               type="number"
               min={1}
               inputMode="numeric"
               value={row.loose}
               onChange={(e) => onUpdate({ loose: e.target.value })}
               placeholder={`quantity (${item.baseUnit})`}
-              className={INPUT}
             />
           )}
 
@@ -671,7 +630,7 @@ function PlanStatus({
 
   if (plan.errors.length) {
     return (
-      <p className="text-sm text-red-700 dark:text-red-300">
+      <p className="text-sm font-semibold text-danger-ink">
         ✗ {describeAllocationErrors(plan, item.baseUnit).join(" ")}
       </p>
     );
@@ -680,36 +639,27 @@ function PlanStatus({
   if (plan.opens.length) {
     const sizes = plan.opens.map((o) => `${o.packSize} ${item.baseUnit}`).join(", ");
     return (
-      <div className="space-y-1 rounded border border-amber-300 bg-amber-50 p-2 dark:border-amber-700 dark:bg-amber-950">
-        <p className="text-sm text-amber-800 dark:text-amber-300">
-          ⚠ No open {item.packUnit ?? "pack"} covers this — will open {plan.opens.length}{" "}
-          sealed {sizes}.
+      <Alert tone="warn" className="space-y-1.5">
+        <p>
+          ⚠ No open {item.packUnit ?? "pack"} covers this — will open {plan.opens.length} sealed{" "}
+          {sizes}.
           {plan.scrap.length > 0 &&
             ` Also writes off ${plan.scrap.map((s) => `${s.length} ${item.baseUnit}`).join(", ")} as scrap.`}
         </p>
         {acknowledged ? (
-          <p className="text-xs text-amber-700 dark:text-amber-400">✓ Approved</p>
+          <p className="text-xs font-bold">✓ Approved</p>
         ) : (
-          <button type="button" onClick={onAcknowledge} className={SECONDARY}>
+          <Button type="button" onClick={onAcknowledge} variant="secondary" size="sm">
             Approve opening this pack
-          </button>
+          </Button>
         )}
-      </div>
+      </Alert>
     );
   }
 
   return (
-    <p className="text-sm text-emerald-700 dark:text-emerald-400">
+    <p className="text-sm font-semibold text-ok-ink">
       ✓ {formatQuantity(item, total)} ready from stock already open
     </p>
-  );
-}
-
-function Labelled({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <label className="text-sm text-zinc-600 dark:text-zinc-400">{label}</label>
-      {children}
-    </div>
   );
 }
