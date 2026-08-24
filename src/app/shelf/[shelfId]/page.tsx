@@ -73,13 +73,14 @@ export default async function ShelfDetailPage({
         title={shelf.name}
         subtitle={
           <>
-            This map matches your physical stickers. <Badge tone="ok">green</Badge> boxes are
-            marked as easily-accessible (front-row) positions. Quantities are not stored here — a
-            box shows whatever its item&apos;s packs currently hold, so the map cannot drift out
-            of step with stock. A Fresh box shows sealed packs, an Opened box shows the individual
-            open packs placed in it, and a Recyclable box shows offcuts below the item&apos;s
-            scrap threshold. You can relabel a box&apos;s condition here as material is opened or
-            used up.
+            This map matches your physical stickers. A box&apos;s colour is its condition —{" "}
+            <Badge tone="ok">Fresh</Badge> holds sealed packs, <Badge tone="warn">Opened</Badge>{" "}
+            holds the individual open packs placed in it, and{" "}
+            <Badge tone="special">Recyclable</Badge> holds offcuts below the item&apos;s scrap
+            threshold. Boxes ringed with a ★ are easily-accessible front-row positions; empty
+            boxes are greyed out. Quantities are not stored here — a box shows whatever its
+            item&apos;s packs currently hold, so the map cannot drift out of step with stock.
+            You can relabel a box&apos;s condition here as material is opened or used up.
           </>
         }
       />

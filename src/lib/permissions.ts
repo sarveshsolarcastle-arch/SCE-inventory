@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import type { Role } from "@/generated/prisma/enums";
 
 /* -------------------------------------------------------------------------
@@ -31,6 +32,9 @@ export type Capability =
   // rewriting history — admin only
   | "stock:reverse"
   | "stock:adjust"
+  // accounts — admin only. Changing your OWN password is not a capability:
+  // every signed-in user may do it, so gating it would be wrong.
+  | "user:manage"
   // read-only visibility of stock, history and reports
   | "ledger:view";
 
@@ -48,6 +52,7 @@ const ALL: Capability[] = [
   "defect:resolve",
   "stock:reverse",
   "stock:adjust",
+  "user:manage",
   "ledger:view",
 ];
 
@@ -89,12 +94,28 @@ export class NotPermittedError extends Error {
 
 export type SessionUser = { id: string; role: Role; name?: string | null };
 
-/** Reads the signed-in user, or null. */
+/** Reads the signed-in user, or null.
+ *
+ * Deliberately re-reads the row rather than trusting the JWT. Sessions are
+ * stateless, so a token keeps asserting whatever was true when it was issued —
+ * meaning a deactivated account would keep working until its token expired, and
+ * a demoted one would keep its old powers. Both are silent: nothing looks
+ * wrong. One indexed lookup per call buys deactivation and role changes that
+ * take effect on the very next request, which is the only behaviour an admin
+ * would expect from a button labelled "deactivate".
+ */
 export async function currentUser(): Promise<SessionUser | null> {
   const session = await auth();
-  const user = session?.user as { id?: string; role?: Role } | undefined;
-  if (!user?.id || !user.role) return null;
-  return { id: user.id, role: user.role, name: session?.user?.name };
+  const claimed = session?.user as { id?: string } | undefined;
+  if (!claimed?.id) return null;
+
+  const user = await prisma.user.findUnique({
+    where: { id: claimed.id },
+    select: { id: true, name: true, role: true, isActive: true },
+  });
+  if (!user || !user.isActive) return null;
+
+  return { id: user.id, role: user.role, name: user.name };
 }
 
 /** Throws unless the signed-in user holds `capability`.

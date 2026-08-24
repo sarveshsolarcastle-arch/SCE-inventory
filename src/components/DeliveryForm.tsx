@@ -13,6 +13,8 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
 import Alert from "@/components/ui/Alert";
 import PillToggle from "@/components/ui/PillToggle";
+import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
+import { FileText, MapPin, PackagePlus, Plus } from "lucide-react";
 
 export type FormItem = {
   id: string;
@@ -148,49 +150,83 @@ export default function DeliveryForm({
     <form onSubmit={handleSubmit} className="space-y-6">
       {error && <Alert tone="danger">{error}</Alert>}
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Field label="Supplier (optional)">
-          <Input value={supplier} onChange={(e) => setSupplier(e.target.value)} />
-        </Field>
-        <Field label="Challan / invoice no. (optional)">
-          <Input value={reference} onChange={(e) => setReference(e.target.value)} />
-        </Field>
-        <Field label="Note (optional)">
-          <Input value={note} onChange={(e) => setNote(e.target.value)} />
-        </Field>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle icon={<FileText className="h-3.5 w-3.5" />} tone="info">
+            Challan details
+          </CardTitle>
+          <span className="text-xs font-semibold text-ink-subtle">All optional</span>
+        </CardHeader>
+        <CardBody>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="Supplier">
+              <Input
+                value={supplier}
+                onChange={(e) => setSupplier(e.target.value)}
+                placeholder="Who sent it"
+              />
+            </Field>
+            <Field label="Challan / invoice no.">
+              <Input
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                placeholder="e.g. CH-1042"
+              />
+            </Field>
+            <Field label="Note">
+              <Input
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Anything worth recording"
+              />
+            </Field>
+          </div>
+        </CardBody>
+      </Card>
 
-      <fieldset className="space-y-2 rounded-card border border-line p-3.5">
-        <legend className="px-1 text-sm font-semibold text-ink-muted">Destination</legend>
-        <PillToggle
-          value={destination}
-          onChange={(v) => setDestination(v)}
-          options={[
-            { value: "STORE", label: "Into the store" },
-            { value: "SITE", label: "Direct to a site" },
-          ]}
-        />
-        {destination === "SITE" && (
-          <>
-            <Select value={siteId} onChange={(e) => setSiteId(e.target.value)} required>
-              <option value="">Select a site…</option>
-              {sites.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </Select>
-            <p className="text-xs font-semibold text-ink-subtle">
-              The material never touches the store, so store stock is unchanged. It is recorded
-              against the site straight away, and the opened leftovers come back later as an
-              ordinary return.
-            </p>
-          </>
-        )}
-        <p className="text-xs font-semibold text-ink-subtle">
-          One destination per challan. A supplier splitting a shipment is two deliveries.
-        </p>
-      </fieldset>
+      <Card>
+        <CardHeader>
+          <CardTitle
+            icon={<MapPin className="h-3.5 w-3.5" />}
+            tone={destination === "SITE" ? "warn" : "ok"}
+          >
+            Destination
+          </CardTitle>
+          <span className="text-xs font-semibold text-ink-subtle">
+            {destination === "SITE" ? "Bypasses the store" : "Normal path"}
+          </span>
+        </CardHeader>
+        <CardBody className="space-y-3">
+          <PillToggle
+            value={destination}
+            onChange={(v) => setDestination(v)}
+            options={[
+              { value: "STORE", label: "Into the store" },
+              { value: "SITE", label: "Direct to a site" },
+            ]}
+          />
+          {destination === "SITE" && (
+            <>
+              <Select value={siteId} onChange={(e) => setSiteId(e.target.value)} required>
+                <option value="">Select a site…</option>
+                {sites.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </Select>
+              <Alert tone="warn" className="text-xs">
+                The material never touches the store, so store stock is unchanged. It is
+                recorded against the site straight away, and the opened leftovers come back
+                later as an ordinary return.
+              </Alert>
+            </>
+          )}
+          <p className="text-xs font-semibold text-ink-subtle">
+            One destination per challan. A supplier splitting a shipment is two deliveries.
+          </p>
+        </CardBody>
+      </Card>
 
       <datalist id="delivery-items">
         {items.map((i) => (
@@ -198,30 +234,51 @@ export default function DeliveryForm({
         ))}
       </datalist>
 
-      <div className="space-y-3">
-        {rows.map((row, index) => (
-          <DeliveryRowCard
-            key={row.key}
-            index={index}
-            row={row}
-            item={itemById.get(row.itemId)}
-            errors={rowErrors.get(activeRows.indexOf(row)) ?? []}
-            onChoose={(v) => chooseItem(row.key, v)}
-            onUpdate={(patch) => updateRow(row.key, patch)}
-            onRemove={() => setRows((prev) => prev.filter((r) => r.key !== row.key))}
-          />
-        ))}
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle icon={<PackagePlus className="h-3.5 w-3.5" />} tone="ok">
+            What arrived
+          </CardTitle>
+          <span className="text-xs font-semibold text-ink-subtle">
+            {activeRows.length} of {rows.length} filled
+          </span>
+        </CardHeader>
+        <CardBody className="space-y-3">
+          {rows.map((row, index) => (
+            <DeliveryRowCard
+              key={row.key}
+              index={index}
+              row={row}
+              item={itemById.get(row.itemId)}
+              errors={rowErrors.get(activeRows.indexOf(row)) ?? []}
+              onChoose={(v) => chooseItem(row.key, v)}
+              onUpdate={(patch) => updateRow(row.key, patch)}
+              onRemove={() => setRows((prev) => prev.filter((r) => r.key !== row.key))}
+            />
+          ))}
+          <Button
+            type="button"
+            onClick={() => setRows((p) => [...p, blankRow()])}
+            variant="secondary"
+            size="sm"
+          >
+            <Plus className="h-4 w-4" />
+            Add another line
+          </Button>
+        </CardBody>
+      </Card>
 
-      <Button type="button" onClick={() => setRows((p) => [...p, blankRow()])} variant="secondary">
-        Add row
-      </Button>
-
-      <div className="space-y-2 rounded-card border border-line p-3.5 text-sm">
-        <p className="font-semibold text-ink">
-          {activeRows.length} line{activeRows.length === 1 ? "" : "s"}
-          {destination === "SITE" && " · direct to site (store stock unchanged)"}
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-accent-soft bg-accent-soft px-4 py-3.5">
+        <div className="text-sm">
+          <p className="font-extrabold text-ink">
+            {activeRows.length} line{activeRows.length === 1 ? "" : "s"} ready
+          </p>
+          <p className="font-semibold text-ink-muted">
+            {destination === "SITE"
+              ? "Direct to site — store stock unchanged"
+              : "Into the store"}
+          </p>
+        </div>
         <Button type="submit" disabled={blocked}>
           {pending ? "Recording…" : "Record delivery"}
         </Button>
@@ -256,14 +313,37 @@ function DeliveryRowCard({
   const defective = Number(row.defectiveQty) || 0;
   const good = Math.max(0, total - defective);
 
+  // A filled row is worth seeing at a glance when the form is 6 lines long, so
+  // the number chip carries the state rather than adding another badge.
+  const filled = !!item && total > 0;
+
   return (
     <div
       className={`space-y-3 rounded-card border p-3.5 ${
-        errors.length ? "border-danger-line bg-danger-soft" : "border-line bg-surface"
+        errors.length
+          ? "border-danger-line bg-danger-soft"
+          : filled
+            ? "border-line-strong bg-surface"
+            : "border-line bg-surface-sunken"
       }`}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="text-xs font-semibold text-ink-subtle">Line {index + 1}</span>
+        <span className="flex items-center gap-2">
+          <span
+            className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-extrabold ${
+              errors.length
+                ? "bg-danger-line text-danger-ink"
+                : filled
+                  ? "bg-accent text-accent-ink"
+                  : "bg-surface text-ink-subtle"
+            }`}
+          >
+            {index + 1}
+          </span>
+          <span className="text-xs font-bold text-ink-muted">
+            {item ? item.name : "Empty line"}
+          </span>
+        </span>
         <button
           type="button"
           onClick={onRemove}

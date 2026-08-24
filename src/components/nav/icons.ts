@@ -12,6 +12,8 @@ import {
   TrendingUp,
   Recycle,
   AlertTriangle,
+  Users,
+  UserCog,
   type LucideIcon,
 } from "lucide-react";
 
@@ -28,7 +30,9 @@ export type IconName =
   | "shelf"
   | "suggestions"
   | "recycle"
-  | "defective";
+  | "defective"
+  | "users"
+  | "account";
 
 /** Icons cross the server/client boundary as strings (IconName), resolved
  * here — passing a LucideIcon function from a server component throws. */
@@ -46,4 +50,6 @@ export const ICONS: Record<IconName, LucideIcon> = {
   suggestions: TrendingUp,
   recycle: Recycle,
   defective: AlertTriangle,
+  users: Users,
+  account: UserCog,
 };

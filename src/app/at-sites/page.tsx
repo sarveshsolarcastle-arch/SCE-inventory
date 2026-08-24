@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { materialAcrossSites } from "@/lib/stock";
 import PageHeader from "@/components/ui/PageHeader";
-import { Card } from "@/components/ui/Card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
 import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
 import FilterPills from "@/components/ui/FilterPills";
+import type { BadgeTone } from "@/components/ui/tones";
+import { MapPin } from "lucide-react";
 
 /** "What is still out there, and where" — answering it used to mean opening
  * every site page in turn. Age is what turns this from a list into a pickup
@@ -74,17 +76,35 @@ export default async function AtSitesPage({
       )}
 
       <div className="space-y-4">
-        {visible.map(({ site, items }) => (
-          <Card key={site.id}>
-            <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line px-4 py-3">
-              <Link href={`/sites/${site.id}`} className="font-bold text-ink hover:text-accent">
-                {site.name}
-              </Link>
-              <span className="text-sm font-semibold text-ink-subtle">
-                {site.location ?? "no location set"} · {items.length} item
-                {items.length === 1 ? "" : "s"}
-              </span>
-            </div>
+        {visible.map(({ site, items }) => {
+          const flaggedHere = items.filter((i) => i.flagged > 0).length;
+          // The oldest thing on a site decides how loudly that site asks for a
+          // visit, so the card header carries it rather than burying it in a row.
+          const oldestHere = Math.min(
+            ...items.map((i) => (i.oldest ? +i.oldest : Infinity))
+          );
+          const siteTone = ageTone(oldestHere);
+
+          return (
+            <Card key={site.id}>
+              <CardHeader>
+                <CardTitle icon={<MapPin className="h-3.5 w-3.5" />} tone={siteTone}>
+                  <Link href={`/sites/${site.id}`} className="hover:text-accent">
+                    {site.name}
+                  </Link>
+                </CardTitle>
+                <span className="flex flex-wrap items-center gap-2">
+                  {flaggedHere > 0 && (
+                    <Badge tone="info">
+                      {flaggedHere} awaiting collection
+                    </Badge>
+                  )}
+                  <span className="text-sm font-semibold text-ink-subtle">
+                    {site.location ?? "no location set"} · {items.length} item
+                    {items.length === 1 ? "" : "s"}
+                  </span>
+                </span>
+              </CardHeader>
 
             <TableWrap>
               <Table>
@@ -116,8 +136,14 @@ export default async function AtSitesPage({
                           <span className="text-ink-subtle">—</span>
                         )}
                       </Td>
-                      <Td className="text-ink-subtle">
-                        {entry.oldest ? describeAge(entry.oldest) : "—"}
+                      <Td>
+                        {entry.oldest ? (
+                          <Badge tone={ageTone(+entry.oldest)} variant="outline">
+                            {describeAge(entry.oldest)}
+                          </Badge>
+                        ) : (
+                          <span className="text-ink-subtle">—</span>
+                        )}
                       </Td>
                     </Tr>
                   ))}
@@ -125,7 +151,8 @@ export default async function AtSitesPage({
               </Table>
             </TableWrap>
           </Card>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -137,4 +164,15 @@ function describeAge(from: Date): string {
   if (days === 1) return "1 day";
   if (days < 60) return `${days} days`;
   return `${Math.floor(days / 30)} months`;
+}
+
+/** Age is the whole point of this page — it is what says whether a detour is
+ * worth making — so it is shown as a colour, not just a number. The thresholds
+ * are deliberately coarse: this is a nudge toward a trip, not an SLA. */
+function ageTone(from: number): BadgeTone {
+  if (!Number.isFinite(from)) return "neutral";
+  const days = Math.floor((Date.now() - from) / 86_400_000);
+  if (days >= 30) return "danger";
+  if (days >= 7) return "warn";
+  return "ok";
 }
