@@ -23,6 +23,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const valid = await bcrypt.compare(password, user.passwordHash);
         if (!valid) return null;
 
+        // A deactivated account is refused here as well as in currentUser().
+        // Checked AFTER the password compare on purpose: failing earlier would
+        // answer faster for a deactivated account than for a wrong password,
+        // which tells an outsider which addresses are real.
+        if (!user.isActive) return null;
+
         return { id: user.id, name: user.name, email: user.email, role: user.role };
       },
     }),

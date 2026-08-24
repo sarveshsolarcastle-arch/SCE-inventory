@@ -17,6 +17,7 @@ const ROUTE_CAPABILITIES: [prefix: string, capability: Capability][] = [
   ["/transactions/new", "stock:issue"],
   ["/deliveries/new", "delivery:record"],
   ["/dispatches/new", "stock:issue"],
+  ["/users", "user:manage"],
 ];
 
 function requiredCapability(pathname: string): Capability | null {

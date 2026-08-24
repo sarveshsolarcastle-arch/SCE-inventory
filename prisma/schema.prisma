@@ -87,6 +87,11 @@ model User {
   email          String          @unique
   passwordHash   String
   role           Role            @default(EMPLOYEE)
+  // Accounts are deactivated, never deleted: every Transaction carries a
+  // userId, and that trail is the answer to the original brief's third
+  // problem — accountability for material going to sites. Deleting a leaver
+  // would punch holes in it.
+  isActive       Boolean         @default(true)
   createdAt      DateTime        @default(now())
   transactions   Transaction[]
   defectiveItems DefectiveItem[]

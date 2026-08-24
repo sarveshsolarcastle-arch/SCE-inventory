@@ -80,4 +80,12 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/defective", label: "Defective", capability: "ledger:view", icon: "defective" },
     ],
   },
+  {
+    label: "Settings",
+    links: [
+      // Everyone can reach their own account; only admins see Accounts.
+      { href: "/account", label: "Your account", capability: null, icon: "account" },
+      { href: "/users", label: "Accounts", capability: "user:manage", icon: "users" },
+    ],
+  },
 ];

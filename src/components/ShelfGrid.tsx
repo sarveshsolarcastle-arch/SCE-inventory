@@ -6,6 +6,7 @@ import Badge from "@/components/ui/Badge";
 import { Select } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
 import { BOX_TYPE_TONE } from "@/components/ui/tones";
+import { Star } from "lucide-react";
 
 type BoxType = "FRESH" | "OPENED" | "RECYCLABLE";
 
@@ -14,6 +15,21 @@ const BOX_TYPE_LABEL: Record<BoxType, string> = {
   OPENED: "Opened",
   RECYCLABLE: "Recyclable",
 };
+
+/* The cell background carries BOX TYPE, and front-row is a ring plus a star.
+ * They used to share one channel — background meant front-row while the badge
+ * meant box type — so an amber "Opened" badge sat on a green background and
+ * neither signal could be read at a glance. Written out in full because
+ * Tailwind cannot see a class name built by string interpolation. */
+const CELL_OCCUPIED: Record<BoxType, string> = {
+  FRESH: "border-ok-line bg-ok-soft",
+  OPENED: "border-warn-line bg-warn-soft",
+  RECYCLABLE: "border-special-line bg-special-soft",
+};
+
+/** An empty box still has a condition, but it should recede so the boxes
+ * holding something are what the eye lands on. */
+const CELL_EMPTY = "border-line bg-surface-sunken";
 
 type SlotData = {
   id: string;
@@ -93,17 +109,31 @@ export default function ShelfGrid({
                 <div key={slot.id} className="relative">
                   <button
                     onClick={() => isAdmin && setOpenSlotId(isOpen ? null : slot.id)}
-                    className={`flex h-24 w-full flex-col items-center justify-center gap-0.5 rounded-control border p-1 text-center text-xs ${
-                      slot.isFrontRow
-                        ? "border-ok-line bg-ok-soft"
-                        : "border-line-strong bg-surface"
-                    }`}
+                    className={`relative flex h-24 w-full flex-col items-center justify-center gap-0.5 rounded-control border p-1 text-center text-xs transition-shadow hover:shadow-card ${
+                      slot.item ? CELL_OCCUPIED[slot.boxType] : CELL_EMPTY
+                    } ${slot.isFrontRow ? "ring-2 ring-accent" : ""}`}
                   >
-                    <span className="font-mono text-[10px] text-ink-subtle">{slot.tagCode}</span>
-                    <Badge tone={BOX_TYPE_TONE[slot.boxType]} className="px-1.5 py-0 text-[9px]">
+                    <span className="absolute top-1 left-1.5 font-mono text-[10px] text-ink-subtle">
+                      {slot.tagCode}
+                    </span>
+                    {slot.isFrontRow && (
+                      <Star
+                        className="absolute top-1 right-1.5 h-3 w-3 fill-accent text-accent"
+                        aria-label="Front-row position"
+                      />
+                    )}
+                    <Badge
+                      tone={BOX_TYPE_TONE[slot.boxType]}
+                      variant={slot.item ? "outline" : "soft"}
+                      className="mt-2 px-1.5 py-0 text-[9px]"
+                    >
                       {BOX_TYPE_LABEL[slot.boxType]}
                     </Badge>
-                    <span className="line-clamp-2 font-semibold text-ink">
+                    <span
+                      className={`line-clamp-2 font-semibold ${
+                        slot.item ? "text-ink" : "text-ink-subtle"
+                      }`}
+                    >
                       {slot.item?.name ?? "Empty"}
                     </span>
                     {slot.contents && (
