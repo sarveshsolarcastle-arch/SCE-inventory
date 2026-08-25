@@ -481,9 +481,14 @@ now **Part A (hosted pilot) and Part B (offline production)**.
 cannot silently point `DATABASE_URL` at nothing, a second drive as the backup, and the
 cutover recount.
 
-**Two decisions still open**: free or paid tiers for Part A (real client data is on it), and
-whether Part B is reachable from outside the office at all. Both are written up in
-REDESIGN-PLAN.md under "Open decisions" — **LAN-only is the default until decided.**
+**Decided 2026-08-25: free tiers for Part A.** Turso's free-tier cross-tenant exposure risk
+and Vercel Hobby's non-commercial restriction are therefore **accepted, not mitigated** —
+with real client data on it. Both are monthly subscriptions, so either can be switched on
+mid-pilot if the risk stops feeling theoretical. See REDESIGN-PLAN.md for what each is.
+
+**Two decisions still open**: whether Part B is reachable from outside the office at all
+(**LAN-only is the default until decided**), and how long Part A runs before the cutover —
+the second has never been discussed and is the one most likely to drift.
 
 > **⚠️ Part B invariant: exactly one PC runs the app at a time, and physical possession of
 > the drive is what enforces it.** A database on a drive plugged into one machine cannot be
