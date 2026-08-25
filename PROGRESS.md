@@ -1,15 +1,19 @@
 # Inventory Management System — Progress Handover
 
-Last updated: 2026-08-23 (**Phase 8 started — accounts and deploy prerequisites** — see §9)
+Last updated: 2026-08-25 (**Phase 8 re-planned into a hosted pilot + offline production** —
+see §9)
 
 > **§1-§8 describe the code as it stands today.** The six-phase functional redesign and
 > Phase 7 (UI overhaul) are **complete**. **Phase 8 (hosting) is in progress**: account
 > management, the `DATABASE_URL` fail-fast and the build prerequisites landed 2026-08-23,
-> but **the SQLite→Postgres migration has not started** and nothing is deployed. §9 records
-> what each phase delivered, and §10 is the handover guide.
+> but **no database work has started** and nothing is deployed. §9 records what each phase
+> delivered, and §10 is the handover guide.
 >
-> **One recorded decision has been reversed** — hosting is no longer "SQLite on a real
-> server". See §9's Phase 8 entry for why the premise changed.
+> **The hosting requirement has changed twice, and decisions were reversed each time.** It is
+> now a temporary **hosted pilot** (Part A) followed by permanent **offline** production on a
+> drive carried between office PCs (Part B). SQLite stays throughout. Read §9's Phase 8 entry
+> and REDESIGN-PLAN.md's Phase 8 section together before touching any of it — several
+> decisions in this repo are marked superseded, and one was reversed and then partly restored.
 
 ## 1. Purpose
 
@@ -48,8 +52,8 @@ All core flows below were manually tested in a running dev server and confirmed 
 | Site lifecycle: consumption, transfers, pickup flags, cross-site view | ✅ Done (Phase 6) |
 | UI overhaul + mobile web | ✅ Done (Phase 7) — light theme + user dark toggle, grouped sidebar, `src/components/ui/` primitives |
 | User accounts | ✅ Done (Phase 8) — admin `/users` page, self-service `/account`, deactivation |
-| Deployment | 🔨 In progress (Phase 8) — buildable from a clean checkout; **not deployed**, Postgres migration pending |
-| Database backups | ⚠️ Manual copies in `backups/` only — no schedule |
+| Deployment | 🔨 In progress (Phase 8) — buildable from a clean checkout; **not deployed**. Plan: hosted pilot (Turso + Vercel) → offline production on a carried drive |
+| Database backups | ⚠️ Manual copies in `backups/` only — no schedule. Part A adds an automated daily dump; Part B needs a second drive |
 
 ## 3. Tech Stack
 
@@ -231,7 +235,7 @@ backups/                    manual dev.db copies (gitignored)
 
 ## 7. Known Gaps / Suggested Next Steps
 
-- **Not deployed yet** — local-only for now. **Decided: a real server behind real HTTPS on a proper domain, not serverless.** SQLite therefore stays and **no code changes are needed** for hosting. (Serverless would have forced a Postgres port: new datasource provider, a swapped driver adapter, and every migration regenerated, since the existing SQL is SQLite-specific — `PRAGMA`, the table-rebuild pattern, `TEXT` enums. Avoided.) See §9 for the deployment checklist.
+- **Not deployed yet.** The plan is now **two parts**: a temporary hosted pilot on Turso + Vercel carrying **real stock data**, then permanent **offline** production on a drive carried between 2-3 office PCs. **SQLite stays throughout** — `provider = "sqlite"` never changes, and Turso is SQLite-compatible, so every existing migration remains valid and only the Prisma adapter is swapped. **No data crosses the cutover**: stock is physically recounted into an Excel sheet and re-entered as an opening delivery. The full plan, including what was reversed and why, is in [REDESIGN-PLAN.md's Phase 8 section](REDESIGN-PLAN.md) — read it before changing any of it. (This bullet previously recorded "a real server behind real HTTPS, SQLite therefore stays, no code changes". That conclusion happens to survive; its premise does not.)
 - **Change the seeded passwords** — all three accounts (`admin`/`finance`/`employee`), not just admin. There is now a self-service flow at `/account` and an admin reset at `/users`, so this no longer needs a code change — but the seeded passwords are still in place.
 - **⚠️ Test coverage stops at the pure modules, and the reason for deferring the rest has expired.** The 70 tests cover [allocation.ts](src/lib/allocation.ts), [corrections.ts](src/lib/corrections.ts), [matching.ts](src/lib/matching.ts), [dispatchPaste.ts](src/lib/dispatchPaste.ts), [siteBalance.ts](src/lib/siteBalance.ts) and [activeHref.ts](src/components/nav/activeHref.ts). **Everything that writes to the database has none**: [packs.ts](src/lib/packs.ts), `recordDispatch`, `recordDelivery`, and the whole site lifecycle. The subtlest code in the project is in there — `commitAllocation` resolves the planner's synthetic `new:<i>` pack ids onto rows it creates inside the same transaction. This was deferred on the grounds that "the app is not in real use until the remaining phases land"; **they have all landed**, and the untested surface grew with each one. This is now the single most valuable outstanding item.
 - ✅ **Corrections exist** (Phase 3): a movement can be reversed — restoring the exact prior pack state, and refusing when the packs have moved on since — and a physical count can be recorded as an `ADJUSTMENT` with a mandatory reason. Both are `ADMIN`-only. A whole dispatch can be reversed atomically (Phase 4).
@@ -433,18 +437,30 @@ nobody available to administer anything. That exposed a single point of failure:
 runs on one employee's PC, that person being on leave takes the app **and the database**
 with them.
 
-**Two decisions, both recorded in full in
-[REDESIGN-PLAN.md's Phase 8 section](REDESIGN-PLAN.md)** — read it before changing either:
+**Then on 2026-08-25 it changed again, and this one reshaped the phase.** The client prefers
+**secure offline storage even at the cost of restricted access**. Hosting is therefore not
+the destination but a **testing period**; production is a machine in the office. Phase 8 is
+now **Part A (hosted pilot) and Part B (offline production)**.
+
+**Four decisions, all recorded in full in
+[REDESIGN-PLAN.md's Phase 8 section](REDESIGN-PLAN.md)** — read it before changing any:
 
 1. **Putting the SQLite file on Google Drive was rejected.** It corrupts the database:
    sync clients ignore SQLite's file locks, the `-wal`/`-shm` sidecars sync out of order,
    uploads catch mid-write pages, and two PCs produce `data (1).db` rather than a merge.
-   Silent, and fatal to a ledger.
-2. **SQLite → managed Postgres, reversing the recorded "real server, SQLite stays"
-   decision.** That decision priced the port as "every migration regenerated", which
-   assumed preserving history — but there is no production data, so you baseline instead.
-   The app has zero raw SQL and no SQLite-specific column types, so it is already
-   provider-agnostic. This also dissolves the reason serverless was rejected.
+   Silent, and fatal to a ledger. Drive keeps a valid role as the destination for **daily
+   dump files**, which are static and safe to sync — that is not a contradiction.
+2. **SQLite → managed Postgres was decided on 2026-08-23 and superseded on 2026-08-25.**
+   It was right while hosting was permanent. With production offline on a file, Postgres
+   would mean SQLite → Postgres → SQLite: two ports to arrive where we started, both
+   through the untested write path.
+3. **`provider = "sqlite"` end to end.** Turso (libSQL) for Part A — SQLite-compatible, so
+   migrations stay valid and only the adapter changes (`@prisma/adapter-libsql`, verified
+   at 7.9.1, matching the installed Prisma). A plain file for Part B.
+4. **No data crosses the cutover.** Stock is counted physically, written to Excel, and
+   entered as an opening **delivery** — *not* an adjustment, which cannot create stock on a
+   fresh database. The recount is against physical reality, so pilot errors cannot propagate
+   into production.
 
 **Built and committed** (`3e56f28`):
 
@@ -456,8 +472,24 @@ with them.
   role changes take effect immediately rather than at token expiry.
 - **Deployability** — `npm ci && npm run build` previously failed on a clean checkout.
 
-**Still to do**: the Postgres migration itself (blocked on provisioning a database), a
-nightly `pg_dump` with a verified restore, changing the seeded passwords, and DB-layer tests.
+**Still to do — Part A**: provision Turso and swap the adapter, deploy to Vercel with a fresh
+`AUTH_SECRET` and `AUTH_TRUST_HOST=true`, change the seeded passwords, and set up the
+**automated** daily dump to Drive with dated filenames and one verified restore.
+
+**Still to do — Part B**: a self-contained drive (built app + `node_modules` + portable Node
++ the database + `start.bat`), the path computed from `%~dp0` so changing drive letters
+cannot silently point `DATABASE_URL` at nothing, a second drive as the backup, and the
+cutover recount.
+
+**Two decisions still open**: free or paid tiers for Part A (real client data is on it), and
+whether Part B is reachable from outside the office at all. Both are written up in
+REDESIGN-PLAN.md under "Open decisions" — **LAN-only is the default until decided.**
+
+> **⚠️ Part B invariant: exactly one PC runs the app at a time, and physical possession of
+> the drive is what enforces it.** A database on a drive plugged into one machine cannot be
+> opened by a second. That stops being true the moment someone shares the drive over the
+> network to be helpful — which is the Google Drive corruption reached by another route.
+> **Never share the drive.** Stop the app before ejecting, too.
 
 #### Server checklist — still current
 
@@ -584,17 +616,19 @@ Everything downstream assumes these. Breaking one corrupts stock silently rather
 ### What to do next
 
 **Phases 1-7 are built. Phase 8 is in progress** — accounts, the `DATABASE_URL` fail-fast
-and the build prerequisites landed 2026-08-23; **the Postgres migration has not started**
-and is blocked on someone provisioning a database, since that requires creating an account.
+and the build prerequisites landed 2026-08-23. The database work has not started.
 
-**The immediate next step**, once a database exists: swap the provider and adapter, baseline
-the migrations, reseed. See [REDESIGN-PLAN.md's Phase 8 section](REDESIGN-PLAN.md) — it
-records why this reverses an earlier decision, so read it before re-litigating.
+**The immediate next step (Part A)**: provision a Turso database, swap the adapter to
+`@prisma/adapter-libsql`, deploy to Vercel, change the seeded passwords, and set up the
+automated daily dump. The provider, schema and migrations are all untouched. See
+[REDESIGN-PLAN.md's Phase 8 section](REDESIGN-PLAN.md) — it records what was reversed,
+superseded and re-derived, so read it before re-litigating any of it.
 
-**Neither Phase 7 nor Phase 8 closed the biggest gap.** That gap is below, and it is now the
-top of the list — the app looks finished and is about to get real users, which makes it far
-more likely someone puts real stock in before the untested write path is covered. The
-Postgres switch touches that exact path.
+**⚠️ The biggest gap is now live, not hypothetical.** Part A runs the client's **real stock**
+through the untested write path, with **no parallel record to catch it** — the Excel sheet is
+written once at cutover, not kept alongside. The cutover recount bounds the damage (production
+starts from a physical count, so pilot errors cannot propagate) but does not prevent it.
+Mid-pilot spot counts on two or three high-movement items are the only check in place.
 
 **Before this goes into real use, cover the DB layer with tests.** This is still the single
 most valuable outstanding item, and the justification for deferring it has run out. The
@@ -608,9 +642,11 @@ database has none**.
 The other pre-live items, in rough order of cost-to-skip:
 
 1. **A scheduled backup** — cheapest thing in this document, most expensive to have skipped.
-   Currently manual copies only. After the Postgres switch this becomes a nightly `pg_dump`
-   to somewhere independent of the provider, **with a restore actually tested once**; an
-   untested backup is a guess. A dump file on Google Drive is fine — a *live* database is not.
+   Currently manual copies only. In Part A this is an **automated** daily dump to Drive with
+   dated filenames, kept ~30; in Part B it is a second drive, swapped or synced. Either way,
+   **test a restore once** — an untested backup is a guess — and do not leave it as a person's
+   end-of-day habit, which lapses silently. A dump file on Google Drive is fine; a *live*
+   database is not.
 2. **Change the seeded passwords** before anyone else has an account. This no longer needs a
    code change: `/account` for your own, `/users` for an admin reset.
 3. The rest of Phase 8's server checklist (§9) — `AUTH_SECRET`, `AUTH_TRUST_HOST`, a process

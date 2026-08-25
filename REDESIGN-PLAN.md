@@ -2,7 +2,8 @@
 
 > **This is the working plan for phases 1-8. Phases 1-7 are built; phase 8 (hosting) is
 > IN PROGRESS — accounts, the DATABASE_URL fail-fast and the build prerequisites have
-> landed; the Postgres migration has not.**
+> landed; no database work has. Re-planned 2026-08-25 into a temporary hosted pilot (Part A)
+> and permanent offline production (Part B), with SQLite kept throughout.**
 > Read [PROGRESS.md](PROGRESS.md) first for current state, then this for what to build next.
 >
 > Everything here was decided in conversation with the user over a long session. **The
@@ -55,9 +56,10 @@ does not physically have, and reordering would be decided against stock sitting 
 > overhaul + mobile web) is built and verified (2026-08-21).**
 >
 > Phase 7's design decisions and its "as built" note are recorded in the **Phase 7** section
-> at the end of this file. **Phase 8 (hosting) is in progress as of 2026-08-23** — see the
-> Phase 8 section, which also records the SQLite→Postgres reversal and why the premise
-> behind "Hosting: SETTLED" no longer holds.
+> at the end of this file. **Phase 8 (hosting) is in progress; re-planned 2026-08-25** into
+> two parts — a hosted pilot on real data, then permanent offline production on a carried
+> drive. See the Phase 8 section, which records how the requirement changed **twice** and
+> which database decisions were reversed, superseded, or re-derived as a result.
 >
 > Each *built* phase has an "as built" note recording where reality diverged from this plan —
 > read it before changing that phase's code.
@@ -71,7 +73,7 @@ does not physically have, and reordering would be decided against stock sitting 
 | 5 | ✅ **DONE** — delivery entry (finance), to the store **or direct to a site** |
 | 6 | ✅ **DONE** — site material lifecycle: consumption, pickup, transfers, cross-site view |
 | 7 | ✅ **DONE** — UI overhaul + mobile web; full record at the end of this file |
-| 8 | 🔨 **IN PROGRESS** — accounts, `DATABASE_URL` fail-fast and build prerequisites done; Postgres migration pending |
+| 8 | 🔨 **IN PROGRESS** — accounts, `DATABASE_URL` fail-fast and build prerequisites done; **Part A** (Turso + Vercel pilot) and **Part B** (offline, carried drive) both pending |
 
 ## Why 7-8 were deferred, and what has changed since
 
@@ -117,11 +119,17 @@ server actions as thin wrappers. A redesign then touches only markup.
 - `<datalist>` typeahead works on Android Chrome; no replacement needed.
 - Optional: a web app manifest makes it installable to the home screen.
 
-### Hosting: SETTLED — a real server with HTTPS ⚠️ SUPERSEDED 2026-08-23
+### Hosting: SETTLED — a real server with HTTPS ⚠️ SUPERSEDED 2026-08-23, partly restored 2026-08-25
 
-> **This decision has been reversed.** The reasoning below still explains why phases 1-7
-> were free to assume SQLite, so it is kept — but the conclusion no longer holds. See
-> **Phase 8** at the end of this file for what replaced it and why the premise changed.
+> **Reversed once, then half of it came back — read both steps or the history looks
+> incoherent.** On 2026-08-23 this was reversed outright in favour of managed Postgres. On
+> 2026-08-25 the requirement changed again (production is *offline*, hosting is only a
+> testing period), which **restores this section's conclusion that SQLite stays** — but for
+> an entirely different reason than the one given below, and *not* its "real server with
+> HTTPS" premise, which remains dead.
+>
+> The reasoning below still explains why phases 1-7 were free to assume SQLite, so it is
+> kept. See **Phase 8** at the end of this file for the decision actually in force.
 
 Decided with the user: a proper server behind real HTTPS, **not serverless**.
 
@@ -1533,10 +1541,12 @@ recorded here.
 
 # Phase 8 — Hosting 🔨 IN PROGRESS
 
-Planned 2026-08-22; first three parts built and committed 2026-08-23 (`3e56f28`). The
-database migration has not started.
+Planned 2026-08-22; first three parts built and committed 2026-08-23 (`3e56f28`).
+**Re-planned 2026-08-25**, when the requirement changed a second time. The phase now has
+two parts — **A: a hosted pilot, on real data, temporary. B: offline production in the
+office, permanent.** Neither database step has started.
 
-## What changed the requirement
+## What changed the requirement — twice
 
 Phase 8 was always "put it on a server". The requirement that actually arrived was
 different: **other people in the office need to use it** — under 10 users, office hours,
@@ -1544,6 +1554,15 @@ on the PCs they already have, with nobody available to administer a server.
 
 That surfaced a real single point of failure the user named precisely: if the app runs on
 one employee's PC, that person being on leave takes the app *and the database* with them.
+
+**Then it changed again on 2026-08-25, and this one is load-bearing.** The client prefers
+**secure offline storage even at the cost of restricted access**. So hosting is not the
+destination — it is a **testing period**. Production is a machine in the office that never
+faces the public internet.
+
+That single fact re-prices every database decision below, because a hosted database went
+from *permanent home* to *temporary venue*. Read the two sections that follow together:
+the first was right for the premise it had, and the second is what replaced it.
 
 ## Rejected: the SQLite file on Google Drive
 
@@ -1561,35 +1580,57 @@ one to have twice:
   named `data (1).db`. A day of stock movements disappears with nothing raised anywhere.
 
 **The diagnosis was right though, and the fix keeps it**: decoupling the database from any
-one machine is correct. The mechanism just has to be a database that speaks a *network
-protocol* rather than a file that gets *copied*. Drive keeps a valid role — as the
-destination for nightly `pg_dump` **backup files**, which are static and perfectly safe there.
+one machine is correct. What the two parts do *not* share is the mechanism. Part A uses a
+database that speaks a **network protocol** instead of a file that gets copied. Part B keeps
+the file but moves it onto a **drive that is physically carried**, so exactly one machine can
+open it at a time — see Part B's invariant.
 
-## Reversed: SQLite → managed Postgres
+Drive keeps a valid role either way: as the destination for **daily dump files**, which are
+static, closed, and perfectly safe to sync. The rejection above is about a *live* database,
+not a backup artifact — worth stating plainly, because "Drive rejected" and "Drive used for
+backups" otherwise read as a contradiction.
 
-This contradicts "Hosting: SETTLED" above, deliberately. **The premise changed, so the
-conclusion was re-derived rather than inherited.**
+## Reversed, then superseded: SQLite → managed Postgres
 
-That decision priced the Postgres port as "every migration regenerated". That assumed
-*preserving migration history* — but the database holds only test data and the docs already
-said to reseed before real stock. With no production data you **baseline** instead: delete
-the migrations, generate one `init`. Verified facts that make the port small:
+**This decision is no longer in force.** It is kept in full because it was correct for the
+premise it had, and because the next person will otherwise re-derive it.
+
+The reasoning was: the "SQLite stays" decision priced the Postgres port as "every migration
+regenerated", which assumed *preserving migration history* — but with no production data you
+**baseline** instead: delete the migrations, generate one `init`. Verified facts that made
+the port small, and which remain true:
 
 - **Zero raw SQL** in app code — no `$queryRaw`/`$executeRaw` outside the generated client.
 - **No SQLite-specific column types** — no `@db.` annotations, no `Decimal`/`Bytes`/`Json`.
 - 8 enums, which Prisma maps to native Postgres enums with no schema text change.
 
-Note this also dissolves the *reason* serverless was rejected — it was rejected **because**
-it forced Postgres. That objection no longer applies.
+**What killed it: production is offline, on a file.** Postgres for the pilot would mean
+SQLite → Postgres → SQLite — **two ports to arrive where we started**, both running straight
+through the write path that has no test coverage. The port being individually cheap does not
+make doing it twice sensible.
 
-**Architecture: the database is hosted, the app is stateless.** The database is the only
-thing that must never be lost; the app is replaceable. Splitting them that way means any
-office PC can run the app — several can run it at once safely, which SQLite could never
-have allowed — and moving the app to a host later carries no data risk.
+Postgres remains the right answer if the client ever chooses to stay hosted. Everything
+above still applies if that happens.
 
-Two trade-offs accepted, not overlooked: **the app is down if office internet is down**
-(the price of the durability the user asked for), and **free tiers can change terms**,
-which is why the nightly dump is not optional.
+## In force: `provider = "sqlite"` end to end
+
+**Turso (libSQL) for the pilot.** It is SQLite-compatible, so the datasource provider never
+changes and **every existing migration in `prisma/migrations/` stays valid** — no
+regeneration, no baseline, no dialect change. Verified: `@prisma/adapter-libsql` publishes
+**7.9.1**, matching the installed Prisma exactly.
+
+The code change is the adapter alone — `@prisma/adapter-better-sqlite3` →
+`@prisma/adapter-libsql` in [prisma.ts](src/lib/prisma.ts) and [seed.ts](prisma/seed.ts) —
+because `resolveDatabaseUrl()` already isolates the URL. Confirm the constructor against the
+package's own types rather than from memory, per AGENTS.md.
+
+**Then production is a file on a drive in the office**, and the pilot's adapter is swapped
+back. The cutover is not a migration at all — see "No data crosses the cutover" below.
+
+Trade-offs accepted, not overlooked: **the pilot is down if office internet is down** (it is
+a pilot), **free tiers can change terms** (which is why the daily dump is not optional), and
+`better-sqlite3` is synchronous where libSQL is async — Prisma abstracts that, but it is the
+kind of difference that surfaces at the edges, so Part A is where to watch for it.
 
 ## Built (2026-08-23)
 
@@ -1618,19 +1659,151 @@ deactivate yourself, or deactivate the last active admin.
 can still seed. **Regenerate the lockfile when moving deps between sections**: `npm ci`
 refuses a package.json/lock mismatch outright, so a stale lock breaks the deploy at step one.
 
-## Remaining
+## Part A — the hosted pilot (Turso + Vercel)
 
-1. **The Postgres migration** — blocked on the user provisioning a database, since that
-   needs an account. Swap `provider`, swap the adapter for **`@prisma/adapter-pg`** (verified
-   present at 7.9.1; confirm the constructor against the package's own types, per AGENTS.md),
-   baseline the migrations, reseed. Dropping `better-sqlite3` also removes a **native
-   module**, which makes deployment simpler: no per-platform rebuild.
-2. **Nightly `pg_dump`** to a location independent of the provider. Verify a restore once —
-   an untested backup is a guess.
-3. **Change the seeded passwords**, still `admin123` / `finance123` / `employee123`.
-4. **DB-layer test coverage.** Still the largest outstanding risk, and the migration touches
-   exactly that untested write path. The 70 tests are all pure and **will pass unchanged
-   after the switch while proving nothing about it**.
+Temporary, and it carries **real stock data** — the client is trialling the app on their
+actual inventory, not fixtures. That is the decision everything else in Part A answers to.
+
+1. **Provision a Turso database.** Swap the adapter to `@prisma/adapter-libsql` in
+   [prisma.ts](src/lib/prisma.ts) and [seed.ts](prisma/seed.ts). Provider, schema and
+   migrations are untouched. `DATABASE_URL` plus an auth token; `resolveDatabaseUrl()`
+   already refuses to start without the URL.
+2. **Deploy to Vercel.** `AUTH_TRUST_HOST=true`, a **fresh `AUTH_SECRET`** (not the dev one),
+   and **change the three seeded passwords** before anyone else has access — they are still
+   `admin123` / `finance123` / `employee123`, and `/users` plus `/account` now exist to do it
+   without a code change.
+3. **Daily automated dump to Google Drive.** Automated, not a person's end-of-day habit — a
+   manual daily step during a pilot lapses within weeks, silently. **Dated filenames**
+   (`inventory-2026-08-25.sql`), keep ~30; a single overwritten `backup.sql` faithfully
+   replicates a corruption you have not noticed yet. **Restore one before relying on it.**
+4. **Spot-count two or three high-movement items mid-pilot** — the wire and the screws. Ten
+   minutes. This is the only independent check on the untested write path during Part A (see
+   "Rejected" below: there is no parallel record), and a systematic pack-handling bug shows
+   up on cut-and-opened items first.
+
+**Known and accepted:** Turso's free tier archives a database after 10 days idle — moot
+under daily use, and reversible with `turso group unarchive`. More seriously, Turso's
+2023-12-04 incident caused **data loss *and* cross-tenant exposure in free-tier databases**,
+triggered by free-tier scale-to-zero. The daily dump covers the loss half; nothing covers the
+exposure half. Vercel's Hobby plan is **non-commercial only**, and a client's live inventory
+is commercial use — the exposure is account termination taking the deployment with it. Both
+are answered by the paid tiers (~$25/mo total, ending at cutover). **Undecided — see below.**
+
+## Part B — offline production, on a carried drive
+
+The permanent home. One drive, moved between 2-3 office PCs so a missing employee does not
+take the system with them.
+
+**On the drive, self-contained** so the spare machines need no setup:
+
+- the built app (`.next`, `node_modules`, `package.json`)
+- the SQLite database file
+- **portable Node.js** — the Windows `.zip` build, which runs from any path
+- `start.bat`, the only sanctioned way to run it
+
+**Four things that must be right:**
+
+1. **Drive letters change between machines** (D: here, E: there). `start.bat` must compute
+   the database path from its own location (`%~dp0`), never a hardcoded letter. This failure
+   is invisible to [databaseUrl.ts](src/lib/databaseUrl.ts) — the variable *is* set, just
+   pointing nowhere, which is the exact class of silent failure Phase 8 was opened to remove.
+2. **INVARIANT: exactly one PC runs it at a time — and physical possession enforces this.**
+   A database that exists only on a drive plugged into one machine cannot be opened by a
+   second. That is structural, not a rule anyone has to remember. **It stops being true the
+   moment someone shares the drive over the network to be helpful** — which is the same
+   corruption as the Google Drive rejection above, reached by a different route. Never share
+   the drive.
+3. **Stop the app before ejecting.** Unplugging mid-write is the one thing that can corrupt
+   the file.
+4. **One drive is one copy.** A second drive, swapped or synced daily, is not optional — it
+   is the offline equivalent of Part A's dump. Prefer an **external SSD over a spinning
+   HDD**: faster, and no moving parts to damage in something carried between desks.
+
+**LAN access needs no code changes.** `next start`, a Windows Firewall rule for the port,
+other PCs at `http://<host-ip>:3000`, and `AUTH_TRUST_HOST=true` — NextAuth v5 otherwise
+builds wrong callback URLs for a non-localhost host. Note that over plain `http://` the
+session cookie cannot carry the `Secure` flag; acceptable on a trusted office network.
+
+**Reaching it from outside the office is UNDECIDED — see below.**
+
+## No data crosses the cutover
+
+There is no migration between Part A and Part B. **Pilot data is abandoned deliberately.**
+On the last day, stock is counted physically, written into an Excel file, and typed into a
+fresh database.
+
+This is better than migrating, for a reason worth keeping: the cutover count is against
+**physical reality, not the app's belief about it**. So whatever the untested write path got
+wrong during Part A dies at cutover instead of propagating into production. It bounds the
+pilot's risk to the pilot. What is lost is the pilot's transaction ledger — accepted, since
+a testing period's history is not worth a data migration.
+
+**⚠️ Opening stock cannot be entered with `adjustStock`.** This was checked, not assumed.
+`countRows` in [items/[id]/page.tsx:56](src/app/items/[id]/page.tsx:56) is built entirely
+from **existing** `packStock` and `openPacks` rows, so on a fresh database the form has
+nothing to render and says so: *"Nothing in stock to count. Record a stock-in first."* And in
+[corrections.ts:211](src/lib/actions/corrections.ts:211) open packs are keyed by existing
+pack id — updated or deleted, never created. **Adjustment corrects stock that exists; it
+cannot conjure it.**
+
+**Opening stock enters as a Delivery.** [deliveries.ts:26](src/lib/actions/deliveries.ts:26)
+takes `packSize` / `packCount` / `loose` per line, and the pack size **may be new to the
+item** — which is exactly the opening-balance case. This also gives better provenance:
+stock arrives as a real `STOCK_IN` with a delivery behind it, consistent with the Phase 5
+decision to remove starting-stock-at-creation *because* it wrote `currentStock` with no
+transaction behind it.
+
+**The cutover Excel is a stocktake, not an export.** Totals cannot be re-entered — the app
+stores pack structure, and the allocator works on it. Per item:
+
+| SKU | packSize | packCount | loose |
+|---|---|---|---|
+| WIRE-2.5 | 400 | 5 | 0 |
+| WIRE-2.5 | 600 | 1 | 0 |
+| WIRE-2.5 | — | 0 | 30 |
+
+Two traps: **one line creates one open pack**, so three offcuts of 30/50/120 m are three
+lines, not one line of 200 m — collapsing them destroys the distinction open packs exist to
+preserve. And **offcuts at or below `scrapThreshold` land in the recycle list on arrival**,
+which is correct but looks like a bug on cutover day.
+
+The same activity is the first run of the maintenance-day count, if that feature lands first.
+
+## Rejected alternatives (Phase 8 re-plan, 2026-08-25)
+
+- **SQLite → Postgres → SQLite.** Two ports to end where we started, both through untested
+  write-path code. Superseded by keeping `provider = "sqlite"` throughout.
+- **Migrating pilot data at cutover.** Unnecessary once history is expendable, and a physical
+  recount is *more* accurate than carrying the app's possibly-drifted numbers forward.
+- **`adjustStock` for opening balances.** Structurally impossible — see above.
+- **A parallel Excel record kept throughout the pilot.** Considered as a live cross-check on
+  the untested write path; the user chose a single cutover count instead. The consequence is
+  recorded honestly in Part A step 4: during the pilot nothing independently checks the app.
+- **Sharing the drive over the network so several PCs can run Part B at once.** Same
+  corruption class as the Google Drive rejection. The one-at-a-time invariant is the design.
+- **Postgres locally for Part B.** One provider end to end would be tidy, but Postgres on a
+  drive carried between machines is far more fragile than a single file, and needs a service
+  installed on every host PC. SQLite is the right database for this shape.
+
+## Open decisions — do not treat these as settled
+
+1. **Free or paid tiers for Part A.** Paid (~$25/mo, ending at cutover) removes the
+   free-tier scale-to-zero mechanism behind Turso's 2023 incident and Vercel's commercial-use
+   restriction. Free (or Neon + Cloudflare Workers, which permits commercial use) keeps cost
+   at zero and accepts both risks. **Real client data is on this, which is what makes it a
+   decision rather than a preference.**
+2. **Whether Part B is reachable from outside the office.** Three routes, not equivalent:
+   router port-forwarding (advised against — a Windows PC doing other work, publicly
+   exposed, unpatched); a tunnel such as Cloudflare Tunnel (no open ports, traffic via a
+   third party); or a private mesh VPN such as Tailscale (device-authenticated, nothing
+   public). **The first two partly undo the reason for going offline**; the third does not.
+   Still under discussion — LAN-only is the default until it is decided.
+
+## Still outstanding regardless
+
+**DB-layer test coverage.** Unchanged as the largest risk, and Part A now runs **real stock**
+through it. The 70 tests are all pure and will pass unchanged after the adapter swap **while
+proving nothing about it**. The cutover recount bounds the damage; it does not prevent it.
 
 # Cross-phase notes
 

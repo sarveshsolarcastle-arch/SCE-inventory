@@ -58,7 +58,8 @@ npx prisma migrate dev --name <description>
   phase carries an "as built" note. **It records rejected alternatives and why** —
   re-deriving those rules from first principles lands on the rejected answer, so read the
   reasoning before changing one. Phase 8 in particular records why the SQLite file must not
-  live on a synced drive, and why the "SQLite stays" hosting decision was reversed.
+  live on a synced drive, and how the hosting decision was reversed and then partly restored
+  as the requirement changed twice — read both steps, or the history reads as incoherent.
 - [.env.example](.env.example) — every environment variable, and what breaks without it.
 - [inventory_management.md.txt](inventory_management.md.txt) — the original problem statement.
 - [storeroom-heavy-stock-plan.md](storeroom-heavy-stock-plan.md) — physical storage plan for
@@ -70,11 +71,22 @@ All seven phases — the six-phase functional redesign and the Phase 7 UI overha
 and verified in the browser; `npx tsc --noEmit` and `npm run build` pass, and `npm test` runs
 70 unit tests.
 
-**Phase 8 — hosting — is in progress (2026-08-23).** Account management (`/users` for an
-admin, `/account` for everyone), a `DATABASE_URL` that refuses to start in production rather
-than silently using a phantom local database, and a repo that actually builds from a clean
-checkout. **The SQLite→Postgres migration has not started** — it is blocked on provisioning a
-database. See [REDESIGN-PLAN.md's Phase 8 section](REDESIGN-PLAN.md).
+**Phase 8 — hosting — is in progress; re-planned 2026-08-25 into two parts.** Already built:
+account management (`/users` for an admin, `/account` for everyone), a `DATABASE_URL` that
+refuses to start in production rather than silently using a phantom local database, and a
+repo that actually builds from a clean checkout.
+
+- **Part A — a temporary hosted pilot** on Turso + Vercel, carrying **real stock data**.
+  SQLite-compatible, so `provider = "sqlite"` and every migration stay as they are; only the
+  Prisma adapter changes.
+- **Part B — permanent offline production**, on a drive carried between 2-3 office PCs so a
+  missing employee does not take the system with them. The client chose secure offline
+  storage over convenient access.
+
+**No data crosses between them.** At cutover, stock is physically recounted into an Excel
+sheet and re-entered as an opening delivery. See
+[REDESIGN-PLAN.md's Phase 8 section](REDESIGN-PLAN.md) for the full plan, the rejected
+alternatives, and the two decisions still open.
 
 **Not production-ready yet.** Before real stock goes in:
 
@@ -82,7 +94,8 @@ database. See [REDESIGN-PLAN.md's Phase 8 section](REDESIGN-PLAN.md).
   (allocation, corrections, matching, paste parsing, site balances, nav active-link matching,
   database-URL resolution). Everything that writes to the database — `packs.ts`,
   `recordDispatch`, `recordDelivery`, the site lifecycle — has none. This is the largest
-  outstanding risk, and the coming Postgres switch touches exactly that code.
+  outstanding risk, and **Part A puts real stock through exactly that code with no parallel
+  record to catch a mistake.**
 - **Not deployed**, and the database has **no scheduled backup** — cheapest thing to fix,
   most expensive to skip. Whatever the backup, restore it once to prove it works.
 - The seeded passwords above are still in place. You can now change them in the app.
