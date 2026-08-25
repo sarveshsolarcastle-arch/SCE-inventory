@@ -1774,6 +1774,12 @@ The same activity is the first run of the maintenance-day count, if that feature
 
 - **SQLite → Postgres → SQLite.** Two ports to end where we started, both through untested
   write-path code. Superseded by keeping `provider = "sqlite"` throughout.
+- **Neon, or any Postgres, for Part A** — including on a free tier. This is the bullet above
+  wearing a different name, and it has been re-opened more than once on the grounds that Neon
+  is free and has a better free-tier safety record than Turso. Both are true and neither
+  changes the answer: the cost of Postgres here is not money, it is **two ports through
+  untested write-path code to arrive back at SQLite**. Only revisit if production stops being
+  offline.
 - **Migrating pilot data at cutover.** Unnecessary once history is expendable, and a physical
   recount is *more* accurate than carrying the app's possibly-drifted numbers forward.
 - **`adjustStock` for opening balances.** Structurally impossible — see above.
@@ -1802,10 +1808,31 @@ Recorded as an accepted trade-off rather than an oversight, and cheap to revisit
 per-month subscriptions, so either can be switched on mid-pilot if the risk stops feeling
 theoretical.
 
-**Not yet ruled out as a zero-cost improvement:** Cloudflare Workers' free tier explicitly
-permits commercial use, which removes the Vercel problem for nothing. The blocker is its
-**3 MiB Worker size limit**, which a Next.js 16 app via the OpenNext adapter may exceed —
-worth half an hour to test before Part A is wired up, not worth agonising over.
+### The database for Part A is Turso. This is not open.
+
+Stated separately because it keeps being re-opened. **Neon — or any other Postgres, free or
+paid — is rejected for Part A**, and being free does not earn it a second hearing. Postgres
+reinstates exactly the SQLite → Postgres → SQLite double port that this phase was re-planned
+to avoid: two ports to arrive where we started, both through write-path code with no test
+coverage. See "Reversed, then superseded" above; the reasoning is unchanged by price.
+
+So the Part A database work is **unblocked and small**: install `@prisma/adapter-libsql`
+(7.9.1), swap the adapter in [prisma.ts](src/lib/prisma.ts) and [seed.ts](prisma/seed.ts),
+add the auth-token variable to `.env.example`. Provider, schema and migrations are untouched.
+
+### The app host is a separate question, and it does not block the above
+
+Vercel is the default. **Cloudflare Workers' free tier permits commercial use**, which would
+remove the Vercel non-commercial risk for nothing — its blocker is the **3 MiB Worker size
+limit**, which a Next.js 16 app via the OpenNext adapter may exceed. Worth half an hour to
+test, not worth agonising over.
+
+**Turso runs on either**, so this choice touches no database code and nothing waits on it.
+Do not let an open app-host question stall the adapter swap.
+
+> **Provisioning is the user's to do, not an agent's.** Creating the Turso and Vercel
+> accounts, and handling the auth token, requires credentials no agent should create or hold.
+> Everything else in Part A can be built and committed before that happens.
 
 ## Open decisions — do not treat these as settled
 
