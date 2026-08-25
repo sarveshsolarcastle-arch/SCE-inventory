@@ -472,9 +472,20 @@ now **Part A (hosted pilot) and Part B (offline production)**.
   role changes take effect immediately rather than at token expiry.
 - **Deployability** — `npm ci && npm run build` previously failed on a clean checkout.
 
-**Still to do — Part A**: provision Turso and swap the adapter, deploy to Vercel with a fresh
-`AUTH_SECRET` and `AUTH_TRUST_HOST=true`, change the seeded passwords, and set up the
-**automated** daily dump to Drive with dated filenames and one verified restore.
+**Still to do — Part A**: swap the adapter to `@prisma/adapter-libsql` (7.9.1) in
+[prisma.ts](src/lib/prisma.ts) and [seed.ts](prisma/seed.ts), add the auth-token variable to
+`.env.example`, deploy to Vercel with a fresh `AUTH_SECRET` and `AUTH_TRUST_HOST=true`,
+change the seeded passwords, and set up the **automated** daily dump to Drive with dated
+filenames and one verified restore.
+
+> **The Part A database is Turso, and that is not an open question.** Neon — or any Postgres,
+> free or paid — is rejected here: it reinstates the SQLite → Postgres → SQLite double port
+> this phase was re-planned to avoid, both passes running through untested write-path code.
+> Being free does not change that; the cost was never money. The **app host** (Vercel vs
+> Cloudflare Workers) is a separate question that touches no database code and blocks nothing.
+>
+> **Provisioning the accounts and handling the auth token is the user's to do**, not an
+> agent's. Everything else in Part A can be built before that happens.
 
 **Still to do — Part B**: a self-contained drive (built app + `node_modules` + portable Node
 + the database + `start.bat`), the path computed from `%~dp0` so changing drive letters
