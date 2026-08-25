@@ -1,13 +1,14 @@
 # Inventory Management System — Progress Handover
 
-Last updated: 2026-08-25 (**Phase 8 re-planned into a hosted pilot + offline production** —
-see §9)
+Last updated: 2026-08-25 (**Phase 8 Part A — the hosted pilot — is live** — see §9)
 
 > **§1-§8 describe the code as it stands today.** The six-phase functional redesign and
-> Phase 7 (UI overhaul) are **complete**. **Phase 8 (hosting) is in progress**: account
-> management, the `DATABASE_URL` fail-fast and the build prerequisites landed 2026-08-23,
-> but **no database work has started** and nothing is deployed. §9 records what each phase
-> delivered, and §10 is the handover guide.
+> Phase 7 (UI overhaul) are **complete**. **Phase 8 Part A (the hosted pilot) is deployed**:
+> account management and the `DATABASE_URL` fail-fast landed 2026-08-23; the libSQL adapter
+> swap, Turso database, and Vercel deployment landed 2026-08-25. The app is live at
+> **sce-inventory.vercel.app**, on Turso, seeded — with the default passwords still in
+> place (open task, see below). Part B (offline production) has not started. §9 records what
+> each phase delivered, and §10 is the handover guide.
 >
 > **The hosting requirement has changed twice, and decisions were reversed each time.** It is
 > now a temporary **hosted pilot** (Part A) followed by permanent **offline** production on a
@@ -52,7 +53,7 @@ All core flows below were manually tested in a running dev server and confirmed 
 | Site lifecycle: consumption, transfers, pickup flags, cross-site view | ✅ Done (Phase 6) |
 | UI overhaul + mobile web | ✅ Done (Phase 7) — light theme + user dark toggle, grouped sidebar, `src/components/ui/` primitives |
 | User accounts | ✅ Done (Phase 8) — admin `/users` page, self-service `/account`, deactivation |
-| Deployment | 🔨 In progress (Phase 8) — buildable from a clean checkout; **not deployed**. Plan: hosted pilot (Turso + Vercel) → offline production on a carried drive |
+| Deployment | ✅ **Part A live** (Phase 8) — deployed at sce-inventory.vercel.app, on Turso. Still open: seeded passwords unchanged, daily Drive dump not yet set up. Part B (offline production) not started |
 | Database backups | ⚠️ Manual copies in `backups/` only — no schedule. Part A adds an automated daily dump; Part B needs a second drive |
 
 ## 3. Tech Stack
@@ -429,7 +430,7 @@ still apply; re-optimising layouts for the phone does not.
   needed.
 - Optional: a web app manifest makes it installable to the home screen with no other change.
 
-### Phase 8 — Hosting 🔨 IN PROGRESS (started 2026-08-22, first parts built 2026-08-23)
+### Phase 8 — Hosting 🔨 IN PROGRESS (started 2026-08-22; Part A deployed 2026-08-25)
 
 **The requirement turned out not to be "put it on a server".** It was *other people in the
 office need to use it* — under 10 users, office hours, on the PCs they already have, with
@@ -472,20 +473,45 @@ now **Part A (hosted pilot) and Part B (offline production)**.
   role changes take effect immediately rather than at token expiry.
 - **Deployability** — `npm ci && npm run build` previously failed on a clean checkout.
 
-**Still to do — Part A**: swap the adapter to `@prisma/adapter-libsql` (7.9.1) in
-[prisma.ts](src/lib/prisma.ts) and [seed.ts](prisma/seed.ts), add the auth-token variable to
-`.env.example`, deploy to Vercel with a fresh `AUTH_SECRET` and `AUTH_TRUST_HOST=true`,
-change the seeded passwords, and set up the **automated** daily dump to Drive with dated
-filenames and one verified restore.
+**Part A is live (2026-08-25, `ab90370`).** The adapter was swapped to
+`@prisma/adapter-libsql` (7.9.1) in [prisma.ts](src/lib/prisma.ts) and
+[seed.ts](prisma/seed.ts); `.env.example` documents `TURSO_AUTH_TOKEN` and the
+`libsql://` URL form. All 10 existing migrations and the seed data were applied to the
+Turso database, the repo was pushed to
+[github.com/sarveshsolarcastle-arch/SCE-inventory](https://github.com/sarveshsolarcastle-arch/SCE-inventory),
+and it is deployed on Vercel at **sce-inventory.vercel.app** with `AUTH_TRUST_HOST=true` and
+a fresh `AUTH_SECRET`. Verified end to end in production: login, dashboard, real data from
+Turso, no errors.
+
+> **⚠️ `prisma migrate deploy` does not work against a `libsql://` URL** — it fails with
+> `P1013: scheme not recognized`, confirmed against Prisma's own docs, which say migrations
+> against Turso go through direct SQL execution, not the CLI's migrate engine. The 10
+> existing migrations were applied with `@libsql/client`'s `executeMultiple()` (its own docs
+> recommend this specifically for migration scripts) via a one-off script, run once and
+> discarded. **Any future schema change needs the same manual step** — write the migration
+> normally with `prisma migrate dev` against the local SQLite file, then apply the resulting
+> `migration.sql` to Turso with `executeMultiple()` (or the Turso CLI) by hand. `npm run
+> db:migrate` only works against a `file:` URL.
+
+**Still open on Part A**:
+- **Seeded passwords are still the defaults** (`admin123` / `finance123` / `employee123`) on
+  a public URL — the biggest live risk right now. Change via `/users`; each account should
+  get its own distinct password, since `Transaction.userId` is the accountability trail and
+  a shared password defeats it.
+- **Automated daily dump to Google Drive** — not set up yet. Dated filenames, keep ~30,
+  restore one before trusting it.
+- **Spot-count the wire and screws mid-pilot** — the only independent check on the untested
+  write path, per the plan.
 
 > **The Part A database is Turso, and that is not an open question.** Neon — or any Postgres,
 > free or paid — is rejected here: it reinstates the SQLite → Postgres → SQLite double port
 > this phase was re-planned to avoid, both passes running through untested write-path code.
 > Being free does not change that; the cost was never money. The **app host** (Vercel vs
-> Cloudflare Workers) is a separate question that touches no database code and blocks nothing.
+> Cloudflare Workers) is a separate question that touches no database code and blocked
+> nothing — Vercel was used.
 >
-> **Provisioning the accounts and handling the auth token is the user's to do**, not an
-> agent's. Everything else in Part A can be built before that happens.
+> **Provisioning the accounts and handling the auth token was the user's to do**, not an
+> agent's, and that is how it happened — the agent wrote no credentials into the repo.
 
 **Still to do — Part B**: a self-contained drive (built app + `node_modules` + portable Node
 + the database + `start.bat`), the path computed from `%~dp0` so changing drive letters

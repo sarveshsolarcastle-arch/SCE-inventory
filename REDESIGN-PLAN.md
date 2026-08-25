@@ -1,9 +1,9 @@
 # Packs & Cut Lengths · Role-Scoped Workspaces · Bulk Dispatch & Delivery
 
 > **This is the working plan for phases 1-8. Phases 1-7 are built; phase 8 (hosting) is
-> IN PROGRESS — accounts, the DATABASE_URL fail-fast and the build prerequisites have
-> landed; no database work has. Re-planned 2026-08-25 into a temporary hosted pilot (Part A)
-> and permanent offline production (Part B), with SQLite kept throughout.**
+> IN PROGRESS — Part A, the hosted pilot, is deployed and live at sce-inventory.vercel.app
+> on Turso (2026-08-25). Part B, permanent offline production, has not started. SQLite is
+> kept throughout, per plan.**
 > Read [PROGRESS.md](PROGRESS.md) first for current state, then this for what to build next.
 >
 > Everything here was decided in conversation with the user over a long session. **The
@@ -1544,7 +1544,8 @@ recorded here.
 Planned 2026-08-22; first three parts built and committed 2026-08-23 (`3e56f28`).
 **Re-planned 2026-08-25**, when the requirement changed a second time. The phase now has
 two parts — **A: a hosted pilot, on real data, temporary. B: offline production in the
-office, permanent.** Neither database step has started.
+office, permanent.** **Part A deployed and live 2026-08-25** (`ab90370`, sce-inventory.vercel.app).
+Part B has not started.
 
 ## What changed the requirement — twice
 
@@ -1659,27 +1660,41 @@ deactivate yourself, or deactivate the last active admin.
 can still seed. **Regenerate the lockfile when moving deps between sections**: `npm ci`
 refuses a package.json/lock mismatch outright, so a stale lock breaks the deploy at step one.
 
-## Part A — the hosted pilot (Turso + Vercel)
+## Part A — the hosted pilot (Turso + Vercel) — 🟢 LIVE (deployed 2026-08-25)
 
 Temporary, and it carries **real stock data** — the client is trialling the app on their
 actual inventory, not fixtures. That is the decision everything else in Part A answers to.
 
-1. **Provision a Turso database.** Swap the adapter to `@prisma/adapter-libsql` in
-   [prisma.ts](src/lib/prisma.ts) and [seed.ts](prisma/seed.ts). Provider, schema and
-   migrations are untouched. `DATABASE_URL` plus an auth token; `resolveDatabaseUrl()`
-   already refuses to start without the URL.
-2. **Deploy to Vercel.** `AUTH_TRUST_HOST=true`, a **fresh `AUTH_SECRET`** (not the dev one),
-   and **change the three seeded passwords** before anyone else has access — they are still
-   `admin123` / `finance123` / `employee123`, and `/users` plus `/account` now exist to do it
-   without a code change.
-3. **Daily automated dump to Google Drive.** Automated, not a person's end-of-day habit — a
-   manual daily step during a pilot lapses within weeks, silently. **Dated filenames**
+1. ✅ **Turso database provisioned.** Adapter swapped to `@prisma/adapter-libsql` in
+   [prisma.ts](src/lib/prisma.ts) and [seed.ts](prisma/seed.ts) (`ab90370`). Provider,
+   schema and migrations untouched, as planned.
+2. ✅ **Deployed to Vercel** at **sce-inventory.vercel.app**, repo pushed to
+   [github.com/sarveshsolarcastle-arch/SCE-inventory](https://github.com/sarveshsolarcastle-arch/SCE-inventory),
+   `AUTH_TRUST_HOST=true` and a fresh `AUTH_SECRET` set. Verified end to end in production:
+   login, dashboard, real data from Turso, no errors.
+   ⚠️ **Not yet done: the three seeded passwords are still `admin123` / `finance123` /
+   `employee123`, live on a public URL.** This is the single biggest open risk right now —
+   change it via `/users`, and give each account its own distinct password (a shared
+   password defeats the accountability `Transaction.userId` exists for).
+3. ❌ **Daily automated dump to Google Drive — not set up.** Still needed before Part A is
+   properly running: a manual daily step lapses within weeks, silently. **Dated filenames**
    (`inventory-2026-08-25.sql`), keep ~30; a single overwritten `backup.sql` faithfully
    replicates a corruption you have not noticed yet. **Restore one before relying on it.**
-4. **Spot-count two or three high-movement items mid-pilot** — the wire and the screws. Ten
-   minutes. This is the only independent check on the untested write path during Part A (see
-   "Rejected" below: there is no parallel record), and a systematic pack-handling bug shows
-   up on cut-and-opened items first.
+4. ❌ **Spot-count two or three high-movement items mid-pilot — not done yet.** The wire and
+   the screws. Ten minutes. This is the only independent check on the untested write path
+   during Part A (see "Rejected" below: there is no parallel record), and a systematic
+   pack-handling bug shows up on cut-and-opened items first.
+
+> **⚠️ `prisma migrate deploy` does not work against Turso.** It fails with `P1013: scheme
+> not recognized` — Prisma's CLI migration engine does not understand `libsql://`, confirmed
+> against Prisma's own docs, which say Turso migrations go through direct SQL execution
+> instead. The 10 existing migrations were applied once with `@libsql/client`'s
+> `executeMultiple()` (its own docs recommend this for migration scripts), via a one-off
+> script that was run once and discarded. **Any future schema change against Turso needs the
+> same manual step**: `prisma migrate dev` locally against the SQLite file as normal, then
+> apply the generated `migration.sql` to Turso by hand with `executeMultiple()` or the Turso
+> CLI. `npm run db:migrate` (`prisma migrate deploy`) only works against a `file:` URL —
+> useful for Part B, not Part A.
 
 **Known and accepted:** Turso's free tier archives a database after 10 days idle — moot
 under daily use, and reversible with `turso group unarchive`. More seriously, Turso's
@@ -1816,23 +1831,24 @@ reinstates exactly the SQLite → Postgres → SQLite double port that this phas
 to avoid: two ports to arrive where we started, both through write-path code with no test
 coverage. See "Reversed, then superseded" above; the reasoning is unchanged by price.
 
-So the Part A database work is **unblocked and small**: install `@prisma/adapter-libsql`
-(7.9.1), swap the adapter in [prisma.ts](src/lib/prisma.ts) and [seed.ts](prisma/seed.ts),
-add the auth-token variable to `.env.example`. Provider, schema and migrations are untouched.
+✅ **Done (`ab90370`, 2026-08-25).** `@prisma/adapter-libsql` (7.9.1) installed, adapter
+swapped in [prisma.ts](src/lib/prisma.ts) and [seed.ts](prisma/seed.ts), auth-token variable
+added to `.env.example`. Provider, schema and migrations untouched, as expected.
 
-### The app host is a separate question, and it does not block the above
+### The app host is a separate question, and it did not block the above
 
-Vercel is the default. **Cloudflare Workers' free tier permits commercial use**, which would
-remove the Vercel non-commercial risk for nothing — its blocker is the **3 MiB Worker size
-limit**, which a Next.js 16 app via the OpenNext adapter may exceed. Worth half an hour to
-test, not worth agonising over.
+**Vercel was used**, at sce-inventory.vercel.app. Cloudflare Workers' free tier permits
+commercial use and would have removed the Vercel non-commercial risk for nothing, but was not
+evaluated under time pressure to get Part A live — worth half an hour to test later if the
+Vercel Hobby non-commercial restriction becomes a real problem before the pilot's cutover.
 
-**Turso runs on either**, so this choice touches no database code and nothing waits on it.
-Do not let an open app-host question stall the adapter swap.
+**Turso runs on either**, so this choice touched no database code.
 
-> **Provisioning is the user's to do, not an agent's.** Creating the Turso and Vercel
-> accounts, and handling the auth token, requires credentials no agent should create or hold.
-> Everything else in Part A can be built and committed before that happens.
+> **Provisioning was the user's to do, not an agent's, and that is how it happened.** The
+> user created the Turso database, generated the auth token, created the GitHub repo, and
+> set Vercel's environment variables directly in Vercel's dashboard. The agent never held the
+> Turso or Vercel account credentials — only the resulting `DATABASE_URL` and
+> `TURSO_AUTH_TOKEN`, written to the gitignored local `.env` for the pre-deploy smoke test.
 
 ## Open decisions — do not treat these as settled
 
