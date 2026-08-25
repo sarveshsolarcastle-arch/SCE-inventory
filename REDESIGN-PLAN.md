@@ -1,7 +1,8 @@
 # Packs & Cut Lengths · Role-Scoped Workspaces · Bulk Dispatch & Delivery
 
-> **This is the working plan for phases 1-8. Phases 1-7 are built; phase 8 (hosting) is still
-> deferred.**
+> **This is the working plan for phases 1-8. Phases 1-7 are built; phase 8 (hosting) is
+> IN PROGRESS — accounts, the DATABASE_URL fail-fast and the build prerequisites have
+> landed; the Postgres migration has not.**
 > Read [PROGRESS.md](PROGRESS.md) first for current state, then this for what to build next.
 >
 > Everything here was decided in conversation with the user over a long session. **The
@@ -54,7 +55,9 @@ does not physically have, and reordering would be decided against stock sitting 
 > overhaul + mobile web) is built and verified (2026-08-21).**
 >
 > Phase 7's design decisions and its "as built" note are recorded in the **Phase 7** section
-> at the end of this file. Phase 8 (hosting) remains deferred by decision.
+> at the end of this file. **Phase 8 (hosting) is in progress as of 2026-08-23** — see the
+> Phase 8 section, which also records the SQLite→Postgres reversal and why the premise
+> behind "Hosting: SETTLED" no longer holds.
 >
 > Each *built* phase has an "as built" note recording where reality diverged from this plan —
 > read it before changing that phase's code.
@@ -68,13 +71,15 @@ does not physically have, and reordering would be decided against stock sitting 
 | 5 | ✅ **DONE** — delivery entry (finance), to the store **or direct to a site** |
 | 6 | ✅ **DONE** — site material lifecycle: consumption, pickup, transfers, cross-site view |
 | 7 | ✅ **DONE** — UI overhaul + mobile web; full record at the end of this file |
-| 8 | **Hosting on a proper domain** — deferred; see below |
+| 8 | 🔨 **IN PROGRESS** — accounts, `DATABASE_URL` fail-fast and build prerequisites done; Postgres migration pending |
 
 ## Why 7-8 were deferred, and what has changed since
 
 Deferred by the user, who would not use the app in anger until the functional phases were
 done. **That condition is now met** — phases 1-6 landed on 2026-08-20, and **Phase 7 landed
-on 2026-08-21** (see the Phase 7 section at the end of this file). Phase 8 is still deferred.
+on 2026-08-21** (see the Phase 7 section at the end of this file). **Phase 8 began on
+2026-08-22** once the requirement turned out to be "other people need accounts", not just
+"put it on a server".
 
 What follows in this section is the reasoning that shaped the deferral. It is kept because it
 still explains *why the code is the shape it is* — particularly why phases 2-6 shipped
@@ -112,7 +117,11 @@ server actions as thin wrappers. A redesign then touches only markup.
 - `<datalist>` typeahead works on Android Chrome; no replacement needed.
 - Optional: a web app manifest makes it installable to the home screen.
 
-### Hosting: SETTLED — a real server with HTTPS
+### Hosting: SETTLED — a real server with HTTPS ⚠️ SUPERSEDED 2026-08-23
+
+> **This decision has been reversed.** The reasoning below still explains why phases 1-7
+> were free to assume SQLite, so it is kept — but the conclusion no longer holds. See
+> **Phase 8** at the end of this file for what replaced it and why the premise changed.
 
 Decided with the user: a proper server behind real HTTPS, **not serverless**.
 
@@ -1521,6 +1530,107 @@ register, lives outside the repo at
 **This section is the durable record**; that file is the working checklist. When Phase 7 is
 built, this section gains an "as built" note like every other phase, and the deviations get
 recorded here.
+
+# Phase 8 — Hosting 🔨 IN PROGRESS
+
+Planned 2026-08-22; first three parts built and committed 2026-08-23 (`3e56f28`). The
+database migration has not started.
+
+## What changed the requirement
+
+Phase 8 was always "put it on a server". The requirement that actually arrived was
+different: **other people in the office need to use it** — under 10 users, office hours,
+on the PCs they already have, with nobody available to administer a server.
+
+That surfaced a real single point of failure the user named precisely: if the app runs on
+one employee's PC, that person being on leave takes the app *and the database* with them.
+
+## Rejected: the SQLite file on Google Drive
+
+The user's proposed fix was to put `dev.db` on a shared Drive so any PC could host. **This
+corrupts the database**, and the reasoning is worth keeping because the idea is a natural
+one to have twice:
+
+- SQLite coordinates concurrent access through **file locks**, which sync clients do not
+  honour — they treat the database as an opaque blob to copy.
+- It is not one file. `data.db` has `-wal` and `-shm` sidecars which Drive syncs
+  **independently and out of order**, so the main file and its write-ahead log arrive
+  mismatched. That is corruption, not staleness.
+- Drive uploads while writes are in flight, producing **torn pages**.
+- Two PCs opening it is not a merge but last-writer-wins, "resolved" into a second file
+  named `data (1).db`. A day of stock movements disappears with nothing raised anywhere.
+
+**The diagnosis was right though, and the fix keeps it**: decoupling the database from any
+one machine is correct. The mechanism just has to be a database that speaks a *network
+protocol* rather than a file that gets *copied*. Drive keeps a valid role — as the
+destination for nightly `pg_dump` **backup files**, which are static and perfectly safe there.
+
+## Reversed: SQLite → managed Postgres
+
+This contradicts "Hosting: SETTLED" above, deliberately. **The premise changed, so the
+conclusion was re-derived rather than inherited.**
+
+That decision priced the Postgres port as "every migration regenerated". That assumed
+*preserving migration history* — but the database holds only test data and the docs already
+said to reseed before real stock. With no production data you **baseline** instead: delete
+the migrations, generate one `init`. Verified facts that make the port small:
+
+- **Zero raw SQL** in app code — no `$queryRaw`/`$executeRaw` outside the generated client.
+- **No SQLite-specific column types** — no `@db.` annotations, no `Decimal`/`Bytes`/`Json`.
+- 8 enums, which Prisma maps to native Postgres enums with no schema text change.
+
+Note this also dissolves the *reason* serverless was rejected — it was rejected **because**
+it forced Postgres. That objection no longer applies.
+
+**Architecture: the database is hosted, the app is stateless.** The database is the only
+thing that must never be lost; the app is replaceable. Splitting them that way means any
+office PC can run the app — several can run it at once safely, which SQLite could never
+have allowed — and moving the app to a host later carries no data risk.
+
+Two trade-offs accepted, not overlooked: **the app is down if office internet is down**
+(the price of the durability the user asked for), and **free tiers can change terms**,
+which is why the nightly dump is not optional.
+
+## Built (2026-08-23)
+
+**Fail-fast on `DATABASE_URL`.** [prisma.ts](src/lib/prisma.ts) read
+`process.env.DATABASE_URL ?? "file:./dev.db"`, so a production server with the variable
+unset started *successfully* against an empty database in its working directory — no error,
+and every write landing somewhere the next deploy deletes. The only guard was a checklist
+item in this document, which is the weakest available enforcement for an invisible failure.
+Now [databaseUrl.ts](src/lib/databaseUrl.ts), pure and covered by 7 tests.
+
+**Accounts.** There was no way to create a user — `prisma/seed.ts` was the only code that
+ever created one or hashed a password, so "give my colleagues access" was blocked on a code
+edit. Adds `/users` (admin), `/account` (everyone), a `user:manage` capability and
+`User.isActive`. Accounts are **deactivated, never deleted**, because `Transaction.userId`
+is the accountability trail. Guarded against lockout: you cannot change your own role,
+deactivate yourself, or deactivate the last active admin.
+
+> **Sessions are JWTs, so deactivation was a silent no-op** — a deactivated account kept
+> working until its token expired, and a demoted one kept its old powers. `currentUser()`
+> now re-reads the row rather than trusting the token, so both take effect on the next
+> request. That is one indexed lookup per call, bought deliberately.
+
+**Deployability.** `npm ci && npm run build` *failed* on a clean checkout —
+`src/generated/prisma` is gitignored and nothing ran `prisma generate`. Fixed, plus
+`engines`, `.env.example`, and `tsx`/`dotenv` moved to `dependencies` so `npm ci --omit=dev`
+can still seed. **Regenerate the lockfile when moving deps between sections**: `npm ci`
+refuses a package.json/lock mismatch outright, so a stale lock breaks the deploy at step one.
+
+## Remaining
+
+1. **The Postgres migration** — blocked on the user provisioning a database, since that
+   needs an account. Swap `provider`, swap the adapter for **`@prisma/adapter-pg`** (verified
+   present at 7.9.1; confirm the constructor against the package's own types, per AGENTS.md),
+   baseline the migrations, reseed. Dropping `better-sqlite3` also removes a **native
+   module**, which makes deployment simpler: no per-platform rebuild.
+2. **Nightly `pg_dump`** to a location independent of the provider. Verify a restore once —
+   an untested backup is a guess.
+3. **Change the seeded passwords**, still `admin123` / `finance123` / `employee123`.
+4. **DB-layer test coverage.** Still the largest outstanding risk, and the migration touches
+   exactly that untested write path. The 70 tests are all pure and **will pass unchanged
+   after the switch while proving nothing about it**.
 
 # Cross-phase notes
 

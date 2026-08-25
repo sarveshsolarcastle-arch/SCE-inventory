@@ -1,11 +1,15 @@
 # Inventory Management System — Progress Handover
 
-Last updated: 2026-08-21 (**Phase 7 UI overhaul built and verified** — see §9)
+Last updated: 2026-08-23 (**Phase 8 started — accounts and deploy prerequisites** — see §9)
 
-> **§1-§8 describe the code as it stands today, including the Phase 7 UI.** The six-phase
-> functional redesign and Phase 7 (UI overhaul + mobile web) are both **complete** as of
-> 2026-08-21. Phase 8 (hosting) is still deferred. §9 records what each phase delivered,
-> including Phase 7's as-built note, and §10 is the handover guide.
+> **§1-§8 describe the code as it stands today.** The six-phase functional redesign and
+> Phase 7 (UI overhaul) are **complete**. **Phase 8 (hosting) is in progress**: account
+> management, the `DATABASE_URL` fail-fast and the build prerequisites landed 2026-08-23,
+> but **the SQLite→Postgres migration has not started** and nothing is deployed. §9 records
+> what each phase delivered, and §10 is the handover guide.
+>
+> **One recorded decision has been reversed** — hosting is no longer "SQLite on a real
+> server". See §9's Phase 8 entry for why the premise changed.
 
 ## 1. Purpose
 
@@ -36,14 +40,15 @@ All core flows below were manually tested in a running dev server and confirmed 
 | Placement suggestions (usage-frequency based) | ✅ Done |
 | Mobile-responsive layout | ✅ Done |
 | Production build | ✅ Passes |
-| Automated tests | ⚠️ 63 unit tests (`npm test`): allocator, corrections, matching, paste parsing, site balances/FIFO age/pickup clamp, nav active-link matching; **no coverage of the DB layer or UI** |
+| Automated tests | ⚠️ 70 unit tests (`npm test`): allocator, corrections, matching, paste parsing, site balances/FIFO age/pickup clamp, nav active-link matching, database-URL resolution; **no coverage of the DB layer or UI** |
 | Roles: ADMIN / FINANCE / EMPLOYEE, capability-gated | ✅ Done (Phase 2) |
 | Corrections: reversal and stocktake adjustment | ✅ Done (Phase 3) |
 | Bulk dispatch to site, from Excel paste | ✅ Done (Phase 4) |
 | Delivery entry (to store or direct to site) | ✅ Done (Phase 5) |
 | Site lifecycle: consumption, transfers, pickup flags, cross-site view | ✅ Done (Phase 6) |
 | UI overhaul + mobile web | ✅ Done (Phase 7) — light theme + user dark toggle, grouped sidebar, `src/components/ui/` primitives |
-| Deployment | ❌ Not deployed anywhere — runs locally only |
+| User accounts | ✅ Done (Phase 8) — admin `/users` page, self-service `/account`, deactivation |
+| Deployment | 🔨 In progress (Phase 8) — buildable from a clean checkout; **not deployed**, Postgres migration pending |
 | Database backups | ⚠️ Manual copies in `backups/` only — no schedule |
 
 ## 3. Tech Stack
@@ -83,7 +88,7 @@ A `.claude/launch.json` is present so Claude Code's browser preview tool can sta
 
 ## 5. Data Model (`prisma/schema.prisma`)
 
-- **User** — id, name, email, passwordHash, role (`ADMIN` | `FINANCE` | `EMPLOYEE`)
+- **User** — id, name, email, passwordHash, role (`ADMIN` | `FINANCE` | `EMPLOYEE`), `isActive`. Accounts are **deactivated, never deleted**: every `Transaction` carries a `userId` and that trail is the answer to the brief's third problem, so removing a leaver would punch holes in it.
 - **Item** — id, name, sku, category, `baseUnit` (what stock is counted in: m, pcs), `packUnit` (roll/packet; null = unpackaged), `measure` (`CONTINUOUS` | `DISCRETE`), `scrapThreshold`, minStock, `currentStock`, `scrapStock`
 - **PackStock** — sealed packs grouped by size (`@@unique([itemId, packSize])`). Two sealed 400 m rolls are interchangeable, so they are counted, not tracked individually. A 400 m and a 600 m roll of the same wire are two sizes of **one** item.
 - **OpenPack** — an opened pack, tracked individually with its own `remaining`, because a 30 m and a 50 m offcut are *not* interchangeable. `state` is `OPEN` or `SCRAP`; optionally points at the shelf slot it physically sits in.
@@ -136,6 +141,10 @@ src/
     at-sites/               cross-site "Material at Sites" view — quantities, flagged
                             amounts, FIFO age; filter by awaiting-collection, sort by age
     transactions/new/       Issue / Return form (single row; Stock In removed in Phase 5)
+    users/                  ADMIN-only account management (Phase 8) — create, set role,
+                            deactivate, reset password
+    account/                self-service: your role, and change your own password.
+                            NOT capability-gated — every signed-in account may use it
     dispatches/             list, new (Excel-paste batch review), [id] detail+reverse
     deliveries/             list, new (3-row grid, store or direct-to-site), [id] detail
     shelf/                  list, new, [shelfId] 2D map, suggestions
@@ -196,14 +205,20 @@ src/
                             rows. HOUSEKEEPING ONLY; correctness comes from effectiveFlagged
     suggestions.ts          getPlacementSuggestions() — the frequency/placement engine
     boxTypes.ts             shared BOX_TYPES/BoxType
-    permissions.ts          capability table — see §"Permissions" below
+    permissions.ts          capability table — see §"Permissions" below. currentUser()
+                            re-reads the User row rather than trusting the JWT, so
+                            deactivation and role changes bind on the next request
+    databaseUrl.ts          resolveDatabaseUrl() — throws in production rather than
+                            falling back to a phantom local database (Phase 8)
+    databaseUrl.test.ts     7 unit tests
     actions/                server actions: items.ts, sites.ts, transactions.ts
                             (recordMovement, openPackAction), shelf.ts (updateSlotBoxType,
                             assignSlotItem), corrections.ts (reverseTransaction,
                             reverseDispatch, adjustStock), dispatches.ts (recordDispatch),
                             deliveries.ts (recordDelivery, updateDefectiveStatus),
                             siteLifecycle.ts (consumeAtSite, transferBetweenSites,
-                            markForPickup)
+                            markForPickup), users.ts (createUser, setUserRole,
+                            setUserActive, resetUserPassword, changeOwnPassword)
   proxy.ts                  route-protection middleware (Next.js 16 naming)
 prisma/
   schema.prisma
@@ -217,10 +232,12 @@ backups/                    manual dev.db copies (gitignored)
 ## 7. Known Gaps / Suggested Next Steps
 
 - **Not deployed yet** — local-only for now. **Decided: a real server behind real HTTPS on a proper domain, not serverless.** SQLite therefore stays and **no code changes are needed** for hosting. (Serverless would have forced a Postgres port: new datasource provider, a swapped driver adapter, and every migration regenerated, since the existing SQL is SQLite-specific — `PRAGMA`, the table-rebuild pattern, `TEXT` enums. Avoided.) See §9 for the deployment checklist.
-- **Change the seeded passwords** — all three accounts (`admin`/`finance`/`employee`), not just admin — and consider adding a "change password" flow, since there isn't one yet.
-- **⚠️ Test coverage stops at the pure modules, and the reason for deferring the rest has expired.** The 63 tests cover [allocation.ts](src/lib/allocation.ts), [corrections.ts](src/lib/corrections.ts), [matching.ts](src/lib/matching.ts), [dispatchPaste.ts](src/lib/dispatchPaste.ts), [siteBalance.ts](src/lib/siteBalance.ts) and [activeHref.ts](src/components/nav/activeHref.ts). **Everything that writes to the database has none**: [packs.ts](src/lib/packs.ts), `recordDispatch`, `recordDelivery`, and the whole site lifecycle. The subtlest code in the project is in there — `commitAllocation` resolves the planner's synthetic `new:<i>` pack ids onto rows it creates inside the same transaction. This was deferred on the grounds that "the app is not in real use until the remaining phases land"; **they have all landed**, and the untested surface grew with each one. This is now the single most valuable outstanding item.
+- **Change the seeded passwords** — all three accounts (`admin`/`finance`/`employee`), not just admin. There is now a self-service flow at `/account` and an admin reset at `/users`, so this no longer needs a code change — but the seeded passwords are still in place.
+- **⚠️ Test coverage stops at the pure modules, and the reason for deferring the rest has expired.** The 70 tests cover [allocation.ts](src/lib/allocation.ts), [corrections.ts](src/lib/corrections.ts), [matching.ts](src/lib/matching.ts), [dispatchPaste.ts](src/lib/dispatchPaste.ts), [siteBalance.ts](src/lib/siteBalance.ts) and [activeHref.ts](src/components/nav/activeHref.ts). **Everything that writes to the database has none**: [packs.ts](src/lib/packs.ts), `recordDispatch`, `recordDelivery`, and the whole site lifecycle. The subtlest code in the project is in there — `commitAllocation` resolves the planner's synthetic `new:<i>` pack ids onto rows it creates inside the same transaction. This was deferred on the grounds that "the app is not in real use until the remaining phases land"; **they have all landed**, and the untested surface grew with each one. This is now the single most valuable outstanding item.
 - ✅ **Corrections exist** (Phase 3): a movement can be reversed — restoring the exact prior pack state, and refusing when the packs have moved on since — and a physical count can be recorded as an `ADJUSTMENT` with a mandatory reason. Both are `ADMIN`-only. A whole dispatch can be reversed atomically (Phase 4).
 - ✅ **Existing items reviewed after the Phase 1 migration** (2026-08-20, during Phase 4). `CBL-200` and `SCR-M4` were the two that predated the pack model; both checked — see §9's Phase 4 note and §10's "State of the working copy". Any *new* item added later still needs `measure`, `packUnit` and `scrapThreshold` set correctly at creation, same as always.
+- ✅ **The app refuses to start against a phantom database** (Phase 8). [prisma.ts](src/lib/prisma.ts) used to read `process.env.DATABASE_URL ?? "file:./dev.db"`, so a production server with the variable unset started *successfully* against an empty file in its working directory — no error raised, an inventory that merely looks empty, and every write landing somewhere the next deploy deletes. [databaseUrl.ts](src/lib/databaseUrl.ts) now throws in production while keeping the dev default, covered by 7 tests. The previous guard was a checklist item in this document, which is the weakest enforcement available for a failure nobody can see happening.
+- ✅ **Deactivation is not a silent no-op** (Phase 8). Sessions are JWTs, so a deactivated account would have kept working until its token expired and a demoted one would have kept its old powers — neither visible. `currentUser()` in [permissions.ts](src/lib/permissions.ts) now re-reads the row instead of trusting the token, at the cost of one indexed lookup per call.
 - ✅ **The Arial-font bug is fixed** (Phase 7): [globals.css](src/app/globals.css) no longer sets `font-family: Arial` on `body`, so the Geist font [layout.tsx](src/app/layout.tsx) loads now actually renders.
 - ✅ **Dark mode is now a user toggle** (Phase 7), not OS-only. `@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));` in globals.css overrides Tailwind's built-in `dark:` variant, an inline `<script>` (`ThemeScript.tsx`) applies the saved choice before first paint, and `ThemeToggle.tsx` (sidebar footer + login page) flips `data-theme` and persists to `localStorage`.
 - ✅ **`src/components/ui/` now exists** (Phase 7) — Button, Card, Badge, Field/Input/Select/Textarea, Table/SortableTh, PillToggle, Alert, PageHeader, StatCard, EmptyState, FilterPills, SearchBar, plus `tones.ts` as the single badge-tone source of truth. The three separate badge tone maps, the copy-pasted pill toggle, and the four duplicate `Field` helpers are gone.
@@ -261,7 +278,8 @@ what stops them being re-derived.** What actually holds today:
 **All six functional phases are built and verified**: 1 (packs, cut lengths, scrap),
 2 (roles), 3 (corrections), 4 (dispatch batch), 5 (delivery entry) and 6 (site lifecycle).
 **Phase 7 (UI overhaul + mobile web) is also built and verified**, on 2026-08-21 — see its
-as-built note below. Phase 8 (hosting) remains deferred by decision.
+as-built note below. **Phase 8 (hosting) is in progress** — see its entry below for what has
+landed and what the remaining blocker is.
 
 ### Phase 1 — built 2026-08-20
 
@@ -407,23 +425,56 @@ still apply; re-optimising layouts for the phone does not.
   needed.
 - Optional: a web app manifest makes it installable to the home screen with no other change.
 
-### Deployment checklist (Phase 8) — real server, real HTTPS
+### Phase 8 — Hosting 🔨 IN PROGRESS (started 2026-08-22, first parts built 2026-08-23)
 
-SQLite stays; nothing in the code changes. What the server needs:
+**The requirement turned out not to be "put it on a server".** It was *other people in the
+office need to use it* — under 10 users, office hours, on the PCs they already have, with
+nobody available to administer anything. That exposed a single point of failure: if the app
+runs on one employee's PC, that person being on leave takes the app **and the database**
+with them.
+
+**Two decisions, both recorded in full in
+[REDESIGN-PLAN.md's Phase 8 section](REDESIGN-PLAN.md)** — read it before changing either:
+
+1. **Putting the SQLite file on Google Drive was rejected.** It corrupts the database:
+   sync clients ignore SQLite's file locks, the `-wal`/`-shm` sidecars sync out of order,
+   uploads catch mid-write pages, and two PCs produce `data (1).db` rather than a merge.
+   Silent, and fatal to a ledger.
+2. **SQLite → managed Postgres, reversing the recorded "real server, SQLite stays"
+   decision.** That decision priced the port as "every migration regenerated", which
+   assumed preserving history — but there is no production data, so you baseline instead.
+   The app has zero raw SQL and no SQLite-specific column types, so it is already
+   provider-agnostic. This also dissolves the reason serverless was rejected.
+
+**Built and committed** (`3e56f28`):
+
+- **`DATABASE_URL` fail-fast** — see the entry in §7. This *replaces* the old checklist item
+  below about pointing it outside the deploy directory: that advice still holds, but it is
+  no longer the only thing standing between a typo and a lost ledger.
+- **Account management** — `/users` (admin) and `/account` (everyone), `user:manage`,
+  `User.isActive`, lockout guards. `currentUser()` re-reads the row so deactivation and
+  role changes take effect immediately rather than at token expiry.
+- **Deployability** — `npm ci && npm run build` previously failed on a clean checkout.
+
+**Still to do**: the Postgres migration itself (blocked on provisioning a database), a
+nightly `pg_dump` with a verified restore, changing the seeded passwords, and DB-layer tests.
+
+#### Server checklist — still current
 
 - `npm run build` + `npm start`. **Never `npm run dev` in production.**
 - A process manager (systemd unit or pm2) so it survives reboots.
 - TLS at a reverse proxy. Caddy is the least work — automatic Let's Encrypt issuance and
   renewal; nginx + certbot otherwise.
-- **`DATABASE_URL` pointing at an absolute path outside the deploy directory**, e.g.
-  `file:/var/lib/inventory/data.db`. Left as the current relative `file:./dev.db`, a redeploy
-  that replaces the app folder destroys the entire inventory history.
 - **`AUTH_TRUST_HOST=true`** — NextAuth v5 behind a reverse proxy otherwise rejects requests
   or builds wrong callback URLs. Environment variable only, no code change.
 - A **fresh `AUTH_SECRET`**, not the development one.
 - Change the seeded `admin@example.com` / `admin123` password before anyone else has access.
-- A scheduled backup of the database file — the item most likely to be skipped, and the most
-  expensive to have skipped.
+- A scheduled backup — the item most likely to be skipped, and the most expensive to have
+  skipped.
+- See [.env.example](.env.example) for the full variable contract.
+- **Regenerate `package-lock.json` whenever dependencies move between sections.** `npm ci`
+  refuses a package.json/lock mismatch outright, so a stale lock breaks the deploy at step
+  one. This was nearly shipped once.
 
 ### Resolved by the redesign — all of it has now landed
 
@@ -532,11 +583,18 @@ Everything downstream assumes these. Breaking one corrupts stock silently rather
 
 ### What to do next
 
-**Phases 1-7 are all built.** Phase 8 (hosting) is still deferred by decision.
+**Phases 1-7 are built. Phase 8 is in progress** — accounts, the `DATABASE_URL` fail-fast
+and the build prerequisites landed 2026-08-23; **the Postgres migration has not started**
+and is blocked on someone provisioning a database, since that requires creating an account.
 
-**Phase 7 was UI work and did not close the biggest gap.** That gap is below, and it is now
-the top of the list — the app finally looks finished, which makes it *more* likely someone
-puts real stock in it before the untested write path is covered.
+**The immediate next step**, once a database exists: swap the provider and adapter, baseline
+the migrations, reseed. See [REDESIGN-PLAN.md's Phase 8 section](REDESIGN-PLAN.md) — it
+records why this reverses an earlier decision, so read it before re-litigating.
+
+**Neither Phase 7 nor Phase 8 closed the biggest gap.** That gap is below, and it is now the
+top of the list — the app looks finished and is about to get real users, which makes it far
+more likely someone puts real stock in before the untested write path is covered. The
+Postgres switch touches that exact path.
 
 **Before this goes into real use, cover the DB layer with tests.** This is still the single
 most valuable outstanding item, and the justification for deferring it has run out. The
@@ -544,20 +602,24 @@ argument was always "the app is not in real use until the remaining phases land"
 functional ones have landed. Meanwhile the untested surface has grown considerably:
 `packs.ts` (including `commitAllocation`'s synthetic `new:<i>` pack-id resolution, still the
 subtlest code in the project), `recordDispatch`, `recordDelivery`, and the whole of Phase 6.
-The pure modules are well covered at 63 tests; **everything that actually writes to the
+The pure modules are well covered at 70 tests; **everything that actually writes to the
 database has none**.
 
 The other pre-live items, in rough order of cost-to-skip:
 
-1. **A scheduled backup of `dev.db`** — cheapest thing in this document, most expensive to
-   have skipped. Currently manual copies only.
-2. **Change the seeded passwords** before anyone else has an account.
-3. Phase 8's deployment checklist (§9), where `DATABASE_URL` pointing outside the deploy
-   directory is the item that silently destroys all history if missed.
+1. **A scheduled backup** — cheapest thing in this document, most expensive to have skipped.
+   Currently manual copies only. After the Postgres switch this becomes a nightly `pg_dump`
+   to somewhere independent of the provider, **with a restore actually tested once**; an
+   untested backup is a guess. A dump file on Google Drive is fine — a *live* database is not.
+2. **Change the seeded passwords** before anyone else has an account. This no longer needs a
+   code change: `/account` for your own, `/users` for an admin reset.
+3. The rest of Phase 8's server checklist (§9) — `AUTH_SECRET`, `AUTH_TRUST_HOST`, a process
+   manager, TLS.
 
 ## 11. Related Documents
 
-- **[REDESIGN-PLAN.md](REDESIGN-PLAN.md)** — the phase plan (1-6 built, **7 planned**, 8 deferred), with verification steps and, importantly, the alternatives that were rejected and why. **The main document for continuing work.**
-- `C:\Users\Kavita\.claude\plans\c-users-kavita-downloads-ui-examples-i-ethereal-swan.md` — the Phase 7 step-by-step working checklist. **Outside the repo**, so it is not a durable record; REDESIGN-PLAN.md's Phase 7 section is.
+- **[REDESIGN-PLAN.md](REDESIGN-PLAN.md)** — the phase plan (1-7 built, **8 in progress**), with verification steps and, importantly, the alternatives that were rejected and why. **The main document for continuing work.** Its Phase 8 section records two things you will otherwise re-derive wrongly: why the SQLite file cannot live on Google Drive, and why the "SQLite stays" hosting decision was reversed.
+- [.env.example](.env.example) — every environment variable the app reads, with the consequence of getting each one wrong.
+- `C:\Users\Kavita\.claude\plans\c-users-kavita-downloads-ui-examples-i-ethereal-swan.md` — the Phase 7/8 working checklist. **Outside the repo**, so it is not a durable record; REDESIGN-PLAN.md's phase sections are.
 - [inventory_management.md.txt](inventory_management.md.txt) — the original problem statement the project was built from.
 - [storeroom-heavy-stock-plan.md](storeroom-heavy-stock-plan.md) — physical storage plan for heavy and humidity-sensitive stock (racking spec, VCI/sealed-case protection). Procurement and physical handling only; no bearing on the code.
