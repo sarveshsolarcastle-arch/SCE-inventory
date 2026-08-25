@@ -49,3 +49,7 @@ next-env.d.ts
 /dev.db-journal
 /backups
 
+# vendored third-party brand design systems — 147 files of reference material
+# dropped in during the Phase 7 UI overhaul. Nothing in the app references them,
+# and they are expensive to remove from history once committed.
+/design-md

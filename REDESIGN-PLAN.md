@@ -1687,7 +1687,8 @@ under daily use, and reversible with `turso group unarchive`. More seriously, Tu
 triggered by free-tier scale-to-zero. The daily dump covers the loss half; nothing covers the
 exposure half. Vercel's Hobby plan is **non-commercial only**, and a client's live inventory
 is commercial use — the exposure is account termination taking the deployment with it. Both
-are answered by the paid tiers (~$25/mo total, ending at cutover). **Undecided — see below.**
+would be answered by the paid tiers; **free was chosen on 2026-08-25 and both risks are
+accepted** — see "Decided: free tiers for Part A" below for what that means in practice.
 
 ## Part B — offline production, on a carried drive
 
@@ -1785,19 +1786,39 @@ The same activity is the first run of the maintenance-day count, if that feature
   drive carried between machines is far more fragile than a single file, and needs a service
   installed on every host PC. SQLite is the right database for this shape.
 
+## Decided 2026-08-25: free tiers for Part A
+
+Paid tiers (~$25/mo, ending at cutover) would have removed the free-tier scale-to-zero
+mechanism behind Turso's 2023 incident and Vercel's commercial-use restriction. **The user
+chose free**, so both risks are **accepted, not mitigated**:
+
+- **Cross-tenant exposure on Turso's free tier is uncovered.** The daily dump answers data
+  loss; nothing answers a leak. Real client stock data is on this.
+- **Vercel Hobby is non-commercial only**, and this is a client's live inventory. The
+  exposure is account termination taking the deployment with it — recoverable from the daily
+  dump, but the pilot would stop dead.
+
+Recorded as an accepted trade-off rather than an oversight, and cheap to revisit: both are
+per-month subscriptions, so either can be switched on mid-pilot if the risk stops feeling
+theoretical.
+
+**Not yet ruled out as a zero-cost improvement:** Cloudflare Workers' free tier explicitly
+permits commercial use, which removes the Vercel problem for nothing. The blocker is its
+**3 MiB Worker size limit**, which a Next.js 16 app via the OpenNext adapter may exceed —
+worth half an hour to test before Part A is wired up, not worth agonising over.
+
 ## Open decisions — do not treat these as settled
 
-1. **Free or paid tiers for Part A.** Paid (~$25/mo, ending at cutover) removes the
-   free-tier scale-to-zero mechanism behind Turso's 2023 incident and Vercel's commercial-use
-   restriction. Free (or Neon + Cloudflare Workers, which permits commercial use) keeps cost
-   at zero and accepts both risks. **Real client data is on this, which is what makes it a
-   decision rather than a preference.**
-2. **Whether Part B is reachable from outside the office.** Three routes, not equivalent:
+1. **Whether Part B is reachable from outside the office.** Three routes, not equivalent:
    router port-forwarding (advised against — a Windows PC doing other work, publicly
    exposed, unpatched); a tunnel such as Cloudflare Tunnel (no open ports, traffic via a
    third party); or a private mesh VPN such as Tailscale (device-authenticated, nothing
    public). **The first two partly undo the reason for going offline**; the third does not.
    Still under discussion — LAN-only is the default until it is decided.
+2. **How long Part A runs, and when the cutover count happens.** Never discussed, and it is
+   load-bearing: it sets how long real client data sits on a free tier with both risks above
+   accepted, and the cutover is a physical stocktake that has to be scheduled with the people
+   who will do the counting. An open-ended pilot is the version of this that drifts.
 
 ## Still outstanding regardless
 
