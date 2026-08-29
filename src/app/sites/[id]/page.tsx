@@ -4,6 +4,7 @@ import { updateSite } from "@/lib/actions/sites";
 import { materialsAtSite, oldestContributingDate, effectiveFlagged } from "@/lib/stock";
 import { can, currentUser } from "@/lib/permissions";
 import SiteMaterialPanel, { type HeldRow } from "@/components/SiteMaterialPanel";
+import DeleteSiteButton from "@/components/DeleteSiteButton";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import PageHeader from "@/components/ui/PageHeader";
@@ -120,6 +121,12 @@ export default async function SiteDetailPage({
               </Field>
               <Button type="submit">Save</Button>
             </form>
+
+            {can(user?.role, "site:manage") && (
+              <div className="mt-5 border-t border-line pt-4">
+                <DeleteSiteButton siteId={site.id} siteName={site.name} />
+              </div>
+            )}
           </CardBody>
         </Card>
 

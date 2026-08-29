@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { requireCapability } from "@/lib/permissions";
+import { NotPermittedError, requireCapability } from "@/lib/permissions";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
@@ -19,6 +19,88 @@ export async function createSite(formData: FormData) {
 
   revalidatePath("/sites");
   redirect(`/sites/${site.id}`);
+}
+
+export type DeleteSiteResult = { ok: true } | { ok: false; message: string };
+
+/** What is still attached to a site, and therefore what a delete would destroy.
+ * Ordered so the message reads worst-first. */
+const BLOCKERS = [
+  ["transactions", "stock movement"],
+  ["dispatches", "dispatch"],
+  ["deliveries", "delivery"],
+  ["defectiveItems", "defective-item record"],
+  ["pickups", "collection flag"],
+] as const;
+
+/** Removes a site added by mistake.
+ *
+ * Only ever a site with NOTHING attached. That guard is not politeness, it is
+ * the whole reason this function is shaped the way it is: `Transaction.siteId`
+ * is an OPTIONAL relation, so Prisma's default referential action for it is
+ * `SetNull` — deleting a site that has history would not fail, it would quietly
+ * blank the siteId on every one of its movements. The ledger would still
+ * balance and no error would appear anywhere; the rows would simply stop
+ * saying where the material went. A mis-click would cost exactly the
+ * accountability trail this app was built to provide.
+ *
+ * So the count and the delete run inside one transaction — checking first and
+ * deleting after would leave a window where a dispatch lands in between and is
+ * silently orphaned by the delete that follows.
+ */
+export async function deleteSite(siteId: string): Promise<DeleteSiteResult> {
+  try {
+    await requireCapability("site:manage");
+  } catch (error) {
+    if (error instanceof NotPermittedError) {
+      return { ok: false, message: "Your account cannot delete sites" };
+    }
+    return { ok: false, message: "Not signed in" };
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const site = await tx.site.findUnique({ where: { id: siteId } });
+      if (!site) throw new Error("That site no longer exists");
+
+      const counts = {
+        transactions: await tx.transaction.count({
+          // Both directions: a transfer OUT of this site carries it as
+          // fromSiteId only, and would not be caught by siteId alone.
+          where: { OR: [{ siteId }, { fromSiteId: siteId }] },
+        }),
+        dispatches: await tx.dispatch.count({ where: { siteId } }),
+        deliveries: await tx.delivery.count({ where: { siteId } }),
+        defectiveItems: await tx.defectiveItem.count({ where: { siteId } }),
+        pickups: await tx.sitePickup.count({ where: { siteId } }),
+      };
+
+      const attached = BLOCKERS.filter(([key]) => counts[key] > 0).map(
+        ([key, noun]) =>
+          `${counts[key]} ${noun}${counts[key] === 1 ? "" : "s"}`
+      );
+
+      if (attached.length) {
+        throw new Error(
+          `"${site.name}" cannot be deleted — it still has ${attached.join(", ")} ` +
+            `attached. Deleting it would break that history. Rename it instead if ` +
+            `it was entered by mistake.`
+        );
+      }
+
+      await tx.site.delete({ where: { id: siteId } });
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Could not delete the site",
+    };
+  }
+
+  revalidatePath("/sites");
+  revalidatePath("/at-sites");
+  revalidatePath("/dashboard");
+  return { ok: true };
 }
 
 export async function updateSite(siteId: string, formData: FormData) {
