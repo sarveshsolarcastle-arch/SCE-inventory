@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Users,
   UserCog,
+  DatabaseBackup,
   type LucideIcon,
 } from "lucide-react";
 
@@ -32,7 +33,8 @@ export type IconName =
   | "recycle"
   | "defective"
   | "users"
-  | "account";
+  | "account"
+  | "backups";
 
 /** Icons cross the server/client boundary as strings (IconName), resolved
  * here — passing a LucideIcon function from a server component throws. */
@@ -52,4 +54,5 @@ export const ICONS: Record<IconName, LucideIcon> = {
   defective: AlertTriangle,
   users: Users,
   account: UserCog,
+  backups: DatabaseBackup,
 };

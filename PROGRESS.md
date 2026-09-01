@@ -53,8 +53,8 @@ All core flows below were manually tested in a running dev server and confirmed 
 | Site lifecycle: consumption, transfers, pickup flags, cross-site view | ✅ Done (Phase 6) |
 | UI overhaul + mobile web | ✅ Done (Phase 7) — light theme + user dark toggle, grouped sidebar, `src/components/ui/` primitives |
 | User accounts | ✅ Done (Phase 8) — admin `/users` page, self-service `/account`, deactivation |
-| Deployment | ✅ **Part A live** (Phase 8) — deployed at sce-inventory.vercel.app, on Turso. Still open: seeded passwords unchanged, daily Drive dump not yet set up. Part B (offline production) not started |
-| Database backups | ⚠️ Manual copies in `backups/` only — no schedule. Part A adds an automated daily dump; Part B needs a second drive |
+| Deployment | ✅ **Part A live** (Phase 8) — deployed at sce-inventory.vercel.app, on Turso. Still open: seeded passwords unchanged. Part B (offline production) not started |
+| Database backups | ✅ **Automated** (Phase 9) — nightly GitHub Actions job dumps the database to the repo's `backups` branch (30-day retention), and an admin-only `/backups` page restores from any of them, or from an uploaded file, with no terminal required. See `.github/workflows/backup.yml`, `src/lib/backup/`, `src/app/backups/`. Part B still needs a second drive |
 
 ## 3. Tech Stack
 
@@ -223,13 +223,22 @@ src/
                             deliveries.ts (recordDelivery, updateDefectiveStatus),
                             siteLifecycle.ts (consumeAtSite, transferBetweenSites,
                             markForPickup), users.ts (createUser, setUserRole,
-                            setUserActive, resetUserPassword, changeOwnPassword)
+                            setUserActive, resetUserPassword, changeOwnPassword),
+                            backup.ts (restoreFromGithub, restoreFromUpload — Phase 9)
+    backup/                 dump.ts, restore.ts, github.ts — one shared dump/restore
+                            implementation for the nightly job, /backups, and the safety
+                            copy taken before every restore (Phase 9)
   proxy.ts                  route-protection middleware (Next.js 16 naming)
 prisma/
   schema.prisma
   seed.ts                   admin user + wire/screws/inverter fixtures + two sites
   migrations/
-backups/                    manual dev.db copies (gitignored)
+scripts/
+  backup-database.ts         `npm run db:backup` — used by the nightly job and by hand
+backups/                    local dumps and manual dev.db copies (gitignored) — the
+                            durable copies live on the repo's `backups` branch instead
+.github/workflows/
+  backup.yml                 nightly cron → dumps → commits to the `backups` branch
 ```
 
 **Permissions live in one place: [src/lib/permissions.ts](src/lib/permissions.ts).** Roles are *workspaces*, not levels — FINANCE receives stock and cannot issue it; EMPLOYEE moves stock to and from sites and cannot receive it; ADMIN does everything. Every server action calls `requireCapability(...)` for itself: `proxy.ts` route-gating and the filtered nav are convenience only, because a server action can be invoked regardless of what the page rendered.
@@ -249,6 +258,7 @@ backups/                    manual dev.db copies (gitignored)
 - **Shelf tag codes are auto-generated and not editable** (`F1-1`, `B2-3`, etc., generated at shelf-creation time). If physical stickers don't match this scheme, either the seed logic needs adjusting or an edit-tag UI needs adding.
 - **No file/photo attachments** on items or transactions — not requested, but a common ask for this type of tool.
 - **No CSV export / reporting page** — dashboard covers the "what do we have / what's low / what's issued where" questions live, but there's no printable/exportable report yet.
+- **Discontinuing an item — decided 2026-08-27, not built.** There is no way to retire or remove an item today: [items.ts](src/lib/actions/items.ts) has `createItem` and `updateItem` and nothing else. So an item the company stops carrying runs down to zero and then sits below `minStock` **forever**, raising a low-stock alert nobody will ever action — and a low-stock list with permanent noise in it is a list people stop reading. Deleting it is not the fix, and the schema refuses it anyway: `itemId` is a required relation on `Transaction`, `PackStock`, `OpenPack`, `DefectiveItem` and `SitePickup`, so a delete would take the ledger with it. Same answer as accounts, which are deactivated rather than deleted, for the same reason. **The decision is a `discontinued` boolean that suppresses the alert** — and, critically, the low-stock rule moves into **one** predicate instead of the three independent `currentStock < minStock` derivations that exist now ([dashboard](src/app/dashboard/page.tsx:42), [items list](src/app/items/page.tsx:71), and `src/app/items/[id]/page.tsx:79`). Miss one of the three and a suppressed alert is indistinguishable from a healthy item. Pickers are deliberately left alone — stock already on the shelf stays issuable. Full scope, rejected alternatives and verification steps are in [REDESIGN-PLAN.md's cross-phase notes](REDESIGN-PLAN.md).
 - **npm audit** flags 3 high-severity issues, all in `prisma`'s own dev-time config-merging dependency (`deepmerge-ts`), not in runtime code — safe to ignore for now, but worth revisiting on the next `npm audit` pass since a fix will likely ship in a future Prisma release.
 - ✅ **Shelf slots no longer store a quantity at all** (Phase 1), so the drift this entry used to warn about is gone: a box's contents are *derived* from the item's packs. See §5 and the design record in §8, whose last three points this reversed.
 
@@ -543,12 +553,63 @@ the second has never been discussed and is the one most likely to drift.
   or builds wrong callback URLs. Environment variable only, no code change.
 - A **fresh `AUTH_SECRET`**, not the development one.
 - Change the seeded `admin@example.com` / `admin123` password before anyone else has access.
-- A scheduled backup — the item most likely to be skipped, and the most expensive to have
-  skipped.
+- ~~A scheduled backup~~ — **done (Phase 9)**: `.github/workflows/backup.yml` runs nightly.
+  Requires `DATABASE_URL` and `TURSO_AUTH_TOKEN` set as GitHub repo secrets (Settings →
+  Secrets and variables → Actions) — same values as `.env` — and `GITHUB_BACKUP_TOKEN` (a
+  read-only, repo-scoped fine-grained PAT) set wherever the app itself runs, so `/backups`
+  can list and restore them. See [.env.example](.env.example).
 - See [.env.example](.env.example) for the full variable contract.
 - **Regenerate `package-lock.json` whenever dependencies move between sections.** `npm ci`
   refuses a package.json/lock mismatch outright, so a stale lock breaks the deploy at step
   one. This was nearly shipped once.
+
+### Phase 9 — Automated backups ✅ BUILT 2026-09-01
+
+**Why now:** Part A's move to Turso (Phase 8) removed the one thing that made backups easy —
+a local `dev.db` file anyone could copy. Nothing filled that gap: the item sat as "manual
+copies only, no schedule" through Phase 8. Requirements from the user: free forever (no new
+paid account), and a restore simple enough for someone with no coding background — the
+WhatsApp-restoring-your-chats bar, not a terminal session.
+
+**What decided the design:** the restore side. For the app to offer "restore from the latest
+backup" as a button rather than "go find a file", the backup has to live somewhere the app
+itself can read back through an API. That ruled out a plain cloud storage bucket (a new
+account, credentials to manage) and pointed at the private GitHub repo the project already
+has — free, and both writable by a scheduled job and readable by the app.
+
+**How it works:**
+- `.github/workflows/backup.yml` — nightly cron (`workflow_dispatch` too, for an on-demand
+  run), dumps the database with `npm run db:backup`, commits it to the repo's `backups`
+  branch, prunes to the newest 30.
+- `src/lib/backup/dump.ts` — the one dump implementation, shared by the nightly job, the
+  in-app "Download a copy" button, and the safety copy `restore.ts` takes before overwriting
+  anything. Reads DDL straight from `sqlite_schema` and `SELECT *`s every table it finds
+  there, rather than going through Prisma Client or a fixed model list — so it reflects what
+  is actually in the database, not what the current schema claims should be there. In
+  practice that is the 12 app tables and nothing else: `_prisma_migrations` was never
+  created on the live Turso database, because migrations there were applied as raw SQL
+  rather than through `prisma migrate deploy` (see Phase 8's notes on why). If it is ever
+  created, the dump picks it up automatically.
+- `src/lib/backup/restore.ts` — takes a safety dump first, refuses to proceed if that fails,
+  and rolls back to it if the new script errors partway through.
+- `src/lib/backup/github.ts` — lists and fetches dumps from the `backups` branch, using a
+  read-only `GITHUB_BACKUP_TOKEN`.
+- `/backups` (admin-only, new `backup:manage` capability) — lists nightly backups with a
+  Restore button per row (type-the-date confirmation, since this is more destructive than
+  anything else in the app), a Download button for a manual off-site copy, and a
+  restore-from-uploaded-file fallback for when GitHub itself is unreachable.
+- A successful restore signs out every session (the restored data may not contain the
+  session's own user row) via the same `signOut({ redirectTo: "/login" })` AppShell's own
+  sign-out button uses.
+
+**Setup required, one time, no code** — see [.env.example](.env.example) for the exact
+values: `DATABASE_URL` and `TURSO_AUTH_TOKEN` as GitHub repo secrets (Settings → Secrets and
+variables → Actions), and `GITHUB_BACKUP_TOKEN` (read-only, fine-grained, this repo only)
+wherever the app itself runs.
+
+**Not yet done: the full restore drill.** Everything above has been built and the round-trip
+logic reviewed, but nobody has yet created a scratch Turso database and actually restored
+into it end to end. Do that once before trusting this — an untested backup is a guess.
 
 ### Resolved by the redesign — all of it has now landed
 
@@ -683,12 +744,10 @@ database has none**.
 
 The other pre-live items, in rough order of cost-to-skip:
 
-1. **A scheduled backup** — cheapest thing in this document, most expensive to have skipped.
-   Currently manual copies only. In Part A this is an **automated** daily dump to Drive with
-   dated filenames, kept ~30; in Part B it is a second drive, swapped or synced. Either way,
-   **test a restore once** — an untested backup is a guess — and do not leave it as a person's
-   end-of-day habit, which lapses silently. A dump file on Google Drive is fine; a *live*
-   database is not.
+1. ~~A scheduled backup~~ — **done (Phase 9)**. Nightly GitHub Actions job, `/backups` page
+   for one-click restore. Two things still worth doing once, not code: run the "full drill"
+   in Phase 9's notes below (restore into a scratch database end to end, at least once —
+   an untested backup is a guess), and set the three secrets the job depends on.
 2. **Change the seeded passwords** before anyone else has an account. This no longer needs a
    code change: `/account` for your own, `/users` for an admin reset.
 3. The rest of Phase 8's server checklist (§9) — `AUTH_SECRET`, `AUTH_TRUST_HOST`, a process

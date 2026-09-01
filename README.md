@@ -60,6 +60,9 @@ npx prisma migrate dev --name <description>
   reasoning before changing one. Phase 8 in particular records why the SQLite file must not
   live on a synced drive, and how the hosting decision was reversed and then partly restored
   as the requirement changed twice — read both steps, or the history reads as incoherent.
+  Its cross-phase notes also carry the 2026-08-27 decision on **discontinuing an item** —
+  flagged, never deleted, because every transaction carries an `itemId`. Decided in full,
+  not yet built.
 - [.env.example](.env.example) — every environment variable, and what breaks without it.
 - [inventory_management.md.txt](inventory_management.md.txt) — the original problem statement.
 - [storeroom-heavy-stock-plan.md](storeroom-heavy-stock-plan.md) — physical storage plan for
