@@ -1,0 +1,70 @@
+name: Nightly database backup
+
+# Dumps the live Turso database and commits it to the `backups` branch of
+# this repo, which is where the app's own /backups page reads from (see
+# src/lib/backup/github.ts). This is the "free forever, no new account"
+# choice: the repo already exists, GitHub Actions is free for a job this
+# short, and the app can read the result straight back without anyone
+# hunting for a file.
+#
+# One-time setup this workflow depends on (see README/PROGRESS.md):
+#   Settings → Secrets and variables → Actions → add DATABASE_URL and
+#   TURSO_AUTH_TOKEN (same values as the app's own .env).
+
+on:
+  schedule:
+    # ~00:30 IST. GitHub Actions cron is UTC and best-effort — it can run a
+    # few minutes late, which does not matter for a daily job.
+    - cron: "0 19 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Dump the database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: npm run db:backup
+
+      - name: Commit the dump to the backups branch
+        run: |
+          set -euo pipefail
+
+          dump_file=$(ls backups/inventory-*.sql)
+          dump_name=$(basename "$dump_file")
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin backups:backups 2>/dev/null || true
+
+          if git show-ref --verify --quiet refs/heads/backups; then
+            git checkout backups
+          else
+            git checkout --orphan backups
+            git rm -rf . > /dev/null 2>&1 || true
+          fi
+
+          cp "$dump_file" "./$dump_name"
+          git add "$dump_name"
+          git commit -m "Backup $dump_name"
+
+          # Retention: keep the newest 30 dumps, drop the rest.
+          ls inventory-*.sql 2>/dev/null | sort | head -n -30 | xargs -r git rm --quiet --
+          git diff --cached --quiet --exit-code || git commit -m "Prune backups older than the newest 30"
+
+          git push origin backups

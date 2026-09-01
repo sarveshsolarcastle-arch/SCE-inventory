@@ -1889,6 +1889,86 @@ trail, whereas this plan deliberately makes it a **cache** of `PackStock` + `Ope
 decision this plan reverses. Both should be updated as part of the work, not left to
 contradict the code.
 
+## Decided 2026-08-27: discontinuing an item — flag it, never delete it
+
+**The question.** An item is catalogued, then the company stops carrying it. Can it be taken
+off the items list?
+
+**Today it cannot.** [items.ts](src/lib/actions/items.ts) has `createItem` and `updateItem`
+and nothing else — no delete action, no `item:delete` capability in
+[permissions.ts](src/lib/permissions.ts), no control anywhere on the item page. An item, once
+created, is in the list forever.
+
+**Deleting is the wrong fix, and the schema already refuses it.** `itemId` is a *required*
+relation on `Transaction`, `PackStock`, `OpenPack`, `DefectiveItem` and `SitePickup`; only
+`ShelfSlot.itemId` is nullable. So a hard delete succeeds only for an item that never moved,
+and for anything with history the database says no — correctly, because forcing it through
+would mean deleting the transactions that reference it, and last year's dispatches would stop
+adding up. This is the same answer already reached for accounts: `User.isActive` exists
+because every `Transaction` carries a `userId` and deleting a leaver punches holes in the
+trail. Items carry that trail more strongly still — *every* transaction has an `itemId`.
+
+**The decision: a `discontinued` flag, whose primary job is silencing the low-stock alert.**
+A discontinued item runs down to zero and then sits below `minStock` forever, raising an
+alert that will never be actioned. That is not cosmetic. A low-stock list with permanent
+noise in it is a list people stop reading, which is precisely the failure the reorder
+feature exists to prevent.
+
+### Scope
+
+- `discontinued Boolean @default(false)` on `Item`. Eleventh migration; a defaulted boolean
+  is a plain `ALTER TABLE` on SQLite, so Turso needs nothing special for it.
+- **One predicate owns the low-stock rule**, with the flag folded into it — see below.
+- A toggle on the item detail page under `item:manage`, reversible.
+- A badge in the items list, so a quiet item shows *why* it is quiet instead of looking like
+  an item nobody set a minimum for.
+- Discontinued items **stay** in `/items`, in history, in reports and in the dashboard's
+  activity. Nothing is hidden; one alert is silenced.
+
+### The part that must not be got wrong
+
+The low-stock rule is currently re-derived in three places, each computing
+`currentStock < minStock` independently:
+
+| Where | What it drives |
+|---|---|
+| [dashboard/page.tsx:42](src/app/dashboard/page.tsx:42) | the low-stock list, and hanging off it the *"+ 300 m at 3 sites"* lookup |
+| [items/page.tsx:71](src/app/items/page.tsx:71) | the row badge in the items table |
+| `src/app/items/[id]/page.tsx:79` | the "Below minimum" badge on the detail page |
+
+Adding `&& !item.discontinued` to three call sites is the weak form of this change: miss one
+and the dashboard goes quiet while the items table still flags the item, or the reverse — and
+nobody notices, because a **missing** alert looks exactly like a healthy item. So the flag
+lands as a single predicate, `isBelowMinimum(item)`, that all three read through, and a fourth
+low-stock surface added later inherits the rule instead of forgetting it. Same reasoning as
+`effectiveFlagged` in [siteBalance.ts](src/lib/siteBalance.ts) and `resolveDatabaseUrl` in
+[databaseUrl.ts](src/lib/databaseUrl.ts): make the wrong state underivable rather than
+documenting that nobody should derive it. Invariant 5's pattern, applied to a smaller thing.
+
+### Deliberately not in scope
+
+- **Removing discontinued items from the pickers** — the dispatch, delivery, transaction and
+  shelf-assignment dropdowns. That changes what people can do day to day, and it is the wrong
+  default anyway: an item with 40 m still on the shelf should stay issuable until the stock is
+  actually gone. Revisit once the flag has been in real use.
+- **A real delete for a never-used item** — created five minutes ago with a typo in the SKU —
+  gated on zero transactions, packs, defects and pickups. Reasonable on its own, but a
+  separate decision: folding it into the same control would blur "we stopped stocking this"
+  with "this was a mistake".
+- **Refusing the flag while stock remains.** An item still on the shelf is being run down,
+  not yet gone. Warn on the toggle; do not block. The flag records purchasing intent, and the
+  stock reaches zero on its own.
+
+### Verification
+
+1. An item below its minimum shows the alert on all three surfaces. Flag it discontinued —
+   all three go quiet **together**. Unflag — all three come back together.
+2. A discontinued item still appears in `/items`, still opens, still shows its full history,
+   and still appears in every item picker.
+3. Issue against a discontinued item that still holds stock: works normally, packs and all.
+4. The dashboard's *"+ N at M sites"* line disappears with the suppressed alert — it hangs
+   off the low-stock list, so this should fall out for free. Confirm that it does.
+
 ## Parked — raised, not yet decided
 
 **1. `Transaction` is becoming a wide table.** Across these phases it gains `packSize`,

@@ -35,6 +35,10 @@ export type Capability =
   // accounts — admin only. Changing your OWN password is not a capability:
   // every signed-in user may do it, so gating it would be wrong.
   | "user:manage"
+  // reading and restoring database backups — admin only. Restoring
+  // overwrites every table, so this sits with stock:reverse and
+  // stock:adjust as history-rewriting territory.
+  | "backup:manage"
   // read-only visibility of stock, history and reports
   | "ledger:view";
 
@@ -53,6 +57,7 @@ const ALL: Capability[] = [
   "stock:reverse",
   "stock:adjust",
   "user:manage",
+  "backup:manage",
   "ledger:view",
 ];
 
