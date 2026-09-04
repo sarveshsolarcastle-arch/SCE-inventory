@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { updateSlotBoxType, toggleFrontRow, assignSlotItem } from "@/lib/actions/shelf";
+import DeleteShelfButton from "@/components/DeleteShelfButton";
+import { can } from "@/lib/permissions";
 import ShelfGrid from "@/components/ShelfGrid";
 import { describeSlotContents } from "@/lib/units";
 import { notFound } from "next/navigation";
@@ -15,7 +17,7 @@ export default async function ShelfDetailPage({
 }) {
   const { shelfId } = await params;
 
-  const [shelf, session, items] = await Promise.all([
+  const [shelf, session, items, placedPacks] = await Promise.all([
     prisma.shelf.findUnique({
       where: { id: shelfId },
       include: {
@@ -32,11 +34,17 @@ export default async function ShelfDetailPage({
       orderBy: { name: "asc" },
       select: { id: true, name: true, sku: true },
     }),
+    // Every pack recorded as sitting on this shelf, in ANY state — the delete
+    // warning counts scrap packs in Recyclable boxes too, whereas the grid
+    // above only ever renders OPEN ones.
+    prisma.openPack.count({ where: { shelfSlot: { shelfId } } }),
   ]);
 
   if (!shelf) notFound();
 
-  const isAdmin = (session?.user as { role?: string } | undefined)?.role === "ADMIN";
+  const role = (session?.user as { role?: Parameters<typeof can>[0] } | undefined)?.role;
+  const isAdmin = role === "ADMIN";
+  const assignedBoxes = shelf.slots.filter((slot) => slot.itemId).length;
 
   const slots = shelf.slots.map((slot) => {
     const item = slot.item;
@@ -95,6 +103,19 @@ export default async function ShelfDetailPage({
           />
         </CardBody>
       </Card>
+
+      {can(role, "shelf:delete") && (
+        <Card>
+          <CardBody>
+            <DeleteShelfButton
+              shelfId={shelf.id}
+              shelfName={shelf.name}
+              assignedBoxes={assignedBoxes}
+              placedPacks={placedPacks}
+            />
+          </CardBody>
+        </Card>
+      )}
     </div>
   );
 }
