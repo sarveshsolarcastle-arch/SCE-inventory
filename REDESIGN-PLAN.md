@@ -3,7 +3,9 @@
 > **This is the working plan for phases 1-8. Phases 1-7 are built; phase 8 (hosting) is
 > IN PROGRESS — Part A, the hosted pilot, is deployed and live at sce-inventory.vercel.app
 > on Turso (2026-08-25). Part B, permanent offline production, has not started. SQLite is
-> kept throughout, per plan.**
+> kept throughout, per plan. The 2026-09-04 "Turso latency" report is root-caused and fixed
+> — it was a Vercel region misconfiguration, not a database problem; see the Reopened
+> section near the end.**
 > Read [PROGRESS.md](PROGRESS.md) first for current state, then this for what to build next.
 >
 > Everything here was decided in conversation with the user over a long session. **The
@@ -151,8 +153,8 @@ Checklist for when it happens (Phase 8):
   wrong callback URLs without it. Env var only, no code change.
 - A **fresh `AUTH_SECRET`** for production, not the development one.
 - Change the seeded `admin@example.com` / `admin123` password before anyone else has access.
-- A scheduled backup of the database file. This is the item most likely to be skipped and
-  the most expensive to have skipped.
+- ~~A scheduled backup of the database file~~ — **done**: nightly GitHub Actions job plus an
+  admin-only `/backups` restore page, live on Production. See PROGRESS.md's Phase 9 section.
 
 **Why corrections come third.** Nothing in the app can currently be undone — no `delete`,
 `reverse` or `adjust` operation exists anywhere. That is survivable at one row per person,
@@ -1676,10 +1678,12 @@ actual inventory, not fixtures. That is the decision everything else in Part A a
    `employee123`, live on a public URL.** This is the single biggest open risk right now —
    change it via `/users`, and give each account its own distinct password (a shared
    password defeats the accountability `Transaction.userId` exists for).
-3. ❌ **Daily automated dump to Google Drive — not set up.** Still needed before Part A is
-   properly running: a manual daily step lapses within weeks, silently. **Dated filenames**
-   (`inventory-2026-08-25.sql`), keep ~30; a single overwritten `backup.sql` faithfully
-   replicates a corruption you have not noticed yet. **Restore one before relying on it.**
+3. ✅ **Daily automated dump — done, not to Google Drive.** Built as a nightly GitHub Actions
+   job instead (see PROGRESS.md's Phase 9): free-forever, and the destination the app itself
+   can read back through an API, which a Drive folder cannot offer. Dated filenames, keeps
+   the newest 30. **Still open: restore one against the real database to prove it, per Phase
+   9's notes** — the underlying dump/restore logic has been verified against a scratch copy,
+   but nobody has yet hit Restore against production itself.
 4. ❌ **Spot-count two or three high-movement items mid-pilot — not done yet.** The wire and
    the screws. Ten minutes. This is the only independent check on the untested write path
    during Part A (see "Rejected" below: there is no parallel record), and a systematic
@@ -1849,6 +1853,137 @@ Vercel Hobby non-commercial restriction becomes a real problem before the pilot'
 > set Vercel's environment variables directly in Vercel's dashboard. The agent never held the
 > Turso or Vercel account credentials — only the resulting `DATABASE_URL` and
 > `TURSO_AUTH_TOKEN`, written to the gitignored local `.env` for the pre-deploy smoke test.
+
+## Reopened 2026-09-04: slow writes on the live deployment ✅ ROOT-CAUSED AND FIXED 2026-09-04
+
+> **Resolved.** It was **not** a read-after-write consistency problem, and not a Turso
+> problem at all. The application server was running **11,000 km from its database**, and
+> every SQL statement paid the flight. Fix: one file, [vercel.json](vercel.json), pinning the
+> function region to Mumbai. The original report and the reasoning are kept below, because
+> the wrong hypothesis is the instructive part.
+
+### The report
+
+A noticeable delay (roughly 2 seconds) between clicking something that writes and the result
+actually showing up. Reported by the user from the running pilot. Read as a *read-after-write
+consistency* problem — the write lands, but the next read does not see it yet.
+
+### What it actually was
+
+Measured against the live deployment on 2026-09-04:
+
+```
+$ curl -sI https://sce-inventory.vercel.app/login | grep x-vercel-id
+x-vercel-id: bom1::iad1::zd9l4-...
+             ^^^^  ^^^^
+             edge  the function actually runs HERE
+```
+
+- **The function runs in `iad1`** — Washington DC. Vercel's default region, never overridden,
+  because there was no `vercel.json`.
+- **The database is in `aws-ap-south-1`** — Mumbai. It is in the hostname:
+  `libsql://sce-inventory-cosmosorigin.aws-ap-south-1.turso.io`.
+
+So every single SQL statement was a Washington → Mumbai → Washington round trip, ~230 ms.
+Not per request — **per statement**. Prisma's interactive `$transaction` issues its statements
+sequentially over one libSQL connection, so they add up rather than overlap:
+
+| Path | Sequential statements | At ~230 ms each |
+|---|---|---|
+| `currentUser()` on every request | 1 | 0.2 s |
+| A page render (`Promise.all`, so mostly parallel) | 2-4 waves | 0.5-0.9 s |
+| `recordTransaction` — an ISSUE, via `commitAllocation` | ~10-25 | **2.3-5.7 s** |
+
+A write followed by a re-render pays both. That is the reported 2 seconds, and the reason it
+was worst on exactly the actions that write.
+
+**Measured from Mumbai for comparison** — the same production database, same auth token, from
+the office's own network:
+
+```
+warm SELECT 1, median of 5             15 ms      (vs ~230 ms from iad1)
+10 sequential SELECT 1                163 ms
+10 statements in one batch()           35 ms
+interactive txn: 10 reads + commit    197 ms
+```
+
+The database was never slow. It was 15 ms away from the people using it and 230 ms away from
+the server serving them.
+
+### Why the read-after-write reading was wrong, and how to be sure
+
+It is a reasonable guess — the symptom (write, then a stale-looking read) is exactly what
+replica lag looks like. But this deployment **cannot** have replica lag:
+[prisma.ts](src/lib/prisma.ts) points `PrismaLibSql` at one URL, with **no `syncUrl` and no
+embedded replica**. Reads and writes go to the same node. There is nothing to be stale
+against.
+
+This also disposes of the cookie-based workaround the user found while researching. It is
+real, but it addresses Turso **embedded replicas / read replicas** — passing a replication
+index back so a subsequent read waits for that write to arrive. Applied here it would have
+been a no-op wrapped around code that had no replica to wait for, and the 2 seconds would
+have stayed exactly where they were.
+
+**The general lesson, and the reason this is written out at length:** the symptom named the
+suspect. "Slow after a write" sounded like consistency, so the search went to consistency,
+and from there to a rewrite onto a different database. The measurement that settled it —
+reading one response header — took under a minute and pointed somewhere else entirely.
+Measure before migrating.
+
+### The fix
+
+```json
+// vercel.json
+{ "regions": ["bom1"] }
+```
+
+`bom1` is Vercel's Mumbai region — same city as `aws-ap-south-1`, so the per-statement cost
+falls from ~230 ms to low single-digit milliseconds. The 25-statement write path goes from
+~5 s to well under 200 ms. It also shortens the trip for the users, who are in the same
+office.
+
+JSON permits no comments, so the reasoning lives here and in [README.md](README.md) rather
+than in the file. **Do not delete `vercel.json` as an empty-looking config** — it is the
+whole fix.
+
+### Verification — do this after the next deploy
+
+1. `curl -sI https://sce-inventory.vercel.app/login | grep x-vercel-id` → the **second**
+   segment must read `bom1`, not `iad1`. If it still says `iad1`, the setting did not take;
+   check Vercel's project-level Function Region, which can override this file.
+2. Sign in and issue stock against an item that needs a roll opened — the heaviest write
+   path. It should feel immediate rather than a beat behind.
+3. Read the browser console on that check, not just the timing.
+
+**If the region will not change.** Vercel's plans have at times restricted which regions a
+Hobby project may pick. If `iad1` persists after a deploy with this file in it, the setting
+is being refused, not ignored — the fallbacks, in order of preference: set the Function
+Region in the Vercel project settings UI (same effect, different mechanism); or move the
+**database** to a region near `iad1`. Prefer the first. Moving the database is the strictly
+worse trade here — the users are all in the same Indian office, so a US database makes their
+*own* requests slower even once the function-to-database hop is short. The whole point of
+`bom1` is that it is close to both.
+
+### The Supabase migration — CLOSED, paused by the user 2026-09-04
+
+> **Decided by the user on 2026-09-04, once the region was found to be the cause: Supabase
+> stays paused.** No separate repo, no separate host, no second database, nothing to
+> terminate later. Part A continues on Turso. This is a closed ticket, not a deferred one —
+> reopening it needs a new reason, not this one. The reasoning is kept below because the
+> argument, not the verdict, is what stops it reopening on the same grounds.
+
+
+
+The user proposed moving to Supabase (Postgres) as two completely separate deployments, on
+the grounds that Supabase is more stable. That proposal was a response to *this* error, and
+this error was a misconfigured region. **Postgres in `us-east-1` behind a function in `iad1`
+would have been fast for the same reason this fix is fast — proximity — and would have been
+read as "Supabase fixed it", teaching the wrong lesson at the cost of a rewrite and a
+discarded dataset.**
+
+The earlier decision above ("the database for Part A is Turso") therefore stands, and stands
+on its original grounds. If Supabase is still wanted, it needs a *new* argument — this one is
+spent.
 
 ## Open decisions — do not treat these as settled
 

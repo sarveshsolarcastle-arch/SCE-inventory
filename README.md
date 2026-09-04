@@ -81,7 +81,12 @@ repo that actually builds from a clean checkout.
 
 - **Part A — a temporary hosted pilot** on Turso + Vercel, carrying **real stock data**.
   SQLite-compatible, so `provider = "sqlite"` and every migration stay as they are; only the
-  Prisma adapter changes.
+  Prisma adapter changes. **[vercel.json](vercel.json) pins the function region to `bom1`
+  (Mumbai) — do not remove it.** It is a two-line file and looks like boilerplate, but it is
+  the entire fix for the "2-second lag after every write" reported on 2026-09-04: the
+  function was defaulting to `iad1` (Washington DC) while the database sits in Mumbai, so
+  every SQL statement paid a ~230 ms round trip and Prisma issues them sequentially. Full
+  writeup in [REDESIGN-PLAN.md's "Reopened 2026-09-04" section](REDESIGN-PLAN.md).
 - **Part B — permanent offline production**, on a drive carried between 2-3 office PCs so a
   missing employee does not take the system with them. The client chose secure offline
   storage over convenient access.
@@ -99,8 +104,10 @@ alternatives, and the two decisions still open.
   `recordDispatch`, `recordDelivery`, the site lifecycle — has none. This is the largest
   outstanding risk, and **Part A puts real stock through exactly that code with no parallel
   record to catch a mistake.**
-- **Not deployed**, and the database has **no scheduled backup** — cheapest thing to fix,
-  most expensive to skip. Whatever the backup, restore it once to prove it works.
+- **Part A is deployed**, and the database now has a nightly automated backup with an
+  admin-only restore page (see PROGRESS.md's Phase 9). Still open: the live restore drill —
+  restoring against the real database at least once to prove the button works, not just the
+  underlying dump/restore logic.
 - The seeded passwords above are still in place. You can now change them in the app.
 
 See PROGRESS.md §7 for the full list and §9 for the Phase 8 status and server checklist.
