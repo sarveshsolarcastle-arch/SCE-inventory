@@ -2024,6 +2024,88 @@ trail, whereas this plan deliberately makes it a **cache** of `PackStock` + `Ope
 decision this plan reverses. Both should be updated as part of the work, not left to
 contradict the code.
 
+## Decided 2026-09-04: deleting a shelf — a real delete, with a warning ✅ BUILT
+
+**The question.** Shelves accumulate: a layout entered wrongly, a test shelf, a unit
+physically taken out of the storeroom. Until now a shelf, once created, was on the map
+forever — [shelf.ts](src/lib/actions/shelf.ts) had `createShelf`, `updateSlotBoxType`,
+`assignSlotItem` and `toggleFrontRow`, and nothing that removed anything.
+
+**Why this gets a real delete when items and users do not.** The rule elsewhere in this
+codebase is *flag it, never delete it* — `User.isActive`, and the `discontinued` decision
+directly above. Both exist because the schema makes deletion destructive: every
+`Transaction` carries a required `itemId` and a `userId`, so removing either punches holes
+in the ledger.
+
+**A shelf carries none of that.** Nothing in the schema references a shelf except its own
+slots. `ShelfSlot.itemId` is nullable — the one item relation in the schema that is — and a
+slot stores **no quantity at all**, by the Phase 1 design: a box displays whatever its
+item's `PackStock` and `OpenPack` rows currently hold. So deleting a shelf destroys
+*placement* — where things sit — and no history whatsoever. A shelf is furniture, not a
+record. The flag-don't-delete reasoning simply does not transfer, and applying it here out
+of consistency would be cargo-culting the conclusion without its premise.
+
+**Warn, do not block** (decided with the user). `deleteSite` *blocks* when anything is
+attached, and that asymmetry is deliberate: `Transaction.siteId` is an optional relation, so
+Prisma's default `SetNull` means deleting a used site would silently blank the siteId on
+every movement — the ledger would still balance while quietly forgetting where material
+went. There is no equivalent failure for a shelf, so an occupied shelf is a reason to say
+what will be lost, not a reason to refuse.
+
+The warning therefore names the real consequence with counts — *"5 boxes have an item
+assigned, and 5 open packs are recorded as sitting here"* — and states plainly that **no
+stock is lost**. That sentence is the point of the whole control: "this cannot be undone"
+alone invites the reading that stock is at stake, which is the one thing that is not.
+
+### The two ordering details that are not optional
+
+Both are in `deleteShelf`, and both are silent if got wrong:
+
+1. **Open packs are unplaced explicitly, not left to the foreign key.**
+   `OpenPack.shelfSlotId` is declared `ON DELETE SET NULL`, so in principle the database
+   would handle it — but only under `PRAGMA foreign_keys=ON`, which is per-connection state
+   this code does not own. If it were ever off, packs would keep pointing at slot ids that
+   no longer exist and **nothing would report an error**: the shelf map would just stop
+   showing packs the item still holds. One `updateMany` removes the dependency. Same
+   statement `assignSlotItem` already uses when a box changes hands.
+2. **Slots are deleted before the shelf.** `ShelfSlot.shelfId` is `ON DELETE RESTRICT`, so
+   deleting the shelf first fails outright.
+
+All three statements run in one `$transaction`, so a shelf cannot end up half-demolished.
+
+### Admin only — and a separate capability, not `shelf:manage`
+
+`shelf:manage` is admin-only *today*, but only because of how `CAPABILITIES` happens to be
+filled in. Granting it to FINANCE later — a plausible thing to want, since relabelling a box
+is routine work — would hand over the delete silently along with it. So this is its own
+`shelf:delete` capability, held by ADMIN alone. Relabelling a box and demolishing the shelf
+it sits on are different-sized actions and should not share a key. Invariant 5's pattern
+again: make the wrong state underivable rather than remembering not to derive it.
+
+### Verification ✅ *all passed 2026-09-04, checked in the browser against a local copy*
+
+1. **Occupied shelf, the case that matters.** Delete "Shelf A" (5 assigned boxes, 5 placed
+   packs). Shelves 4 → 3 and slots 160 → 120, but `OpenPack` rows stay at **12** with the
+   5 merely unplaced (`shelfSlotId` null, not deleted), and `PackStock`, total open-pack
+   remaining, `Transaction` count and every `Item.currentStock` are **unchanged**.
+2. **No dangling references.** `SELECT count(*) FROM OpenPack WHERE shelfSlotId IS NOT NULL
+   AND shelfSlotId NOT IN (SELECT id FROM ShelfSlot)` must be **0** afterwards. This is the
+   check that catches detail 1 above going wrong, and it is invisible from the UI.
+3. **The warning states the counts**, and says no stock is lost.
+4. **Server-side enforcement, not a hidden button.** As EMPLOYEE the control is absent —
+   then replay the action POST with its `Next-Action` id from devtools. Must return
+   `{"ok":false,"message":"Your account cannot delete shelves"}` and leave the shelf
+   standing. *(Verified: it does.)*
+5. Read the browser console on every check, not just the screenshot.
+
+### Not covered by a test, and why
+
+`permissions.ts` imports `auth` and `prisma` at module scope, so it cannot be imported by
+the pure `node:test` suite the way `databaseUrl.ts` can. The admin-only rule is therefore
+verified by the replay in check 4 and by nothing automated. Making it testable means lifting
+`Capability`/`CAPABILITIES`/`can` into a pure module — worth doing, deliberately not done
+here, since it is a refactor of a security-critical file and belongs in its own change.
+
 ## Decided 2026-08-27: discontinuing an item — flag it, never delete it
 
 **The question.** An item is catalogued, then the company stops carrying it. Can it be taken

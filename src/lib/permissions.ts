@@ -26,6 +26,13 @@ export type Capability =
   | "item:manage"
   | "site:manage"
   | "shelf:manage"
+  // Removing a shelf outright — admin only, and deliberately NOT folded into
+  // `shelf:manage`. Relabelling a box and demolishing the shelf it sits on are
+  // different-sized actions, and `shelf:manage` is admin-only today only
+  // because of how the table below happens to be filled in. Granting it to
+  // FINANCE later would silently hand over the delete too. A separate
+  // capability makes that impossible to do by accident.
+  | "shelf:delete"
   // quality
   | "defect:flag"
   | "defect:resolve"
@@ -52,6 +59,7 @@ const ALL: Capability[] = [
   "item:manage",
   "site:manage",
   "shelf:manage",
+  "shelf:delete",
   "defect:flag",
   "defect:resolve",
   "stock:reverse",
