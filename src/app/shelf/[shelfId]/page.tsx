@@ -1,8 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
 import { updateSlotBoxType, toggleFrontRow, assignSlotItem } from "@/lib/actions/shelf";
 import DeleteShelfButton from "@/components/DeleteShelfButton";
-import { can } from "@/lib/permissions";
+import { can, currentUser } from "@/lib/permissions";
 import ShelfGrid from "@/components/ShelfGrid";
 import { describeSlotContents } from "@/lib/units";
 import { notFound } from "next/navigation";
@@ -17,7 +16,7 @@ export default async function ShelfDetailPage({
 }) {
   const { shelfId } = await params;
 
-  const [shelf, session, items, placedPacks] = await Promise.all([
+  const [shelf, user, items, placedPacks] = await Promise.all([
     prisma.shelf.findUnique({
       where: { id: shelfId },
       include: {
@@ -29,7 +28,10 @@ export default async function ShelfDetailPage({
         },
       },
     }),
-    auth(),
+    // currentUser(), not auth(): it re-reads the row rather than trusting the
+    // JWT, so a demoted or deactivated account loses these controls on the next
+    // request instead of when its token happens to expire.
+    currentUser(),
     prisma.item.findMany({
       orderBy: { name: "asc" },
       select: { id: true, name: true, sku: true },
@@ -42,8 +44,11 @@ export default async function ShelfDetailPage({
 
   if (!shelf) notFound();
 
-  const role = (session?.user as { role?: Parameters<typeof can>[0] } | undefined)?.role;
-  const isAdmin = role === "ADMIN";
+  const role = user?.role;
+  // The three actions in a slot's popover all require shelf:manage, so that is
+  // what gates them. This used to read `role === "ADMIN"`, which gave the right
+  // answer only for as long as ADMIN was the sole holder of that capability.
+  const canManage = can(role, "shelf:manage");
   const assignedBoxes = shelf.slots.filter((slot) => slot.itemId).length;
 
   const slots = shelf.slots.map((slot) => {
@@ -88,7 +93,9 @@ export default async function ShelfDetailPage({
             threshold. Boxes ringed with a ★ are easily-accessible front-row positions; empty
             boxes are greyed out. Quantities are not stored here — a box shows whatever its
             item&apos;s packs currently hold, so the map cannot drift out of step with stock.
-            You can relabel a box&apos;s condition here as material is opened or used up.
+            {canManage
+              ? " You can relabel a box's condition here as material is opened or used up."
+              : " Relabelling a box is an admin job."}
           </>
         }
       />
@@ -99,7 +106,7 @@ export default async function ShelfDetailPage({
             columns={shelf.columns}
             slots={slots}
             items={items}
-            isAdmin={isAdmin}
+            canManage={canManage}
           />
         </CardBody>
       </Card>

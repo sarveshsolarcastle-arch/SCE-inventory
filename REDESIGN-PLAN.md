@@ -2248,8 +2248,16 @@ therefore not durable; this section is the record.**
 > is the bug §6 of the plan predicted would be fixed "incidentally" by Part 2's re-labelling; it
 > could not wait that long.
 >
-> **Not done, and needed before Part 2:** `shelf/[shelfId]/page.tsx:46`'s hardcoded `isAdmin`,
-> below. It is harmless today because finance holds no `shelf:manage` either way.
+> **✅ Also done, 2026-09-05:** `shelf/[shelfId]/page.tsx`'s hardcoded `isAdmin`, described
+> below, is now `can(role, "shelf:manage")`, and the `ShelfGrid` prop is renamed `canManage` —
+> the old name was the wrong *concept*, not just the wrong expression. The page also moved from
+> `auth()` to `currentUser()`, so a demoted account loses the controls on its next request
+> rather than when its token expires. Behaviour is unchanged for every role that exists today;
+> it is Part 2 that needed it. Two dead ends went with it: `/shelf` and `/sites` showed
+> everyone a "New Shelf" / "New Site" button leading to a page `proxy.ts` bounces them from,
+> and the shelf map told a read-only viewer they could relabel boxes. Phase 7's preserved
+> interaction #4 was re-checked afterwards, since the edit touched that click handler —
+> single-open, toggle-closed on re-click, and reset on the Front/Back switch all still hold.
 
 The five employee capabilities — `stock:issue`, `stock:return`, `stock:consume`,
 `stock:transfer`, `site:pickup` — are added to the FINANCE array in

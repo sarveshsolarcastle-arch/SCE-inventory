@@ -2,6 +2,7 @@ import Link from "next/link";
 import { MapPin } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { materialAcrossSites } from "@/lib/stock";
+import { can, currentUser } from "@/lib/permissions";
 import PageHeader from "@/components/ui/PageHeader";
 import { buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -9,9 +10,10 @@ import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
 
 export default async function SitesPage() {
-  const [sites, atSites] = await Promise.all([
+  const [sites, atSites, user] = await Promise.all([
     prisma.site.findMany({ orderBy: { name: "asc" } }),
     materialAcrossSites(),
+    currentUser(),
   ]);
 
   // The cards used to show name and location only, which said nothing about
@@ -37,10 +39,15 @@ export default async function SitesPage() {
         title="Sites"
         subtitle={`${sites.length} site${sites.length === 1 ? "" : "s"}`}
         actions={
-          <Link href="/sites/new" className={buttonClasses("primary", "md")}>
-            <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M10 4v12M4 10h12" /></svg>
-            New Site
-          </Link>
+          // Same as /shelf: proxy.ts redirects anyone without site:manage away
+          // from /sites/new, so showing the button to finance offers a door
+          // that closes in their face.
+          can(user?.role, "site:manage") ? (
+            <Link href="/sites/new" className={buttonClasses("primary", "md")}>
+              <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M10 4v12M4 10h12" /></svg>
+              New Site
+            </Link>
+          ) : undefined
         }
       />
 

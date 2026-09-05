@@ -155,10 +155,10 @@ answer; the first to do so clears it for everyone). Three independent parts:
   also turned up a worse bug it was sitting on: `adjustStock` validated the `reason` field as a
   number, so **recording a stock count had never once worked** since Phase 3 built it. Both
   fixed; see PROGRESS.md §9 for the as-built note.
-- ❌ **Part 2** (3-5 days) — the approval workflow itself. Its migration blocker is **cleared**:
-  `npm run db:migrate:turso` now applies migrations Prisma cannot. Still to do first, it needs
-  `shelf/[shelfId]/page.tsx` moved off its hardcoded `role === "ADMIN"` check, which currently
-  gates the whole shelf grid, and an explicit `timeout` on the approve path's transaction.
+- ❌ **Part 2** (3-5 days) — the approval workflow itself. Both structural prerequisites are now
+  **cleared**: `npm run db:migrate:turso` applies migrations Prisma cannot (and the pilot has
+  been baselined), and the shelf grid reads `shelf:manage` rather than a hardcoded role. What
+  remains is the feature itself, plus an explicit `timeout` on the approve path's transaction.
 
 PROGRESS.md §9 has the summary; REDESIGN-PLAN.md's "Decided 2026-09-05" section has the
 reasoning and the four traps.
