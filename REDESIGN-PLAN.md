@@ -2398,12 +2398,23 @@ SHA-256-of-the-file checksum Prisma computes — **verified by applying all ten 
 database and having `npx prisma migrate status` report "Database schema is up to date!"**, then
 again with an eleventh migration applied incrementally on top.
 
-It also handles the state the pilot is most likely in. If those ten August migrations were
-applied *without* bookkeeping, the remote `_prisma_migrations` is missing while every table
-exists, and applying would run `CREATE TABLE` over live data. The script detects exactly that —
-schema present, bookkeeping absent — refuses, and points at `--baseline`, which records
-migrations as applied without executing them. **Run the status check against the pilot before
-Part 2 to find out which case you are in.**
+It also handles the state the pilot turned out to be in. **Checked on 2026-09-05: the pilot had
+application tables and no `_prisma_migrations` at all** — the August script applied the SQL and
+recorded nothing. A naive `--apply` would have tried to run all eleven migrations from scratch
+and died on `CREATE TABLE "User"`. The script detects exactly that shape — schema present,
+bookkeeping absent — refuses, and points at `--baseline`, which records migrations as applied
+without executing them.
+
+**✅ The pilot has since been baselined (2026-09-05) and now reports all ten applied, nothing
+pending.** Before doing it, the pilot's schema was compared column-for-column against the
+fully-migrated local database — names, types, nullability, primary keys, defaults — and all
+twelve application tables matched exactly, which is the only thing that makes a baseline honest
+rather than a recorded lie. The baseline wrote nothing but `_prisma_migrations` (the table plus
+ten rows), took a full dump first, and the live app was unaffected: `HTTP 200`, and
+`x-vercel-id: bom1::bom1`, so the region fix still holds too.
+
+**So Part 2's eleventh migration can now go straight through
+`npm run db:migrate:turso -- --apply`.** No baseline step is needed again.
 
 **2. The approve path's transaction is now coupled to `vercel.json`.** `approveRequest` puts the
 claim and the work in **one** `prisma.$transaction`, whose interactive timeout defaults to 5s.
