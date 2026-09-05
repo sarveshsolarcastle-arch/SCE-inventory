@@ -1,107 +1,42 @@
 "use server";
 
-import type { Prisma } from "@/generated/prisma/client";
+/* The auth boundary and the transport shape. Operations live in
+ * @/lib/approvals/ops/corrections — see ops/sites.ts for why.
+ *
+ * Two different problems that are easy to conflate, and must not be:
+ *
+ *   Reversal    "this was recorded in error — it never happened", and restores
+ *               the exact prior state, on the packs it actually came off.
+ *   Adjustment  "the shelf and the app disagree — the shelf is right", and
+ *               records a new truth, restoring nothing.
+ *   (Return)    "it happened, and it is coming back" — the normal return flow,
+ *               which creates a NEW offcut because that is what physically
+ *               arrives.
+ *
+ * Conflating reversal and return silently corrupts pack state: a reversal puts
+ * 75 m back on the roll it was cut from, a return creates a fresh 75 m offcut.
+ */
+
 import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
-import { applyInverse, recalcItemStock, addPacks } from "@/lib/packs";
+import * as ops from "@/lib/approvals/ops/corrections";
 import {
-  describeObstacle,
-  findReversalObstacles,
-  parseAppliedPlan,
-  type ReversalObstacle,
-} from "@/lib/corrections";
-import { reconcileForMovement } from "@/lib/sitePickups";
-import {
-  describeAdjustment,
-  describeRefusal,
-  planAdjustment,
-  type OpenCount,
-  type SealedCount,
-} from "@/lib/adjustment";
+  parseReverseDispatchArgs,
+  parseReverseTransactionArgs,
+  parseStockAdjustArgs,
+} from "@/lib/approvals/args";
 
 export type CorrectionResult = { ok: true } | { ok: false; message: string };
 
-type ReversibleMovement = {
-  id: string;
-  type: string;
-  itemId: string;
-  siteId: string | null;
-  fromSiteId: string | null;
-  dispatchId: string | null;
-  quantity: number;
-  appliedPlan: string | null;
-  reversedAt: Date | null;
-  createdAt: Date;
-};
-
-/** The shared primitive behind both a single reversal and a whole-dispatch
- * one: verify the world still matches what this movement left behind, then
- * restore it. Throws (never returns a result) so a caller looping over many
- * movements in one $transaction aborts the lot on the first obstacle — a
- * batch reversal is all-or-nothing for the same reason a batch dispatch is. */
-async function reverseMovementTx(
-  tx: Prisma.TransactionClient,
-  movement: ReversibleMovement,
-  userId: string,
-  reason: string
-): Promise<void> {
-  const obstacles: ReversalObstacle[] = [];
-  if (movement.reversedAt) obstacles.push({ kind: "already_reversed" });
-  if (movement.type === "REVERSAL" || movement.type === "ADJUSTMENT") {
-    throw new Error("Corrections cannot themselves be reversed — record a new one");
-  }
-
-  const plan = parseAppliedPlan(movement.appliedPlan);
-  if (!plan) obstacles.push({ kind: "no_plan" });
-
-  if (plan && !obstacles.length) {
-    const itemId = movement.itemId;
-    const [openPacks, sealed, defective] = await Promise.all([
-      tx.openPack.findMany({ where: { itemId } }),
-      tx.packStock.findMany({ where: { itemId } }),
-      plan.defectiveIds.length
-        ? tx.defectiveItem.findMany({ where: { id: { in: plan.defectiveIds } } })
-        : Promise.resolve([]),
-    ]);
-
-    obstacles.push(
-      ...findReversalObstacles(plan, {
-        openPacks: new Map(
-          openPacks.map((p) => [p.id, { remaining: p.remaining, state: p.state }])
-        ),
-        sealedCounts: new Map(sealed.map((s) => [s.packSize, s.sealedCount])),
-        defectiveStatuses: new Map(defective.map((d) => [d.id, d.status])),
-      })
-    );
-  }
-
-  if (obstacles.length) throw new Error(describeObstacle(obstacles[0]));
-
-  await applyInverse(tx, movement.itemId, plan!);
-
-  await tx.transaction.update({
-    where: { id: movement.id },
-    data: { reversedAt: new Date() },
-  });
-
-  await tx.transaction.create({
-    data: {
-      type: "REVERSAL",
-      quantity: movement.quantity,
-      itemId: movement.itemId,
-      siteId: movement.siteId,
-      dispatchId: movement.dispatchId,
-      userId,
-      reason,
-      reversesId: movement.id,
-      note: `Reverses ${movement.type} of ${movement.createdAt.toLocaleDateString()}`,
-    },
-  });
-
-  // Excluding the reversed movement changes what its site holds, so a pickup
-  // flag there may now claim more than is present.
-  await reconcileForMovement(tx, movement.itemId, [movement.siteId, movement.fromSiteId]);
+function revalidateAll() {
+  revalidatePath("/items", "layout");
+  revalidatePath("/dashboard");
+  revalidatePath("/shelf");
+  revalidatePath("/recycle");
+  revalidatePath("/defective");
+  revalidatePath("/sites", "layout");
+  revalidatePath("/dispatches", "layout");
 }
 
 /** Undoes a movement recorded in error by restoring the exact prior state.
@@ -119,10 +54,8 @@ export async function reverseTransaction(
   if (!reason) return { ok: false, message: "A reason is required to reverse a movement" };
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const movement = await tx.transaction.findUniqueOrThrow({ where: { id: transactionId } });
-      await reverseMovementTx(tx, movement, userId, reason);
-    });
+    const args = parseReverseTransactionArgs({ transactionId, reason });
+    await prisma.$transaction((tx) => ops.reverseTransaction(tx, args, userId));
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Reversal failed" };
   }
@@ -131,11 +64,6 @@ export async function reverseTransaction(
   return { ok: true };
 }
 
-/** Reverses every not-yet-reversed line of a batch dispatch, atomically: one
- * row failing its obstacle check aborts the whole dispatch's reversal, same
- * as the dispatch's own all-or-nothing commit. Each compensating REVERSAL
- * row carries the same dispatchId as the ISSUE it undoes, so the dispatch
- * page groups them as one event rather than N loose corrections. */
 export async function reverseDispatch(
   dispatchId: string,
   formData: FormData
@@ -146,18 +74,8 @@ export async function reverseDispatch(
   if (!reason) return { ok: false, message: "A reason is required to reverse a dispatch" };
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const movements = await tx.transaction.findMany({
-        where: { dispatchId, type: "ISSUE", reversedAt: null },
-        orderBy: { createdAt: "asc" },
-      });
-      if (!movements.length) {
-        throw new Error("Nothing left to reverse on this dispatch");
-      }
-      for (const movement of movements) {
-        await reverseMovementTx(tx, movement, userId, reason);
-      }
-    });
+    const args = parseReverseDispatchArgs({ dispatchId, reason });
+    await prisma.$transaction((tx) => ops.reverseDispatch(tx, args, userId));
   } catch (error) {
     return {
       ok: false,
@@ -169,12 +87,10 @@ export async function reverseDispatch(
   return { ok: true };
 }
 
-/** Records a physical count that disagrees with the ledger. Works at pack level,
- * because "set the quantity" is ambiguous once an item has both sealed and open
- * stock.
+/** Records a physical count that disagrees with the ledger.
  *
- * What is STORED is the correction, not the count — see adjustment.ts for why
- * that distinction is the whole point. The form still asks for what is
+ * What is STORED is the correction, not the count — see src/lib/adjustment.ts
+ * for why that distinction is the whole point. The form still asks for what is
  * physically on the shelf, because asking a human to type "+3" is asking them
  * to do arithmetic against a number they cannot see; it just also submits the
  * ledger figure it showed them, so the server can work out the size of the
@@ -214,8 +130,8 @@ export async function adjustStock(
     (isLedger ? displayed : counted).set(rowKey, n);
   }
 
-  const sealed: SealedCount[] = [];
-  const open: OpenCount[] = [];
+  const sealed: { packSize: number; counted: number; ledger: number }[] = [];
+  const open: { packId: string; counted: number; ledger: number }[] = [];
   for (const [rowKey, count] of counted) {
     const ledger = displayed.get(rowKey);
     // No paired ledger figure means there is no way to know what error the
@@ -224,112 +140,24 @@ export async function adjustStock(
     if (ledger === undefined) {
       return {
         ok: false,
-        message:
-          "This count form is out of date — reload the item page and count again.",
+        message: "This count form is out of date — reload the item page and count again.",
       };
     }
 
     if (rowKey.startsWith("sealed_")) {
-      const packSize = Number(rowKey.slice(7));
-      if (!Number.isInteger(packSize) || packSize <= 0) {
-        return { ok: false, message: "That count refers to a pack size that makes no sense" };
-      }
-      sealed.push({ packSize, counted: count, ledger });
+      sealed.push({ packSize: Number(rowKey.slice(7)), counted: count, ledger });
     } else {
       open.push({ packId: rowKey.slice(5), counted: count, ledger });
     }
   }
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const item = await tx.item.findUniqueOrThrow({ where: { id: itemId } });
-      const before = item.currentStock;
-
-      // Only OPEN packs, matching what the count form renders. A pack scrapped
-      // since the count therefore reads as gone, which is right: the counter
-      // was looking at usable stock.
-      const [sealedNow, openNow] = await Promise.all([
-        tx.packStock.findMany({ where: { itemId } }),
-        tx.openPack.findMany({ where: { itemId, state: "OPEN" } }),
-      ]);
-
-      const plan = planAdjustment(
-        { sealed, open },
-        {
-          sealed: sealedNow.map((g) => ({
-            packSize: g.packSize,
-            sealedCount: g.sealedCount,
-          })),
-          open: openNow.map((p) => ({
-            id: p.id,
-            remaining: p.remaining,
-            originalSize: p.originalSize,
-          })),
-        }
-      );
-
-      // All or nothing: a partial count is not a count.
-      if (plan.refusals.length) {
-        throw new Error(
-          plan.refusals.map((r) => describeRefusal(r, item.baseUnit)).join(" ")
-        );
-      }
-
-      for (const change of plan.sealed) {
-        if (change.delta > 0) {
-          // upsert, so a size the store had run out of can be corrected back up
-          await addPacks(tx, itemId, change.packSize, change.delta);
-        } else {
-          await tx.packStock.update({
-            where: { itemId_packSize: { itemId, packSize: change.packSize } },
-            data: { sealedCount: { decrement: -change.delta } },
-          });
-        }
-      }
-
-      for (const change of plan.open) {
-        if (change.deletes) {
-          await tx.openPack.delete({ where: { id: change.packId } });
-        } else {
-          await tx.openPack.update({
-            where: { id: change.packId },
-            data: { remaining: { increment: change.delta } },
-          });
-        }
-      }
-
-      await recalcItemStock(tx, itemId);
-      const after = (await tx.item.findUniqueOrThrow({ where: { id: itemId } })).currentStock;
-
-      // Recorded even when the correction is zero: that a count was taken and
-      // agreed is itself worth knowing.
-      await tx.transaction.create({
-        data: {
-          type: "ADJUSTMENT",
-          // The real effect on stock, which is what the reports aggregate —
-          // not the size of the correction, which the note carries instead.
-          quantity: Math.abs(after - before),
-          itemId,
-          userId,
-          reason,
-          note: describeAdjustment(plan, before, after, item.baseUnit),
-        },
-      });
-    });
+    const args = parseStockAdjustArgs({ itemId, sealed, open, reason });
+    await prisma.$transaction((tx) => ops.adjustStock(tx, args, userId));
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Adjustment failed" };
   }
 
   revalidateAll();
   return { ok: true };
-}
-
-function revalidateAll() {
-  revalidatePath("/items", "layout");
-  revalidatePath("/dashboard");
-  revalidatePath("/shelf");
-  revalidatePath("/recycle");
-  revalidatePath("/defective");
-  revalidatePath("/sites", "layout");
-  revalidatePath("/dispatches", "layout");
 }
