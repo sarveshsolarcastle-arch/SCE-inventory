@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { NotPermittedError, requireCapability } from "@/lib/permissions";
+import { describeSiteBlockers } from "@/lib/siteBlockers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
@@ -22,16 +23,6 @@ export async function createSite(formData: FormData) {
 }
 
 export type DeleteSiteResult = { ok: true } | { ok: false; message: string };
-
-/** What is still attached to a site, and therefore what a delete would destroy.
- * Ordered so the message reads worst-first. */
-const BLOCKERS = [
-  ["transactions", "stock movement"],
-  ["dispatches", "dispatch"],
-  ["deliveries", "delivery"],
-  ["defectiveItems", "defective-item record"],
-  ["pickups", "collection flag"],
-] as const;
 
 /** Removes a site added by mistake.
  *
@@ -75,18 +66,10 @@ export async function deleteSite(siteId: string): Promise<DeleteSiteResult> {
         pickups: await tx.sitePickup.count({ where: { siteId } }),
       };
 
-      const attached = BLOCKERS.filter(([key]) => counts[key] > 0).map(
-        ([key, noun]) =>
-          `${counts[key]} ${noun}${counts[key] === 1 ? "" : "s"}`
-      );
-
-      if (attached.length) {
-        throw new Error(
-          `"${site.name}" cannot be deleted — it still has ${attached.join(", ")} ` +
-            `attached. Deleting it would break that history. Rename it instead if ` +
-            `it was entered by mistake.`
-        );
-      }
+      // The same function the approvals pre-check will call, so what an admin is
+      // shown before approving and what the operation refuses with cannot drift.
+      const blocked = describeSiteBlockers(site.name, counts);
+      if (blocked) throw new Error(blocked);
 
       await tx.site.delete({ where: { id: siteId } });
     });
