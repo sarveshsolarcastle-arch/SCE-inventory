@@ -6,6 +6,12 @@
 > kept throughout, per plan. The 2026-09-04 "Turso latency" report is root-caused and fixed
 > — it was a Vercel region misconfiguration, not a database problem; see the Reopened
 > section near the end.**
+>
+> **Phase 11 (roles and admin approvals, decided 2026-09-05) is partly built: Part 3 — stock
+> counts storing a correction rather than a snapshot — landed 2026-09-05, along with a
+> two-phases-old bug that had stopped stock counts working at all. Parts 1 and 2 are not
+> started.** See "Decided 2026-09-05" in the cross-phase notes.
+>
 > Read [PROGRESS.md](PROGRESS.md) first for current state, then this for what to build next.
 >
 > Everything here was decided in conversation with the user over a long session. **The
@@ -76,6 +82,7 @@ does not physically have, and reordering would be decided against stock sitting 
 | 6 | ✅ **DONE** — site material lifecycle: consumption, pickup, transfers, cross-site view |
 | 7 | ✅ **DONE** — UI overhaul + mobile web; full record at the end of this file |
 | 8 | 🔨 **IN PROGRESS** — accounts, `DATABASE_URL` fail-fast and build prerequisites done; **Part A** (Turso + Vercel pilot) and **Part B** (offline, carried drive) both pending |
+| 11 | 🔨 **PART 3 DONE** — roles and admin approvals (decided 2026-09-05, in the cross-phase notes). Part 3 (adjustments store the correction) built; Parts 1 (fold EMPLOYEE into FINANCE) and 2 (the approval queue) not started |
 
 ## Why 7-8 were deferred, and what has changed since
 
@@ -2001,7 +2008,7 @@ spent.
 ## Still outstanding regardless
 
 **DB-layer test coverage.** Unchanged as the largest risk, and Part A now runs **real stock**
-through it. The 70 tests are all pure and will pass unchanged after the adapter swap **while
+through it. The 86 tests are all pure and will pass unchanged after the adapter swap **while
 proving nothing about it**. The cutover recount bounds the damage; it does not prevent it.
 
 # Cross-phase notes
@@ -2186,6 +2193,323 @@ documenting that nobody should derive it. Invariant 5's pattern, applied to a sm
 4. The dashboard's *"+ N at M sites"* line disappears with the suppressed alert — it hangs
    off the low-stock list, so this should fall out for free. Confirm that it does.
 
+## Decided 2026-09-05: FINANCE absorbs EMPLOYEE, and asks an admin for the rest 🔨 PART 3 BUILT; PARTS 1 AND 2 NOT
+
+**This reverses an earlier call.** "Approval workflows (employee requests → finance approves)"
+sat in *Out of scope* below since the original plan. The requirement changed: the employee
+account is being retired, and the client wants finance to reach the admin-only housekeeping
+without an admin sitting at the machine. The direction is also inverted from the old note —
+it is **finance requesting, admin approving**, not the reverse. The out-of-scope line has been
+struck through accordingly.
+
+Three separable changes, deliberately sized and shipped apart because their risk profiles are
+nothing alike. The full implementation plan — file-by-file, with the staged sequence — lives at
+`C:\Users\Kavita\.claude\plans\hazy-weaving-spring.md`. **That file is outside the repo and is
+therefore not durable; this section is the record.**
+
+### Part 1 — fold EMPLOYEE into FINANCE (≈1 hour, no migration)
+
+The five employee capabilities — `stock:issue`, `stock:return`, `stock:consume`,
+`stock:transfer`, `site:pickup` — are added to the FINANCE array in
+[permissions.ts](src/lib/permissions.ts). Nothing else needs editing: the nav gains the Stock Out
+group because [AppShell.tsx](src/components/AppShell.tsx) filters on `can()`, `/transactions/new`
+and `/dispatches/new` open because [proxy.ts](src/proxy.ts) maps them to `stock:issue`, and
+`recordMovement`'s `CAPABILITY_FOR_TYPE` lookup starts passing. It is a code table, not a column.
+
+**Two comments become false and must be rewritten in the same commit.** The header at
+`permissions.ts:5-14` ("Roles are workspaces, not permission levels … FINANCE brings stock in and
+cannot issue it") and the `///` comment on `enum Role` in
+[schema.prisma](prisma/schema.prisma), which lands in the generated client. In a codebase where
+the comments carry the reasoning, leaving them stating the opposite of the code is a defect, not
+untidiness.
+
+**The `EMPLOYEE` role stays in the enum.** Removing it means a migration with a hand-written data
+backfill — the precedent is `20260820150000_roles_finance_employee`, which renamed STAFF →
+EMPLOYEE exactly that way — and it breaks existing employee logins plus every `Record<Role, …>`
+map in the app. Leave it, document it as retired, stop granting it, and move accounts to FINANCE
+one at a time from `/users`. `ROLE_BLURB` in [users/page.tsx](src/app/users/page.tsx) and
+[account/page.tsx](src/app/account/page.tsx) should say it is retired.
+
+**One file the plan's list misses, found 2026-09-05.**
+[shelf/[shelfId]/page.tsx:46](src/app/shelf/[shelfId]/page.tsx:46) derives `const isAdmin = role
+=== "ADMIN"` — a hardcoded role test, not `can()` — and that prop gates the entire `ShelfGrid`
+popover. Left as it is, finance gets a shelf map whose cells do not open, so under Part 2 there
+is nothing for them to request. It is a standing inconsistency independent of this change:
+granting `shelf:manage` to FINANCE today would leave the controls hidden anyway. Same page reads
+its role from the JWT via `auth()` rather than `currentUser()`, so a just-demoted user keeps the
+controls until their token turns over — cosmetic, since the actions re-check, but worth knowing.
+
+**A control being given up, which should be named rather than discovered later.** After Part 1
+one FINANCE account can receive goods *and* dispatch them with nobody else in the loop. That
+separation was not incidental — it is what `permissions.ts`'s header, the `Role` doc comment and
+both `ROLE_BLURB` maps all describe, and it is the reason the seeded accounts were never meant to
+share a password. Retiring the employee account is the client's decision and this plan follows
+it; the point is that the doc must say what was traded away, or a future reader will read the
+merge as tidying rather than as a deliberate loosening.
+
+Net effect once built: **FINANCE is ADMIN minus accounts and backups**, with five capabilities
+reachable only through an approval.
+
+### Part 2 — the approval workflow (≈3-5 days)
+
+A FINANCE user attempting an admin-only action is no longer refused; the attempt becomes an
+`ApprovalRequest` row. Every admin sees it, the first admin to answer decides it, and it leaves
+the queue for everyone. In-app only — no email, no push, no polling: a server-rendered pill in
+the [AppShell](src/components/AppShell.tsx) header plus an `/approvals` page, fresh on every
+navigation because `AppShell` already calls `auth()` and is therefore dynamic.
+
+Requestable: `site:manage`, `shelf:manage`, `shelf:delete`, `stock:reverse`, `stock:adjust`.
+
+**Two capabilities are deliberately NOT requestable, and this is the part most likely to be
+re-litigated wrongly:**
+
+- **`user:manage`.** An approval flow that can mint an admin is not an approval flow. Account
+  management stays hard admin-only, at the client's explicit instruction.
+- **`backup:manage`.** `restoreDatabase` in [restore.ts](src/lib/backup/restore.ts) drops and
+  recreates every table. An approved restore would erase the `ApprovalRequest` row that
+  authorised it *and* the record of which admin approved it. The feature would delete its own
+  audit trail. This is not a policy preference — it is a fact about what restore does.
+
+`item:manage` needed no work: it was **already** in the FINANCE list, so finance has been able to
+add item types all along. The original request listed it as an admin feature to unlock; it wasn't
+one.
+
+#### The four things that must not be got wrong
+
+**1. The operation bodies must move out of the `"use server"` files.**
+[sites.ts](src/lib/actions/sites.ts), [shelf.ts](src/lib/actions/shelf.ts) and
+[corrections.ts](src/lib/actions/corrections.ts) carry a top-level `"use server"`, which makes
+**every async export a network-reachable RPC endpoint.** The obvious refactor — leave the body
+where it is and export an unguarded `deleteSiteCore` for the approval path to call — publishes an
+unauthenticated delete. That is exactly the hazard `permissions.ts:134-138` already warns about
+("actions are directly invocable — anyone can replay the POST"). The bodies go to plain modules
+under `src/lib/approvals/ops/`, and the action files keep only thin guarded wrappers. Imports
+then run one way — `actions → registry → ops` — so no cycle is possible, and the domain logic
+becomes reachable by a test for the first time.
+
+**2. The claim and the work share one transaction.** Two admins clicking Approve at the same
+instant must not run the operation twice. The lock is a conditional update whose row count is the
+guard, *inside* the same `$transaction` as the work:
+
+```ts
+const claim = await tx.approvalRequest.updateMany({
+  where: { id, status: "PENDING" },          // ← the guard
+  data: { status: "APPROVED", decidedById: admin.id, decidedAt: new Date() },
+});
+if (claim.count === 0) throw new AlreadyAnswered();
+await op.execute(tx, args, row.requestedById);
+```
+
+SQLite/libsql serialises write transactions, so the second admin cannot start writing until the
+first commits — at which point `WHERE status = 'PENDING'` matches nothing. Sharing the
+transaction is what removes the crash window: a failure mid-flight rolls the claim back too, so
+the request is simply still pending and **no `EXECUTING` state is needed**. It is also what makes
+`FAILED` honest — it means "nothing happened, here is why", never "half happened".
+
+One trap: **do not map SQLITE_BUSY to `FAILED`.** Under contention Prisma surfaces a busy/timeout
+error from the transaction; treating that as an operation refusal burns a perfectly good request.
+Detect it and ask the admin to retry — the one case where the row must stay `PENDING`.
+
+**3. Asking is not a permission.** `canRequest` lives in a **second table**, `REQUESTABLE`, never
+as a softening of `can()` — every `requireCapability` in the app depends on `can()` meaning "may
+do it, now, alone". `requireCapability` is unchanged and stays the hard gate. The queue itself
+splits into two capabilities, `approval:view` (ADMIN + FINANCE, so finance can follow its own
+requests) and `approval:decide` (ADMIN), for the same reason `shelf:manage` and `shelf:delete`
+are split at `permissions.ts:29-35`. With the split, the nav filter and `NavLink`'s type need no
+change at all.
+
+The three tables move to a new pure `src/lib/capabilities.ts` so they can finally be tested:
+`permissions.ts` imports `@/lib/auth` and `@/lib/prisma`, and the `@/` alias does not resolve
+under `node --experimental-strip-types`, which is why there is no `permissions.test.ts` today.
+The invariants — the two tables disjoint, `user:manage`/`backup:manage` in no requestable list,
+`approval:decide` implying `approval:view` — become a failing build rather than a comment.
+Invariant 5's pattern again: make the wrong state underivable.
+
+**4. The summary is built server-side and frozen; the pre-check is live.** `ApprovalRequest.summary`
+is written from the row as it then was, never from a requester-supplied label — otherwise finance
+could label a delete of site A as "delete site B" and phish an approval. It is frozen because the
+site may be renamed or gone by the time an admin looks. The *live* truth comes from re-running the
+operation's own preconditions at render time, so the admin reads "this will now fail: 1 dispatch
+attached" before clicking. For reversals that re-check is the existing `findReversalObstacles` /
+`describeObstacle` — the admin sees the same sentence the operation itself would produce.
+
+#### Two execution blockers found on 2026-09-05, while reviewing this plan against the code
+
+Neither is a design problem; both stop Part 2 landing if they are not dealt with first.
+
+**1. An eleventh migration has no path to the live pilot.** The staged sequence says
+`npx prisma migrate dev --name approval_requests`, which is right locally — but
+`prisma migrate deploy` **cannot reach Turso** (`P1013: scheme not recognized`, recorded in the
+Phase 8 section above), and the one-off `executeMultiple()` script that applied the first ten
+migrations *was run once and discarded*. `scripts/` holds only `backup-database.ts`. So the
+migration would land on `dev.db` and silently never reach production. **Write and commit a
+`scripts/apply-migration-turso.ts` before stage 2**, and take a dump first — this is the first
+schema change against a database carrying the client's real stock.
+
+**2. The approve path's transaction is now coupled to `vercel.json`.** `approveRequest` puts the
+claim and the work in **one** `prisma.$transaction`, whose interactive timeout defaults to 5s.
+The heaviest operation is `stock.reverseDispatch`, which loops `reverseMovementTx` over every
+`ISSUE` line — a 15-row dispatch is 90+ sequential statements. At the ~15 ms per statement
+measured from Mumbai that is about 1.4s, comfortable. At the ~230 ms it was paying before the
+region fix it would have been roughly 20s, and would have timed out *every time*. Set an explicit
+`timeout`, and note in the code that `vercel.json` has stopped being a performance tweak and
+become a correctness dependency — the warning above about not deleting it now protects this
+feature too.
+
+#### A naming collision
+
+"Approval" is already taken and means something unrelated: `ApprovedOpens`
+([packs.ts:160](src/lib/packs.ts)) and `needsApproval` in `transactions.ts` / `dispatches.ts` are
+the **in-request** handshake where the user confirms "yes, break open 2 sealed packs" — same
+request, same user, nothing to do with roles. The new feature lives under `ApprovalRequest` /
+`approvals/` and must not reuse those names.
+
+### Part 3 — adjustments store the correction, not the count (≈½ day) ✅ BUILT
+
+> **As built, 2026-09-05.** Two commits: `0b89701` then `45aea35`. New pure
+> [adjustment.ts](src/lib/adjustment.ts) (`planAdjustment` / `computeDelta` / `describeRefusal` /
+> `describeAdjustment`) with 16 tests, 70 → **86**; `adjustStock` rewritten to plan-then-execute
+> against freshly-read packs, applying `increment`/`decrement` rather than assignment;
+> `CorrectionPanel` posts a hidden `ledger_<key>` beside each count; the `ADJUSTMENT` doc comment
+> in `schema.prisma` rewritten. **No migration** — the comment is the only schema change, so
+> Turso needed nothing.
+>
+> **A worse bug was found underneath this one, and it had to be fixed first.** `adjustStock`
+> validated *every* entry of the submitted `FormData` as a non-negative integer — including the
+> `reason` the same form posts. `Number("annual count")` is `NaN`, so **every adjustment carrying
+> a real reason was refused** with "Counted quantities must be whole numbers of zero or more",
+> and nothing was written. Only a numeric reason got through, and that set no counts. So
+> recording a stock count had **never once worked** since Phase 3 built it. The evidence was
+> sitting in plain sight: zero `ADJUSTMENT` rows in a development database that had been through
+> every phase's verification. Phase 3's own as-built note claims only the *reversal* path was
+> exercised in the browser — the adjustment half of its verification list was written and never
+> run. Fixed in `0b89701`, on its own, because until it was the delta change could not be
+> observed at all.
+>
+> **⚠️ Which means the verification below is wrong where it says "the old code gives 13".** It
+> did not; it returned a validation error. That before/after never existed. The real
+> demonstration, run instead, is in the next paragraph.
+>
+> **Verified in the browser, two tabs, against a local `file:./dev.db` copy — never the pilot.**
+> Tab 1 held the count form on `WIRE-2.5` showing 3 sealed 100 m rolls. Tab 2 then opened one
+> (a real movement through `openPackAction`), leaving **2 sealed and a new 100 m open pack**.
+> Tab 1, never reloaded, submitted a count of **4** — a +1 correction against the ledger of 3 it
+> was still displaying. Result: **3 sealed, and the opened pack untouched**, note reading
+> *"Counted 2600 m against a ledger of 2500 (+100). Applied to a ledger of 2500, giving 2600."*
+> The absolute write would have set sealed to 4 and left the open pack in place, inventing 100 m
+> from nothing with no error anywhere — the silent failure this section predicted, reproduced
+> and then removed. Then sealed was driven to 1 and a count of 0 submitted against the stale
+> ledger of 3: **refused** — *"Applying this count would leave sealed 100 packs at -2: … there is
+> now only 1 to apply -3 to."* Nothing written, not clamped. Console clean on both tabs.
+> `npm test` 86/86, `tsc --noEmit` clean.
+>
+> **Three deviations from what is written below**, all deliberate:
+>
+> 1. **The note carries no timestamps.** The example below reads *"Counted 13 at 10:05 … Applied
+>    at 12:40"*, but the form submits no count time, and render time is not count time — the
+>    figure would have been invented, which in a record whose whole job is honesty is worse than
+>    omitting it. The two ledger totals carry what matters. Part 2 gets a real count time for
+>    free from `ApprovalRequest.createdAt`, and that is the moment to add it.
+> 2. **A count arriving with no paired `ledger_` field is refused**, not quietly applied as an
+>    absolute write. A fallback would silently reintroduce the exact bug being removed, so a
+>    stale cached page gets *"This count form is out of date — reload the item page and count
+>    again."*
+> 3. **Refusals are collected rather than thrown on the first**, matching `recordDelivery` and
+>    `recordDispatch`. The caller still refuses the whole adjustment if any survive.
+>
+> **Deliberately NOT fixed, and still true: `adjustStock` does not re-evaluate the scrap
+> threshold.** A count can leave a remainder at or below it still marked `OPEN` and still counted
+> as stock, where `addOpenPack` and `commitAllocation` would have scrapped it — and a physical
+> count is exactly when someone discovers a roll is nearly gone. Pre-existing, unchanged here,
+> and left alone on purpose: fixing it means deciding whether an adjustment also writes a `SCRAP`
+> row, and if it does, `quantity = |after − before|` starts conflating a count correction with a
+> reclassification. That is a second decision, and it does not belong inside a change shipped for
+> its arithmetic. **Its own ticket.**
+
+**This is a live bug, found while planning Part 2, and it is worth fixing whether or not Part 2
+is ever built.**
+
+`adjustStock` ([corrections.ts:168-241](src/lib/actions/corrections.ts)) records an **absolute**
+count: it *sets* `sealedCount = counted` and `remaining = counted`. That is stale the moment
+anything legitimate happens after the count is taken. Nothing stops a dispatch landing between
+opening the count form and pressing Submit, and the absolute write silently erases it. An
+approval queue widens the window from seconds to hours; it did not create it.
+
+**The fix: the UI stays a count, the storage becomes a delta.** A human must count what is on the
+shelf — asking them to type "+3" is asking them to do arithmetic against a number they cannot
+see. So the form keeps its "enter what is physically there" field and its "(ledger says 10)"
+label, and additionally submits the ledger figure it *displayed* as a hidden input. The server
+stores `counted − ledgerTheCounterSaw` and applies it with `{ increment: delta }` — already the
+house idiom, used by `addPacks` at [packs.ts:75-79](src/lib/packs.ts).
+
+> Ledger says 10; the shelf holds 13 — three packs received last month, never booked in. The
+> correction is filed at 10am. At 11am two packs are legitimately dispatched: ledger 8, shelf 11.
+> Approved at noon.
+>
+> - **Absolute:** sets sealed to 13, re-inventing the two dispatched packs. No error anywhere.
+> - **Delta:** 8 + 3 = 11. Correct.
+
+A delta captures the **size of the error**, which is invariant under legitimate movement. It also
+removes a silent failure: opening a sealed pack decrements `sealedCount` and creates an
+`OpenPack`, and the absolute write overwrites that decrement and silently re-invents the opened
+pack. Under a delta the correction applies to the new lower figure and the new pack is left alone
+— right, because the counter never made a claim about it.
+
+Two cases remain, both **loud**, with no silent one left:
+
+1. **A pack being corrected was deleted meanwhile.** A delta cannot apply to a row that is gone,
+   and the packs cannot be pooled instead — the whole point of `OpenPack` is that a 30 m and a
+   50 m remainder are not interchangeable. Refuse the whole adjustment; a partial count is not a
+   count.
+2. **The result would go negative** — new failure mode. Sealed 10, correction −4, then 8 get
+   dispatched: applying gives −2. **Refuse, never clamp.** `remaining` must likewise stay within
+   `(0, originalSize]`, and a delta landing on exactly 0 deletes the pack, the same rule as
+   today's `counted === 0`.
+
+`Transaction.note` has two moments to describe now, e.g. *"Counted 13 at 10:05 against a ledger of
+10 (+3). Applied at 12:40 to a ledger of 8, giving 11."* `quantity` stays `Math.abs(after -
+before)` — the real effect on stock, which is what the reports aggregate. The `///` comment on
+`TransactionType.ADJUSTMENT` should say the row stores a correction of known size, not a snapshot.
+
+**Do not generalise this to reversals.** `stock:reverse` refuses when the world has moved *on
+purpose* — `appliedPlan` exists so that restoring a roll which has since been cut cannot invent
+wire that no longer exists. A delta would break that. Part 3 is `stock.adjust` only.
+
+**This is the highest-risk item in the whole plan despite being the smallest**, because it is the
+only one that touches stock arithmetic on a live deployment carrying real stock. Ship it alone,
+verify it alone, before anything in Part 2 lands.
+
+### Deliberately not in scope
+
+- **Real-time notification.** No email, no push, no polling — the client asked for a plain in-app
+  request. An admin sitting still on a page sees nothing until they navigate. Revisit only if
+  that actually bites.
+- **Employees requesting anything.** `REQUESTABLE.EMPLOYEE` is empty. The role is being retired;
+  giving it a new power on the way out makes no sense.
+- **Approving on someone's behalf, or delegating.** One admin, one click, one row.
+- **An expiry on stale pending requests.** Worth revisiting once there is evidence they pile up.
+
+### Verification
+
+Beyond the per-part checks in the plan file, three that matter most:
+
+1. **The regression gate, as ADMIN, before any finance path is touched.** All twelve rewired
+   flows — create/edit/delete site, create/delete shelf, relabel a box, assign an item, toggle
+   front-row, reverse a transaction, reverse a dispatch, record a count — must behave exactly as
+   before, redirects included. Part 2 rewires eleven live write actions on a deployment with no
+   test coverage below the pure-function layer; this walkthrough is the only thing standing in
+   for those tests.
+2. ~~**Part 3, with no approval involved.** Item with 10 sealed packs. Open the count form, and in
+   a second tab dispatch 2 of them. Submit a count of 13. The answer must be **11**. Today's code
+   gives 13.~~ ✅ **Done 2026-09-05, but read the correction.** "Today's code gives 13" was
+   false — it gave a validation error, because the reason field was being validated as a number
+   (see the as-built note above). The shape of the check was right and was run with the movement
+   supplied by opening a sealed pack rather than dispatching: form showing 3 sealed, one opened
+   in a second tab leaving 2, count of 4 submitted from the stale form → **3**, with the newly
+   opened pack untouched. Plus the negative refusal and the pack-gone refusal.
+3. **The race.** The same pending request open in two admin tabs; approve in both. The second
+   returns "another admin answered this first", and the operation ran exactly once.
+
 ## Parked — raised, not yet decided
 
 **1. `Transaction` is becoming a wide table.** Across these phases it gains `packSize`,
@@ -2229,7 +2553,11 @@ Smaller points, noted in passing and still undecided:
 - Splitting one challan between the store and a site — record two deliveries instead.
 - Editing a committed batch line by line — reversal replaces the whole thing, then it is
   re-entered. Partial edits would fight the pack-restore check in Phase 3.
-- Approval workflows (employee requests → finance approves).
+- ~~Approval workflows (employee requests → finance approves).~~ **Reversed 2026-09-05** — see
+  "FINANCE absorbs EMPLOYEE, and asks an admin for the rest" above. Note the direction is also
+  inverted from what this line assumed: it is **finance requesting, admin approving**. Decided in
+  full; the queue itself (Part 2) is not built, though Part 3 — which was folded into the same
+  decision but stands alone — landed 2026-09-05.
 - Per-slot counts of *sealed* packs — sealed packs of a size are fungible, so "how many are
   in this particular box" has no operational answer worth storing.
 

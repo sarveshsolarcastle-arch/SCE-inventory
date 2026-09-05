@@ -1,6 +1,8 @@
 # Inventory Management System — Progress Handover
 
-Last updated: 2026-08-25 (**Phase 8 Part A — the hosted pilot — is live** — see §9)
+Last updated: 2026-09-05 (**Phase 8 Part A — the hosted pilot — is live**; **Phase 11 — role
+consolidation and admin approvals — is decided; its Part 3 is BUILT, Parts 1 and 2 are not**
+— see §9)
 
 > **§1-§8 describe the code as it stands today.** The six-phase functional redesign and
 > Phase 7 (UI overhaul) are **complete**. **Phase 8 Part A (the hosted pilot) is deployed**:
@@ -45,8 +47,8 @@ All core flows below were manually tested in a running dev server and confirmed 
 | Placement suggestions (usage-frequency based) | ✅ Done |
 | Mobile-responsive layout | ✅ Done |
 | Production build | ✅ Passes |
-| Automated tests | ⚠️ 70 unit tests (`npm test`): allocator, corrections, matching, paste parsing, site balances/FIFO age/pickup clamp, nav active-link matching, database-URL resolution; **no coverage of the DB layer or UI** |
-| Roles: ADMIN / FINANCE / EMPLOYEE, capability-gated | ✅ Done (Phase 2) |
+| Automated tests | ⚠️ 86 unit tests (`npm test`): allocator, corrections, matching, paste parsing, site balances/FIFO age/pickup clamp, adjustment deltas, nav active-link matching, database-URL resolution; **no coverage of the DB layer or UI** |
+| Roles: ADMIN / FINANCE / EMPLOYEE, capability-gated | ✅ Done (Phase 2) — ⚠️ **changing**: Phase 11 retires EMPLOYEE into FINANCE and adds an admin approval queue. Decided 2026-09-05, **not built** |
 | Corrections: reversal and stocktake adjustment | ✅ Done (Phase 3) |
 | Bulk dispatch to site, from Excel paste | ✅ Done (Phase 4) |
 | Delivery entry (to store or direct to site) | ✅ Done (Phase 5) |
@@ -258,7 +260,7 @@ backups/                    local dumps and manual dev.db copies (gitignored) �
   [REDESIGN-PLAN.md's "Reopened 2026-09-04" section](REDESIGN-PLAN.md).
 - **Not deployed yet.** The plan is now **two parts**: a temporary hosted pilot on Turso + Vercel carrying **real stock data**, then permanent **offline** production on a drive carried between 2-3 office PCs. **SQLite stays throughout** — `provider = "sqlite"` never changes, and Turso is SQLite-compatible, so every existing migration remains valid and only the Prisma adapter is swapped. **No data crosses the cutover**: stock is physically recounted into an Excel sheet and re-entered as an opening delivery. The full plan, including what was reversed and why, is in [REDESIGN-PLAN.md's Phase 8 section](REDESIGN-PLAN.md) — read it before changing any of it. (This bullet previously recorded "a real server behind real HTTPS, SQLite therefore stays, no code changes". That conclusion happens to survive; its premise does not.)
 - **Change the seeded passwords** — all three accounts (`admin`/`finance`/`employee`), not just admin. There is now a self-service flow at `/account` and an admin reset at `/users`, so this no longer needs a code change — but the seeded passwords are still in place.
-- **⚠️ Test coverage stops at the pure modules, and the reason for deferring the rest has expired.** The 70 tests cover [allocation.ts](src/lib/allocation.ts), [corrections.ts](src/lib/corrections.ts), [matching.ts](src/lib/matching.ts), [dispatchPaste.ts](src/lib/dispatchPaste.ts), [siteBalance.ts](src/lib/siteBalance.ts) and [activeHref.ts](src/components/nav/activeHref.ts). **Everything that writes to the database has none**: [packs.ts](src/lib/packs.ts), `recordDispatch`, `recordDelivery`, and the whole site lifecycle. The subtlest code in the project is in there — `commitAllocation` resolves the planner's synthetic `new:<i>` pack ids onto rows it creates inside the same transaction. This was deferred on the grounds that "the app is not in real use until the remaining phases land"; **they have all landed**, and the untested surface grew with each one. This is now the single most valuable outstanding item.
+- **⚠️ Test coverage stops at the pure modules, and the reason for deferring the rest has expired.** The 86 tests cover [allocation.ts](src/lib/allocation.ts), [corrections.ts](src/lib/corrections.ts), [matching.ts](src/lib/matching.ts), [dispatchPaste.ts](src/lib/dispatchPaste.ts), [siteBalance.ts](src/lib/siteBalance.ts), [adjustment.ts](src/lib/adjustment.ts) and [activeHref.ts](src/components/nav/activeHref.ts). **Everything that writes to the database has none**: [packs.ts](src/lib/packs.ts), `recordDispatch`, `recordDelivery`, and the whole site lifecycle. The subtlest code in the project is in there — `commitAllocation` resolves the planner's synthetic `new:<i>` pack ids onto rows it creates inside the same transaction. This was deferred on the grounds that "the app is not in real use until the remaining phases land"; **they have all landed**, and the untested surface grew with each one. This is now the single most valuable outstanding item.
 - ✅ **Corrections exist** (Phase 3): a movement can be reversed — restoring the exact prior pack state, and refusing when the packs have moved on since — and a physical count can be recorded as an `ADJUSTMENT` with a mandatory reason. Both are `ADMIN`-only. A whole dispatch can be reversed atomically (Phase 4).
 - ✅ **Existing items reviewed after the Phase 1 migration** (2026-08-20, during Phase 4). `CBL-200` and `SCR-M4` were the two that predated the pack model; both checked — see §9's Phase 4 note and §10's "State of the working copy". Any *new* item added later still needs `measure`, `packUnit` and `scrapThreshold` set correctly at creation, same as always.
 - ✅ **The app refuses to start against a phantom database** (Phase 8). [prisma.ts](src/lib/prisma.ts) used to read `process.env.DATABASE_URL ?? "file:./dev.db"`, so a production server with the variable unset started *successfully* against an empty file in its working directory — no error raised, an inventory that merely looks empty, and every write landing somewhere the next deploy deletes. [databaseUrl.ts](src/lib/databaseUrl.ts) now throws in production while keeping the dev default, covered by 7 tests. The previous guard was a checklist item in this document, which is the weakest enforcement available for a failure nobody can see happening.
@@ -305,7 +307,8 @@ what stops them being re-derived.** What actually holds today:
 2 (roles), 3 (corrections), 4 (dispatch batch), 5 (delivery entry) and 6 (site lifecycle).
 **Phase 7 (UI overhaul + mobile web) is also built and verified**, on 2026-08-21 — see its
 as-built note below. **Phase 8 (hosting) is in progress** — see its entry below for what has
-landed and what the remaining blocker is.
+landed and what the remaining blocker is. **Phase 11 (role consolidation + admin approvals) is
+decided but NOT built** — every entry above it describes code that exists; that one does not.
 
 ### Phase 1 — built 2026-08-20
 
@@ -678,6 +681,115 @@ fast for the same reason this fix is fast, and would have credited Supabase for 
 database; nothing to terminate later; Part A continues on Turso. Treat this as a closed
 ticket rather than a deferred one — reopening it needs a new reason, not this one.
 
+### Phase 11 — FINANCE absorbs EMPLOYEE, and asks an admin for the rest 📋 DECIDED 2026-09-05, NOT BUILT
+
+**Nothing in this phase is written yet.** The design is settled with the user and recorded in
+[REDESIGN-PLAN.md](REDESIGN-PLAN.md) ("Decided 2026-09-05"), which is the durable version. The
+file-by-file implementation plan is at
+`C:\Users\Kavita\.claude\plans\hazy-weaving-spring.md` — **outside the repo, so do not rely on
+it**; if it is gone, REDESIGN-PLAN.md carries every decision and its reasoning.
+
+**The requirement.** The employee account is being retired and finance takes over its work
+outright — an accepted takeover, the user's words. Separately, finance should be able to attempt
+the admin-only housekeeping without an admin present: the attempt becomes an approval request
+that every admin sees, and the first admin to answer it decides it and clears it for everyone.
+In-app only — no email, no push. Account management stays hard admin-only.
+
+**Three parts, shipped separately because their risk profiles differ by an order of magnitude.**
+
+| Part | What | Size | Risk | Status |
+|---|---|---|---|---|
+| 1 | Five employee capabilities added to the FINANCE array | ~1 hr | Low — one code table, no migration | ❌ not built |
+| 3 | `adjustStock` stores a delta instead of an absolute count | ~½ day | **Highest** — the only stock arithmetic touched | ✅ **BUILT 2026-09-05** |
+| 2 | The approval workflow: `ApprovalRequest`, an operations registry, `/approvals` | 3-5 days | Medium — permission layer and UI, no ledger maths | ❌ not built |
+
+Recommended order was **1 → 3 → 2**. **Part 3 went first in the end** and that was right: it
+fixed two live bugs that had nothing to do with approvals, and shipping it alone kept the only
+stock-arithmetic change of the three isolated. Parts 1 and 2 are unchanged and still in that
+order. Part 2 is the only one that rewires existing write actions.
+
+**Two things found while planning that changed what needed doing:**
+
+- **`item:manage` was already FINANCE's.** "Let finance add a new item type" was on the original
+  request list; finance has been able to do it since Phase 1. No work.
+- **`adjustStock` had a live bug** — an absolute write, so a dispatch landing between opening the
+  count form and pressing Submit was silently erased. Fixed by Part 3, below.
+
+**And a second, worse bug found while executing Part 3, which the planning had missed.**
+`adjustStock` validated *every* field of the submitted form as a non-negative integer, including
+the `reason` the same form posts. `Number("annual count")` is `NaN`, so **every adjustment
+carrying a real reason was refused** and no stock count could ever be recorded — the feature had
+never worked since Phase 3 built it. The symptom was in plain sight and nobody had read it: zero
+`ADJUSTMENT` rows in a development database that had been through every phase's verification.
+Phase 3's own as-built note only ever claims the *reversal* path was exercised in the browser.
+Fixed first, on its own (`0b89701`), because the delta change could not otherwise be observed at
+all. **The lesson worth carrying: a verification list that says "✅ passed" phase-wide can still
+hide an item nobody actually ran** — §7's warning about DB-layer coverage is not theoretical.
+
+**Excluded from the approval flow on purpose, and the reasoning matters:** `user:manage`, because
+an approval flow that can mint an admin is not an approval flow; and `backup:manage`, because
+`restoreDatabase` drops and recreates every table — an approved restore would erase the request
+row that authorised it and the record of who approved it. Neither is a preference to revisit
+casually.
+
+**The trap most likely to be walked into.** The obvious way to give the approval path access to
+an action's body is to export an unguarded core from the action file. Every one of those files
+carries a top-level `"use server"`, which makes **every async export a network-reachable
+endpoint** — so that refactor publishes an unauthenticated delete. The bodies move to plain
+modules under `src/lib/approvals/ops/` instead. See REDESIGN-PLAN.md for the other three.
+
+**Before starting Part 2, read** the regression gate in REDESIGN-PLAN.md's verification list. It
+rewires eleven live write actions on a deployment carrying real stock, and the DB layer still has
+no test coverage (§7, and the standing warning in §10) — the twelve-flow admin walkthrough is
+standing in for the tests that do not exist.
+
+#### Part 3 — as built, 2026-09-05 (`0b89701`, `45aea35`)
+
+Two commits, deliberately: the reason-validation bug first, because until it was fixed the delta
+change could not be observed at all — a count never reached the arithmetic.
+
+New pure [src/lib/adjustment.ts](src/lib/adjustment.ts) (`planAdjustment`, `computeDelta`,
+`describeRefusal`, `describeAdjustment`) with 16 tests, 70 → **86**. It imports nothing, matching
+the `allocation.ts` / `packs.ts` split: it plans against the packs as they are at apply time, and
+`actions/corrections.ts` executes the plan with `increment`/`decrement` rather than assignment.
+`CorrectionPanel` posts a hidden `ledger_<key>` beside each count, and the `ADJUSTMENT` doc
+comment in `schema.prisma` now says the row stores a correction of known size. **No migration** —
+the comment is the only schema change, so Turso needed nothing.
+
+Rows the counter agreed with write nothing at all, so an unchanged line cannot be refused because
+an unrelated pack moved underneath it. Two failure modes remain and **both are loud**, which is
+the whole gain: an open pack used up or scrapped since the count refuses the entire adjustment (a
+30 m and a 50 m remainder are not interchangeable, so a partial count is not a count), and a
+correction that would drive a figure below zero refuses rather than clamps.
+
+**Verified in the browser, two tabs, against a local copy — not the pilot.** Tab 1 held the count
+form on `WIRE-2.5` showing 3 sealed 100 m rolls; tab 2 then opened one, leaving 2 sealed and a new
+100 m open pack; tab 1, never reloaded, submitted a count of 4. Result: **3 sealed and the opened
+pack untouched**. The absolute write would have set 4 and left the open pack in place, inventing
+100 m from nothing with no error anywhere. Then sealed was driven to 1 and a count of 0 submitted
+against the stale ledger of 3 — refused with *"there is now only 1 to apply -3 to"*, nothing
+written, not clamped. Console clean on both tabs.
+
+**Three departures from the plan**, all deliberate:
+
+1. **The note carries no timestamps.** REDESIGN-PLAN's example reads *"Counted 13 at 10:05 …
+   Applied at 12:40"*, but the form submits no count time and render time is not count time, so
+   the figure would have been invented. The two ledger totals carry what matters instead:
+   *"Counted 2600 m against a ledger of 2500 (+100). Applied to a ledger of 2500, giving 2600."*
+   Part 2 gets a real count time for free from `ApprovalRequest.createdAt`.
+2. **A count with no paired `ledger_` field is refused**, not silently applied as an absolute
+   write — a fallback would reintroduce exactly the bug being removed. A stale cached page
+   therefore gets *"This count form is out of date — reload the item page and count again."*
+3. **Refusals are collected, not first-fail**, matching `recordDelivery`/`recordDispatch`.
+
+**Deliberately NOT fixed here, and still true:** `adjustStock` does not re-evaluate the scrap
+threshold, so a count can leave a remainder at or below it still marked `OPEN` and still counted
+as stock, where `addOpenPack` and `commitAllocation` would scrap it. Pre-existing and unchanged.
+Fixing it means deciding whether an adjustment also writes a `SCRAP` row — and if it does,
+`quantity = |after − before|` starts conflating a count correction with a reclassification, which
+is a second decision that does not belong in a change shipped for its arithmetic. **Its own
+ticket.**
+
 ### Resolved by the redesign — all of it has now landed
 
 | Originally stated | Resolved by |
@@ -762,14 +874,42 @@ Everything downstream assumes these. Breaking one corrupts stock silently rather
   350 with a 15 m threshold. Not a bug.
 - **The pure modules run on the client too.** `allocation.ts` and `units.ts` must stay free of
   Node and Prisma imports, or the transaction form breaks.
+- **Every async export of a `"use server"` file is a network-reachable endpoint.** All of
+  `src/lib/actions/*.ts` carries a top-level `"use server"`, so exporting a helper "just for
+  internal use" from one of them publishes it as an unauthenticated RPC. Anything that must be
+  callable without `requireCapability` in front of it belongs in a plain module elsewhere under
+  `src/lib/`. Noted 2026-09-05 while planning Phase 11, where the obvious refactor would have
+  published an unauthenticated `deleteSite`.
+- **A stock count stores the correction, not the count.** `adjustStock` applies
+  `counted − theLedgerFigureTheFormDisplayed` with `increment`/`decrement`, never an assignment,
+  because the size of an error survives legitimate movement between the count and its application
+  while a total does not. The count form must therefore keep posting its hidden `ledger_<key>`
+  inputs — strip them and every adjustment is refused as out-of-date, which is the intended
+  failure, but it *is* a failure. Fixed 2026-09-05 (was an absolute write, which silently erased
+  anything dispatched mid-count). See [src/lib/adjustment.ts](src/lib/adjustment.ts).
+- **Validate only the fields you mean to.** `adjustStock` used to run every entry of its
+  `FormData` through a number check, which swept up the `reason` posted by the same form and
+  refused every real count for two phases without anyone noticing. Select fields by name first,
+  validate second — and remember that a form's `FormData` carries more than the inputs you were
+  thinking about.
 
 ### State of the working copy
 
-- **The database contains test data created while verifying Phases 1-6**, not real
-  inventory: `WIRE-2.5` around 2430 m across sealed rolls and returned offcuts, `SCR-M4` 291,
-  `CBL-200` 119, `INV-5K` 10; a reversed test dispatch, two test deliveries (one direct to
-  Kandivali, one a claim replacement), a settled defective claim, and consumed/transferred
-  material at Kandivali and Borivali. **Reseed or clear before real stock goes in.**
+- ⚠️ **`.env` points `DATABASE_URL` at the live Turso pilot — the client's real stock.** Next
+  loads `.env` for `next dev` too, so `npm run dev` on this machine wrote *straight into
+  production*, and a stock count or a dispatch recorded "just to check" landed on real
+  inventory. A gitignored **`.env.local`** now pins `DATABASE_URL="file:./dev.db"` and Next
+  loads it ahead of `.env`. Added 2026-09-05 while verifying Phase 11 Part 3. **Confirm it is
+  there before browser-testing anything that writes**, and never verify a write path against a
+  `libsql://` URL. This stops mattering at the Part B cutover, when production becomes a file
+  on a carried drive.
+- **The local `dev.db` contains test data created while verifying Phases 1-6 and Phase 11
+  Part 3**, not real inventory: `WIRE-2.5` **2600 m** across sealed rolls and returned offcuts,
+  `SCR-M4` 231, `CBL-200` 217, `INV-5K` 10; a reversed test dispatch, two test deliveries (one
+  direct to Kandivali, one a claim replacement), a settled defective claim, consumed/transferred
+  material at Kandivali and Borivali, and — from the Part 3 verification — **two `ADJUSTMENT`
+  rows and three 100 m packs opened to force the mid-count race**. **Reseed or clear before real
+  stock goes in.**
 - ⚠️ **Another session wrote to this database mid-work on 2026-08-20** — two `STOCK_IN` rows
   on `CBL-200` (+17, +13) arrived through the old Stock In form while Phase 4/5 were being
   built. Harmless here since it is all test data, but worth knowing that `dev.db` had
@@ -787,6 +927,31 @@ Everything downstream assumes these. Breaking one corrupts stock silently rather
 
 **Phases 1-7 are built. Phase 8 is in progress** — accounts, the `DATABASE_URL` fail-fast
 and the build prerequisites landed 2026-08-23. The database work has not started.
+
+**Newest work, and where a fresh agent should probably start: Phase 11** (§9) — the employee
+role folds into finance, and finance gets an approval queue for the admin-only housekeeping.
+Decided in full with the user on 2026-09-05. **Part 3 is built; Parts 1 and 2 are not**:
+
+- **Part 1** (≈1 hr) — five capabilities added to the FINANCE array in `permissions.ts`, plus
+  two comments that become false and must be rewritten in the same commit. No migration.
+  ⚠️ Its file list misses one thing: `shelf/[shelfId]/page.tsx` derives `isAdmin` from a
+  hardcoded `role === "ADMIN"`, not from `can()`, and that prop gates the whole `ShelfGrid`
+  popover. Left alone, finance sees a shelf map whose cells do not open.
+- **Part 3** — ✅ **BUILT 2026-09-05** (`0b89701`, `45aea35`). See the as-built note in §9.
+- **Part 2** (3-5 days) — the approval workflow. Rewires eleven live write actions, so read the
+  regression gate first. ⚠️ **Two blockers the plan does not cover.** Its schema stage says
+  `prisma migrate dev`, but `prisma migrate deploy` cannot reach Turso (`P1013`, see the Phase 8
+  section) and the one-off `executeMultiple()` script used for the first ten migrations was
+  discarded — so an eleventh migration currently has **no path to the live pilot**. And
+  `approveRequest` puts the claim and the work in one `$transaction` against Prisma's 5s default
+  timeout; `reverseDispatch` on a 15-line batch is 90+ sequential statements, which fits only
+  because `vercel.json` pins the function to Mumbai. That file stops being a performance tweak
+  and becomes a correctness dependency.
+
+Full reasoning, the rejected alternatives, and the four traps are in
+[REDESIGN-PLAN.md](REDESIGN-PLAN.md)'s "Decided 2026-09-05" section. Read it before writing
+anything — two of the traps (the `"use server"` export hazard, and why `backup:manage` cannot be
+approvable) are the kind that get re-derived wrongly.
 
 **The immediate next step (Part A)**: provision a Turso database, swap the adapter to
 `@prisma/adapter-libsql`, deploy to Vercel, change the seeded passwords, and set up the
@@ -806,8 +971,11 @@ argument was always "the app is not in real use until the remaining phases land"
 functional ones have landed. Meanwhile the untested surface has grown considerably:
 `packs.ts` (including `commitAllocation`'s synthetic `new:<i>` pack-id resolution, still the
 subtlest code in the project), `recordDispatch`, `recordDelivery`, and the whole of Phase 6.
-The pure modules are well covered at 70 tests; **everything that actually writes to the
-database has none**.
+The pure modules are well covered at 86 tests; **everything that actually writes to the
+database has none**. On 2026-09-05 that gap cashed in: `adjustStock` had been refusing every
+stock count since Phase 3 built it, and no test, no build and no phase verification caught it —
+the bug lived in the six lines between a `"use server"` boundary and a Prisma call, which is
+precisely the band nothing covers.
 
 The other pre-live items, in rough order of cost-to-skip:
 
@@ -822,8 +990,9 @@ The other pre-live items, in rough order of cost-to-skip:
 
 ## 11. Related Documents
 
-- **[REDESIGN-PLAN.md](REDESIGN-PLAN.md)** — the phase plan (1-7 built, **8 in progress**), with verification steps and, importantly, the alternatives that were rejected and why. **The main document for continuing work.** Its Phase 8 section records two things you will otherwise re-derive wrongly: why the SQLite file cannot live on Google Drive, and why the "SQLite stays" hosting decision was reversed.
+- **[REDESIGN-PLAN.md](REDESIGN-PLAN.md)** — the phase plan (1-7 built, **8 in progress**, **11 decided but not built**), with verification steps and, importantly, the alternatives that were rejected and why. **The main document for continuing work.** Its Phase 8 section records two things you will otherwise re-derive wrongly: why the SQLite file cannot live on Google Drive, and why the "SQLite stays" hosting decision was reversed. Its "Decided 2026-09-05" section carries Phase 11 in full — including why `user:manage` and `backup:manage` must never become approvable, and why the approval path cannot call an exported core from a `"use server"` file.
 - [.env.example](.env.example) — every environment variable the app reads, with the consequence of getting each one wrong.
 - `C:\Users\Kavita\.claude\plans\c-users-kavita-downloads-ui-examples-i-ethereal-swan.md` — the Phase 7/8 working checklist. **Outside the repo**, so it is not a durable record; REDESIGN-PLAN.md's phase sections are.
+- `C:\Users\Kavita\.claude\plans\hazy-weaving-spring.md` — the Phase 11 implementation plan: file-by-file changes, the staged sequence, and the end-to-end verification script. **Outside the repo**, same caveat — REDESIGN-PLAN.md's "Decided 2026-09-05" section holds every decision and its reasoning, and is what to trust if the two disagree or the file is missing.
 - [inventory_management.md.txt](inventory_management.md.txt) — the original problem statement the project was built from.
 - [storeroom-heavy-stock-plan.md](storeroom-heavy-stock-plan.md) — physical storage plan for heavy and humidity-sensitive stock (racking spec, VCI/sealed-case protection). Procurement and physical handling only; no bearing on the code.
