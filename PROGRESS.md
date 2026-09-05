@@ -980,11 +980,17 @@ Decided in full with the user on 2026-09-05. **Parts 1 and 3 are built; Part 2 i
 - **Part 3** — ✅ **BUILT 2026-09-05** (`0b89701`, `45aea35`). See the as-built note in §9.
 - **Part 2** (3-5 days) — the approval workflow. Rewires eleven live write actions, so read the
   regression gate first. Three things the plan does not cover, one now cleared:
-  - ✅ **The migration path exists again.** `prisma migrate deploy` cannot reach Turso (`P1013`,
-    see the Phase 8 section) and the one-off script used for the first ten migrations had been
-    discarded, so an eleventh had **no path to the live pilot**.
-    [scripts/apply-migrations-turso.ts](scripts/apply-migrations-turso.ts) replaces it —
-    `npm run db:migrate:turso`, status-only by default.
+  - ✅ **The migration path exists again, and the pilot is ready for it.**
+    `prisma migrate deploy` cannot reach Turso (`P1013`, see the Phase 8 section) and the
+    one-off script used for the first ten migrations had been discarded, so an eleventh had
+    **no path to the live pilot**. [scripts/apply-migrations-turso.ts](scripts/apply-migrations-turso.ts)
+    replaces it — `npm run db:migrate:turso`, status-only by default.
+    Running it revealed the pilot had **no `_prisma_migrations` table at all**: the August
+    script applied the SQL and recorded nothing, so a naive apply would have tried to create
+    every table over live data. Its schema was verified column-for-column against the local
+    database (all twelve tables matched) and then **baselined on 2026-09-05**; it now reports
+    all ten applied, nothing pending, and the live app was unaffected. The eleventh migration
+    can go straight through `npm run db:migrate:turso -- --apply`.
   - ⚠️ `approveRequest` puts the claim and the work in one `$transaction` against Prisma's 5s
     default timeout; `reverseDispatch` on a 15-line batch is 90+ sequential statements, which
     fits only because `vercel.json` pins the function to Mumbai. Set an explicit `timeout` —
