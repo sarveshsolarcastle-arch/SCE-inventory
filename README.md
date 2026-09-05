@@ -42,7 +42,7 @@ history, changing structure, accounts and backups. See
 
 > **Note what this gave up.** One finance account can now receive goods *and* dispatch them with
 > nobody else involved. That separation was a real control; retiring the employee account traded
-> it away deliberately. Phase 11 Part 2 (not built) will let finance *request* the admin-only
+> it away deliberately. Phase 11 Part 2 (half-built) will let finance *request* the admin-only
 > actions, with any admin approving — accounts and backups stay outside that queue permanently.
 > See PROGRESS.md §9.
 
@@ -101,7 +101,7 @@ It reads `.env` (the deployment database), not `.env.local`.
 
 All seven phases — the six-phase functional redesign and the Phase 7 UI overhaul — are built
 and verified in the browser; `npx tsc --noEmit` and `npm run build` pass, and `npm test` runs
-86 unit tests.
+136 unit tests.
 
 **Phase 8 — hosting — is in progress; re-planned 2026-08-25 into two parts.** Already built:
 account management (`/users` for an admin, `/account` for everyone), a `DATABASE_URL` that
@@ -127,9 +127,10 @@ alternatives, and the two decisions still open.
 
 **Not production-ready yet.** Before real stock goes in:
 
-- **The database layer has no test coverage.** The 86 tests cover the pure modules
-  (allocation, corrections, matching, paste parsing, site balances, adjustment deltas, nav
-  active-link matching, database-URL resolution). Everything that writes to the database —
+- **The database layer has no test coverage.** The 136 tests cover the pure modules
+  (allocation, corrections, matching, paste parsing, site balances, adjustment deltas,
+  capability tables, approval argument parsing, nav active-link matching, database-URL
+  resolution). Everything that writes to the database —
   `packs.ts`, `recordDispatch`, `recordDelivery`, the site lifecycle — has none. This is the
   largest outstanding risk, and **Part A puts real stock through exactly that code with no
   parallel record to catch a mistake.** It is not a theoretical risk: recording a stock count
@@ -141,7 +142,7 @@ alternatives, and the two decisions still open.
   underlying dump/restore logic.
 - The seeded passwords above are still in place. You can now change them in the app.
 
-**Phase 11, decided 2026-09-05 — Parts 1 and 3 are built, Part 2 is not.** The employee role
+**Phase 11, decided 2026-09-05 — Parts 1 and 3 are built; Part 2 is half-built.** The employee role
 folds into finance, and finance gets an approval queue for the admin-only actions (any admin can
 answer; the first to do so clears it for everyone). Three independent parts:
 
@@ -155,10 +156,15 @@ answer; the first to do so clears it for everyone). Three independent parts:
   also turned up a worse bug it was sitting on: `adjustStock` validated the `reason` field as a
   number, so **recording a stock count had never once worked** since Phase 3 built it. Both
   fixed; see PROGRESS.md §9 for the as-built note.
-- ❌ **Part 2** (3-5 days) — the approval workflow itself. Both structural prerequisites are now
-  **cleared**: `npm run db:migrate:turso` applies migrations Prisma cannot (and the pilot has
-  been baselined), and the shelf grid reads `shelf:manage` rather than a hardcoded role. What
-  remains is the feature itself, plus an explicit `timeout` on the approve path's transaction.
+- 🔨 **Part 2** — the approval workflow. **Foundation built, gating not**, so *nothing yet
+  changes who can do what*: finance still cannot manage sites or shelves, reverse or adjust,
+  and there is no `/approvals` page. Done so far — the `ApprovalRequest` schema (applied
+  locally, **1 pending on the pilot**), the capability tables lifted somewhere testable, the
+  argument parsers, and the operation bodies moved out of the `"use server"` files into
+  `src/lib/approvals/ops/`. That last one is a behaviour-preserving refactor of eleven live
+  write actions, and the twelve-flow regression gate was run against it. Still to come: the
+  registry, `runOrRequest`, the atomic claim, the `/approvals` page, the shell pill, twelve
+  re-labelled call sites, and an explicit `timeout` on the approve path's transaction.
 
 PROGRESS.md §9 has the summary; REDESIGN-PLAN.md's "Decided 2026-09-05" section has the
 reasoning and the four traps.

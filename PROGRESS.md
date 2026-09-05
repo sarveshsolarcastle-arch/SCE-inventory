@@ -1,8 +1,8 @@
 # Inventory Management System — Progress Handover
 
 Last updated: 2026-09-05 (**Phase 8 Part A — the hosted pilot — is live**; **Phase 11 — role
-consolidation and admin approvals — is decided; Parts 1 and 3 are BUILT, Part 2 is not**
-— see §9)
+consolidation and admin approvals — is decided; Parts 1 and 3 are BUILT, Part 2's foundation
+is built and its gating is not** — see §9)
 
 > **§1-§8 describe the code as it stands today.** The six-phase functional redesign and
 > Phase 7 (UI overhaul) are **complete**. **Phase 8 Part A (the hosted pilot) is deployed**:
@@ -47,8 +47,8 @@ All core flows below were manually tested in a running dev server and confirmed 
 | Placement suggestions (usage-frequency based) | ✅ Done |
 | Mobile-responsive layout | ✅ Done |
 | Production build | ✅ Passes |
-| Automated tests | ⚠️ 86 unit tests (`npm test`): allocator, corrections, matching, paste parsing, site balances/FIFO age/pickup clamp, adjustment deltas, nav active-link matching, database-URL resolution; **no coverage of the DB layer or UI** |
-| Roles: ADMIN / FINANCE, capability-gated | ✅ Done (Phase 2); **consolidated 2026-09-05** (Phase 11 Part 1) — FINANCE absorbed the retired EMPLOYEE role and is now the combined operational role. EMPLOYEE still exists and still works, but is no longer assigned. The admin approval queue (Part 2) is **not built** |
+| Automated tests | ⚠️ 136 unit tests (`npm test`): allocator, corrections, matching, paste parsing, site balances/FIFO age/pickup clamp, adjustment deltas, site-deletion blockers, capability/requestable tables, approval argument parsing, nav active-link matching, database-URL resolution; **no coverage of the DB layer or UI** |
+| Roles: ADMIN / FINANCE, capability-gated | ✅ Done (Phase 2); **consolidated 2026-09-05** (Phase 11 Part 1) — FINANCE absorbed the retired EMPLOYEE role and is now the combined operational role. EMPLOYEE still exists and still works, but is no longer assigned. The admin approval queue (Part 2) is **half-built: its foundation exists, its gating does not**, so nothing yet changes who can do what |
 | Corrections: reversal and stocktake adjustment | ✅ Done (Phase 3) |
 | Bulk dispatch to site, from Excel paste | ✅ Done (Phase 4) |
 | Delivery entry (to store or direct to site) | ✅ Done (Phase 5) |
@@ -260,7 +260,7 @@ backups/                    local dumps and manual dev.db copies (gitignored) �
   [REDESIGN-PLAN.md's "Reopened 2026-09-04" section](REDESIGN-PLAN.md).
 - **Not deployed yet.** The plan is now **two parts**: a temporary hosted pilot on Turso + Vercel carrying **real stock data**, then permanent **offline** production on a drive carried between 2-3 office PCs. **SQLite stays throughout** — `provider = "sqlite"` never changes, and Turso is SQLite-compatible, so every existing migration remains valid and only the Prisma adapter is swapped. **No data crosses the cutover**: stock is physically recounted into an Excel sheet and re-entered as an opening delivery. The full plan, including what was reversed and why, is in [REDESIGN-PLAN.md's Phase 8 section](REDESIGN-PLAN.md) — read it before changing any of it. (This bullet previously recorded "a real server behind real HTTPS, SQLite therefore stays, no code changes". That conclusion happens to survive; its premise does not.)
 - **Change the seeded passwords** — all three accounts (`admin`/`finance`/`employee`), not just admin. There is now a self-service flow at `/account` and an admin reset at `/users`, so this no longer needs a code change — but the seeded passwords are still in place.
-- **⚠️ Test coverage stops at the pure modules, and the reason for deferring the rest has expired.** The 86 tests cover [allocation.ts](src/lib/allocation.ts), [corrections.ts](src/lib/corrections.ts), [matching.ts](src/lib/matching.ts), [dispatchPaste.ts](src/lib/dispatchPaste.ts), [siteBalance.ts](src/lib/siteBalance.ts), [adjustment.ts](src/lib/adjustment.ts) and [activeHref.ts](src/components/nav/activeHref.ts). **Everything that writes to the database has none**: [packs.ts](src/lib/packs.ts), `recordDispatch`, `recordDelivery`, and the whole site lifecycle. The subtlest code in the project is in there — `commitAllocation` resolves the planner's synthetic `new:<i>` pack ids onto rows it creates inside the same transaction. This was deferred on the grounds that "the app is not in real use until the remaining phases land"; **they have all landed**, and the untested surface grew with each one. This is now the single most valuable outstanding item.
+- **⚠️ Test coverage stops at the pure modules, and the reason for deferring the rest has expired.** The 136 tests cover [allocation.ts](src/lib/allocation.ts), [corrections.ts](src/lib/corrections.ts), [matching.ts](src/lib/matching.ts), [dispatchPaste.ts](src/lib/dispatchPaste.ts), [siteBalance.ts](src/lib/siteBalance.ts), [adjustment.ts](src/lib/adjustment.ts), [siteBlockers.ts](src/lib/siteBlockers.ts), [capabilities.ts](src/lib/capabilities.ts), the approvals parsers/summaries, and [activeHref.ts](src/components/nav/activeHref.ts). **Everything that writes to the database has none**: [packs.ts](src/lib/packs.ts), `recordDispatch`, `recordDelivery`, and the whole site lifecycle. The subtlest code in the project is in there — `commitAllocation` resolves the planner's synthetic `new:<i>` pack ids onto rows it creates inside the same transaction. This was deferred on the grounds that "the app is not in real use until the remaining phases land"; **they have all landed**, and the untested surface grew with each one. This is now the single most valuable outstanding item.
 - ✅ **Corrections exist** (Phase 3): a movement can be reversed — restoring the exact prior pack state, and refusing when the packs have moved on since — and a physical count can be recorded as an `ADJUSTMENT` with a mandatory reason. Both are `ADMIN`-only. A whole dispatch can be reversed atomically (Phase 4).
 - ✅ **Existing items reviewed after the Phase 1 migration** (2026-08-20, during Phase 4). `CBL-200` and `SCR-M4` were the two that predated the pack model; both checked — see §9's Phase 4 note and §10's "State of the working copy". Any *new* item added later still needs `measure`, `packUnit` and `scrapThreshold` set correctly at creation, same as always.
 - ✅ **The app refuses to start against a phantom database** (Phase 8). [prisma.ts](src/lib/prisma.ts) used to read `process.env.DATABASE_URL ?? "file:./dev.db"`, so a production server with the variable unset started *successfully* against an empty file in its working directory — no error raised, an inventory that merely looks empty, and every write landing somewhere the next deploy deletes. [databaseUrl.ts](src/lib/databaseUrl.ts) now throws in production while keeping the dev default, covered by 7 tests. The previous guard was a checklist item in this document, which is the weakest enforcement available for a failure nobody can see happening.
@@ -701,7 +701,7 @@ In-app only — no email, no push. Account management stays hard admin-only.
 |---|---|---|---|---|
 | 1 | Five employee capabilities added to the FINANCE array | ~1 hr | Low — one code table, no migration | ✅ **BUILT 2026-09-05** |
 | 3 | `adjustStock` stores a delta instead of an absolute count | ~½ day | **Highest** — the only stock arithmetic touched | ✅ **BUILT 2026-09-05** |
-| 2 | The approval workflow: `ApprovalRequest`, an operations registry, `/approvals` | 3-5 days | Medium — permission layer and UI, no ledger maths | ❌ not built |
+| 2 | The approval workflow: `ApprovalRequest`, an operations registry, `/approvals` | 3-5 days | Medium — permission layer and UI, no ledger maths | 🔨 **foundation built, gating not** |
 
 Recommended order was **1 → 3 → 2**. **Part 3 went first in the end** and that was right: it
 fixed two live bugs that had nothing to do with approvals, and shipping it alone kept the only
@@ -836,6 +836,54 @@ Fixing it means deciding whether an adjustment also writes a `SCRAP` row — and
 is a second decision that does not belong in a change shipped for its arithmetic. **Its own
 ticket.**
 
+#### Part 2 — foundation built 2026-09-05, gating NOT (`1a1f1b8`, `ee5a385`, `3564b74`, `3c2edd2`)
+
+**Read this before assuming the feature works: nothing yet changes who can do what.** All four
+commits are additive or behaviour-preserving. Finance still cannot manage sites or shelves,
+reverse, or adjust; there is no `/approvals` page and no way to raise a request.
+
+| Stage | | |
+|---|---|---|
+| 0 | [siteBlockers.ts](src/lib/siteBlockers.ts) + tests | ✅ |
+| 2 | `ApprovalRequest` schema + migration | ✅ local; **not applied to the pilot** |
+| 3 | [capabilities.ts](src/lib/capabilities.ts) + tests; `permissions.ts` re-exports | ✅ |
+| 4a | [kinds.ts](src/lib/approvals/kinds.ts), [args.ts](src/lib/approvals/args.ts) + tests | ✅ |
+| 4b | `summary`/`precheck`/`status` + tests; `ops/*` extracted, actions delegate | ✅ |
+| 4c | `registry.ts`, `runOrRequest.ts`, `queue.ts` | ❌ |
+| 5-9 | gating, `/approvals`, shell pill, re-labelling twelve call sites, docs | ❌ |
+
+**Tests 86 → 136.** The most valuable of those are the seven invariants in
+`capabilities.test.ts`, which is possible at all only because the tables moved out of
+`permissions.ts` — that file imports `@/lib/auth` and `@/lib/prisma` at module scope, and the
+`@/` alias does not resolve under `--experimental-strip-types`, which is why the most
+security-critical table in the app had never had a test. A wrong entry in either table produces
+no type error, no runtime error and no visible symptom until someone either cannot do their job
+or can do someone else's.
+
+**One deviation from the plan's staging, and it is the useful kind.** The plan writes the ops
+modules in stage 4 and rewires the actions in stage 5, leaving a window where the same logic
+exists twice and can drift. Extracting *and delegating in one step* removes the window and
+splits the work better: `3c2edd2` is a behaviour-preserving refactor verifiable on its own, so
+**the twelve-flow regression gate was run early, against that refactor**, rather than after the
+gating landed on top of it. That ordering is what isolates a fault to one change.
+
+All twelve flows passed as admin. Two worth recording:
+
+- **The shelf delete** left `openPacks` at 15, transactions at 49 and total stock at 3048 —
+  untouched — with **zero dangling `shelfSlotId` references**, the check that catches the
+  explicit unplacing being dropped and is invisible from the UI.
+- **The dispatch reversal refused**, correctly: a pack it needed had been cut since, so the
+  guard fired with *"expected 90 left, found 85"*. Nothing written, no line marked reversed —
+  all-or-nothing holding. Better evidence than a clean pass, but it means **the batch
+  reversal's happy path is the one flow not exercised**, because `dev.db` no longer holds a
+  cleanly reversible dispatch. Create one before trusting that path.
+
+**Two things deliberately left undone, both of which would be wrong to "tidy up" separately.**
+`proxy.ts` still bounces finance from `/sites/new` — the `canRequest` bypass must land *with*
+the rewired actions, or it opens a create form whose action still throws on submit, which is
+the broken-form bug fixed in Part 1 reintroduced through the front door. And the migration is
+applied locally only; the pilot reports it as 1 pending through `npm run db:migrate:turso`.
+
 ### Resolved by the redesign — all of it has now landed
 
 | Originally stated | Resolved by |
@@ -949,13 +997,17 @@ Everything downstream assumes these. Breaking one corrupts stock silently rather
   there before browser-testing anything that writes**, and never verify a write path against a
   `libsql://` URL. This stops mattering at the Part B cutover, when production becomes a file
   on a carried drive.
-- **The local `dev.db` contains test data created while verifying Phases 1-6 and Phase 11
-  Part 3**, not real inventory: `WIRE-2.5` **2600 m** across sealed rolls and returned offcuts,
-  `SCR-M4` 231, `CBL-200` 217, `INV-5K` 10; a reversed test dispatch, two test deliveries (one
-  direct to Kandivali, one a claim replacement), a settled defective claim, consumed/transferred
-  material at Kandivali and Borivali, and — from the Part 3 verification — **two `ADJUSTMENT`
-  rows and three 100 m packs opened to force the mid-count race**. **Reseed or clear before real
-  stock goes in.**
+- **The local `dev.db` contains test data created while verifying Phases 1-6 and Phase 11**,
+  not real inventory: `WIRE-2.5` **2700 m** across sealed rolls and returned offcuts,
+  `SCR-M4` 231, `CBL-200` 217, `INV-5K` 10; 4 sites, 4 shelves, 3 `ADJUSTMENT` rows and 4
+  `REVERSAL` rows; two test deliveries (one direct to Kandivali, one a claim replacement), a
+  settled defective claim, and consumed/transferred material at Kandivali and Borivali.
+  **Reseed or clear before real stock goes in.**
+- ⚠️ **`dev.db` no longer holds a cleanly reversible dispatch.** Part 3's verification cut the
+  90 m open pack to 85 m, so the one remaining dispatch now fails its obstacle check — which is
+  correct behaviour, and was useful evidence, but it means the **batch reversal happy path
+  cannot be exercised against this database**. Create a fresh dispatch first if you need to
+  test it.
 - ⚠️ **Another session wrote to this database mid-work on 2026-08-20** — two `STOCK_IN` rows
   on `CBL-200` (+17, +13) arrived through the old Stock In form while Phase 4/5 were being
   built. Harmless here since it is all test data, but worth knowing that `dev.db` had
@@ -976,7 +1028,8 @@ and the build prerequisites landed 2026-08-23. The database work has not started
 
 **Newest work, and where a fresh agent should probably start: Phase 11** (§9) — the employee
 role folds into finance, and finance gets an approval queue for the admin-only housekeeping.
-Decided in full with the user on 2026-09-05. **Parts 1 and 3 are built; Part 2 is not**:
+Decided in full with the user on 2026-09-05. **Parts 1 and 3 are built; Part 2's foundation is
+built and its gating is not** — see the as-built notes in §9 before assuming anything works:
 
 - **Part 1** — ✅ **BUILT 2026-09-05.** See the as-built note in §9. Folded in one fix it made
   urgent: the site page's Edit form used to render for everyone while `updateSite` required
@@ -1026,7 +1079,7 @@ argument was always "the app is not in real use until the remaining phases land"
 functional ones have landed. Meanwhile the untested surface has grown considerably:
 `packs.ts` (including `commitAllocation`'s synthetic `new:<i>` pack-id resolution, still the
 subtlest code in the project), `recordDispatch`, `recordDelivery`, and the whole of Phase 6.
-The pure modules are well covered at 86 tests; **everything that actually writes to the
+The pure modules are well covered at 136 tests; **everything that actually writes to the
 database has none**. On 2026-09-05 that gap cashed in: `adjustStock` had been refusing every
 stock count since Phase 3 built it, and no test, no build and no phase verification caught it —
 the bug lived in the six lines between a `"use server"` boundary and a Prisma call, which is
@@ -1045,7 +1098,7 @@ The other pre-live items, in rough order of cost-to-skip:
 
 ## 11. Related Documents
 
-- **[REDESIGN-PLAN.md](REDESIGN-PLAN.md)** — the phase plan (1-7 built, **8 in progress**, **11 decided but not built**), with verification steps and, importantly, the alternatives that were rejected and why. **The main document for continuing work.** Its Phase 8 section records two things you will otherwise re-derive wrongly: why the SQLite file cannot live on Google Drive, and why the "SQLite stays" hosting decision was reversed. Its "Decided 2026-09-05" section carries Phase 11 in full — including why `user:manage` and `backup:manage` must never become approvable, and why the approval path cannot call an exported core from a `"use server"` file.
+- **[REDESIGN-PLAN.md](REDESIGN-PLAN.md)** — the phase plan (1-7 built, **8 in progress**, **11 partly built — Parts 1 and 3 done, Part 2's foundation only**), with verification steps and, importantly, the alternatives that were rejected and why. **The main document for continuing work.** Its Phase 8 section records two things you will otherwise re-derive wrongly: why the SQLite file cannot live on Google Drive, and why the "SQLite stays" hosting decision was reversed. Its "Decided 2026-09-05" section carries Phase 11 in full — including why `user:manage` and `backup:manage` must never become approvable, and why the approval path cannot call an exported core from a `"use server"` file.
 - [.env.example](.env.example) — every environment variable the app reads, with the consequence of getting each one wrong.
 - `C:\Users\Kavita\.claude\plans\c-users-kavita-downloads-ui-examples-i-ethereal-swan.md` — the Phase 7/8 working checklist. **Outside the repo**, so it is not a durable record; REDESIGN-PLAN.md's phase sections are.
 - `C:\Users\Kavita\.claude\plans\hazy-weaving-spring.md` — the Phase 11 implementation plan: file-by-file changes, the staged sequence, and the end-to-end verification script. **Outside the repo**, same caveat — REDESIGN-PLAN.md's "Decided 2026-09-05" section holds every decision and its reasoning, and is what to trust if the two disagree or the file is missing.

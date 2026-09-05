@@ -10,9 +10,10 @@
 > **Phase 11 (roles and admin approvals, decided 2026-09-05) is partly built. Part 1 — FINANCE
 > absorbing the retired EMPLOYEE role — and Part 3 — stock counts storing a correction rather
 > than a snapshot — both landed 2026-09-05, the latter along with a two-phases-old bug that had
-> stopped stock counts working at all. Part 2, the approval queue itself, is not started and is
-> blocked on a Turso migration script that does not exist yet.** See "Decided 2026-09-05" in the
-> cross-phase notes.
+> stopped stock counts working at all. Part 2, the approval queue, has its FOUNDATION built and
+> its GATING not: the schema, the capability tables, the argument parsers and the extracted
+> operations all exist, and none of them yet changes who can do what.** See "Decided
+> 2026-09-05" in the cross-phase notes for the stage-by-stage state.
 >
 > Read [PROGRESS.md](PROGRESS.md) first for current state, then this for what to build next.
 >
@@ -84,7 +85,7 @@ does not physically have, and reordering would be decided against stock sitting 
 | 6 | ✅ **DONE** — site material lifecycle: consumption, pickup, transfers, cross-site view |
 | 7 | ✅ **DONE** — UI overhaul + mobile web; full record at the end of this file |
 | 8 | 🔨 **IN PROGRESS** — accounts, `DATABASE_URL` fail-fast and build prerequisites done; **Part A** (Turso + Vercel pilot) and **Part B** (offline, carried drive) both pending |
-| 11 | 🔨 **PARTS 1 AND 3 DONE** — roles and admin approvals (decided 2026-09-05, in the cross-phase notes). Part 1 (FINANCE absorbs the retired EMPLOYEE role) and Part 3 (adjustments store the correction) built; Part 2 (the approval queue) not started |
+| 11 | 🔨 **PARTS 1 AND 3 DONE, PART 2 HALF** — roles and admin approvals (decided 2026-09-05, in the cross-phase notes). Part 1 (FINANCE absorbs the retired EMPLOYEE role) and Part 3 (adjustments store the correction) built; Part 2's foundation built, its gating not |
 
 ## Why 7-8 were deferred, and what has changed since
 
@@ -2020,7 +2021,7 @@ spent.
 ## Still outstanding regardless
 
 **DB-layer test coverage.** Unchanged as the largest risk, and Part A now runs **real stock**
-through it. The 86 tests are all pure and will pass unchanged after the adapter swap **while
+through it. The 136 tests are all pure and will pass unchanged after the adapter swap **while
 proving nothing about it**. The cutover recount bounds the damage; it does not prevent it.
 
 # Cross-phase notes
@@ -2205,7 +2206,7 @@ documenting that nobody should derive it. Invariant 5's pattern, applied to a sm
 4. The dashboard's *"+ N at M sites"* line disappears with the suppressed alert — it hangs
    off the low-stock list, so this should fall out for free. Confirm that it does.
 
-## Decided 2026-09-05: FINANCE absorbs EMPLOYEE, and asks an admin for the rest 🔨 PARTS 1 AND 3 BUILT; PART 2 NOT
+## Decided 2026-09-05: FINANCE absorbs EMPLOYEE, and asks an admin for the rest 🔨 PARTS 1 AND 3 BUILT; PART 2 HALF-BUILT
 
 **This reverses an earlier call.** "Approval workflows (employee requests → finance approves)"
 sat in *Out of scope* below since the original plan. The requirement changed: the employee
@@ -2300,7 +2301,57 @@ merge as tidying rather than as a deliberate loosening.
 Net effect once built: **FINANCE is ADMIN minus accounts and backups**, with five capabilities
 reachable only through an approval.
 
-### Part 2 — the approval workflow (≈3-5 days)
+### Part 2 — the approval workflow (≈3-5 days) 🔨 FOUNDATION BUILT, GATING NOT
+
+> **As built so far, 2026-09-05** (`1a1f1b8`, `ee5a385`, `3564b74`, `3c2edd2`). Everything
+> below the gating layer exists; **nothing yet changes who can do what.** The app behaves
+> exactly as it did before these four commits.
+>
+> | Stage | | |
+> |---|---|---|
+> | 0 | `siteBlockers.ts` + tests | ✅ |
+> | 2 | `ApprovalRequest` schema + migration | ✅ local; **not applied to the pilot** |
+> | 3 | `capabilities.ts` + tests, `permissions.ts` re-exports | ✅ |
+> | 4a | `kinds.ts`, `args.ts` + tests | ✅ |
+> | 4b | `summary.ts`, `precheck.ts`, `status.ts` + tests; `ops/*` extracted | ✅ |
+> | 4c | `registry.ts`, `runOrRequest.ts`, `queue.ts` | ❌ |
+> | 5-9 | gating, `/approvals`, shell, re-labelling, docs | ❌ |
+>
+> **Tests: 86 → 136.** `permissions.ts` had never had a test because it imports `@/lib/auth`
+> and `@/lib/prisma` at module scope and the `@/` alias does not resolve under
+> `--experimental-strip-types`; the tables now live in `capabilities.ts`, whose only import is
+> `import type { Role }` (erased at strip time), so the seven invariants in §3 are enforced by
+> `npm test` rather than by remembering them.
+>
+> **One deviation from the staged sequence, and it is the useful kind.** The plan writes the
+> ops modules in stage 4 and rewires the actions in stage 5. That leaves a window in which the
+> same logic exists in two places and can drift. Extracting **and delegating in one step**
+> removes the window and splits the work better: `3c2edd2` is a *behaviour-preserving refactor*
+> that can be verified on its own, leaving stage 5 to change only the guard. So the regression
+> gate below was run **early**, against that refactor, rather than waiting until the gating
+> landed on top of it — which is the ordering that actually isolates a fault.
+>
+> **All twelve flows passed as ADMIN.** Two are worth recording:
+>
+> - **The shelf delete** left `openPacks` at 15, transactions at 49 and total stock at 3048 —
+>   untouched — with **zero dangling `shelfSlotId` references**. That last check is the one
+>   that catches the explicit unplacing being dropped, and it is invisible from the UI.
+> - **The dispatch reversal refused**, correctly: a pack it needed had been cut since, so the
+>   obstacle guard fired with *"expected 90 left, found 85"*. Nothing was written and no line
+>   was marked reversed — the all-or-nothing property holding. Better evidence than a clean
+>   pass, but it means **the batch reversal's happy path is the one flow not exercised**: this
+>   database no longer contains a cleanly reversible dispatch. Create one before trusting it.
+>
+> **`proxy.ts` is deliberately unchanged.** §3 says to add the `canRequest` bypass so finance
+> can reach `/sites/new`. That must land **with** the rewired actions: on its own it opens a
+> create form whose action still throws `NotPermittedError` on submit — the identical
+> broken-form bug fixed on the site detail page in Part 1, reintroduced through the front door.
+> It is a TODO in that file.
+>
+> **The migration is applied locally only.** The pilot reports it as 1 pending through
+> `npm run db:migrate:turso`. Apply it when the feature is ready to deploy, not before.
+
+
 
 A FINANCE user attempting an admin-only action is no longer refused; the attempt becomes an
 `ApprovalRequest` row. Every admin sees it, the first admin to answer decides it, and it leaves
