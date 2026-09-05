@@ -30,6 +30,12 @@ enum TransactionType {
   /// A physical count disagreed with the ledger and the count won. Carries a
   /// mandatory reason so corrections stay visible instead of being disguised
   /// as fake issues.
+  ///
+  /// What is applied is a CORRECTION OF KNOWN SIZE, not the snapshot that was
+  /// counted: the size of an error survives legitimate movement between the
+  /// count and its application, whereas a total does not. `quantity` is the
+  /// real effect on stock (|after − before|) and the note carries both moments.
+  /// See src/lib/adjustment.ts.
   ADJUSTMENT
   /// Marks an earlier movement as recorded in error. The original is kept and
   /// excluded from aggregation rather than deleted.
