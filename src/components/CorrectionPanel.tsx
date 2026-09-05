@@ -10,7 +10,15 @@ import Alert from "@/components/ui/Alert";
 export type CountRow = { key: string; label: string; current: number };
 
 /** Records a physical count. Works at pack level because "set the quantity" is
- * ambiguous once an item holds both sealed packs and open remainders. */
+ * ambiguous once an item holds both sealed packs and open remainders.
+ *
+ * Each row posts TWO numbers: what was counted, and — as a hidden input — the
+ * ledger figure this form displayed while they were counting. The server stores
+ * the difference rather than the count, so a dispatch landing between opening
+ * this form and submitting it is not silently erased. See src/lib/adjustment.ts.
+ * Keeping the visible field a count is deliberate: a human counts what is on
+ * the shelf, and asking them for "+3" would be asking them to do arithmetic
+ * against a number they cannot see. */
 export function AdjustStockForm({
   rows,
   baseUnit,
@@ -48,8 +56,10 @@ export function AdjustStockForm({
       className="space-y-3 rounded-card border border-line-strong bg-surface p-3.5"
     >
       <p className="text-sm font-semibold text-ink-subtle">
-        Enter what is physically on the shelf. The difference is recorded as an adjustment with
-        your reason, so the correction stays visible rather than being disguised as an issue.
+        Enter what is physically on the shelf. The <em>difference</em> is what gets recorded —
+        as an adjustment carrying your reason, so the correction stays visible rather than
+        being disguised as an issue, and anything dispatched while you were counting is not
+        wiped out by it.
       </p>
 
       {rows.length === 0 && (
@@ -64,6 +74,10 @@ export function AdjustStockForm({
             {row.label}
             <span className="ml-1 text-ink-subtle">(ledger says {row.current})</span>
           </label>
+          {/* The figure shown in the label, travelling with the count so the
+              server can work out the size of the error rather than trusting a
+              total that may be stale by the time it is applied. */}
+          <input type="hidden" name={`ledger_${row.key}`} value={row.current} />
           <Input
             name={row.key}
             type="number"
