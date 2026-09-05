@@ -176,17 +176,26 @@ export async function adjustStock(
 
   // sealed_<packSize> = counted number of sealed packs of that size
   // open_<packId>     = counted remaining in that open pack
+  //
+  // Pick the count fields out FIRST, then validate them. Validating every entry
+  // instead swept up `reason`, which the same form posts alongside the counts:
+  // Number("annual count") is NaN, so every adjustment carrying a real reason
+  // was refused as "not a whole number" and no count could ever be recorded.
   const sealedCounts = new Map<number, number>();
   const openRemaining = new Map<string, number>();
   for (const [key, value] of formData.entries()) {
+    const isSealed = key.startsWith("sealed_");
+    const isOpen = key.startsWith("open_");
+    if (!isSealed && !isOpen) continue;
+
     const raw = String(value).trim();
     if (raw === "") continue;
     const n = Number(raw);
     if (!Number.isInteger(n) || n < 0) {
       return { ok: false, message: "Counted quantities must be whole numbers of zero or more" };
     }
-    if (key.startsWith("sealed_")) sealedCounts.set(Number(key.slice(7)), n);
-    else if (key.startsWith("open_")) openRemaining.set(key.slice(5), n);
+    if (isSealed) sealedCounts.set(Number(key.slice(7)), n);
+    else openRemaining.set(key.slice(5), n);
   }
 
   try {
