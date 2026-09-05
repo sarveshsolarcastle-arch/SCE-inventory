@@ -17,7 +17,8 @@
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "db:backup": "tsx scripts/backup-database.ts"
+    "db:backup": "tsx scripts/backup-database.ts",
+    "db:migrate:turso": "tsx scripts/apply-migrations-turso.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",

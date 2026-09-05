@@ -1707,11 +1707,17 @@ actual inventory, not fixtures. That is the decision everything else in Part A a
 > against Prisma's own docs, which say Turso migrations go through direct SQL execution
 > instead. The 10 existing migrations were applied once with `@libsql/client`'s
 > `executeMultiple()` (its own docs recommend this for migration scripts), via a one-off
-> script that was run once and discarded. **Any future schema change against Turso needs the
-> same manual step**: `prisma migrate dev` locally against the SQLite file as normal, then
-> apply the generated `migration.sql` to Turso by hand with `executeMultiple()` or the Turso
-> CLI. `npm run db:migrate` (`prisma migrate deploy`) only works against a `file:` URL —
-> useful for Part B, not Part A.
+> script that was run once and discarded — leaving a live database with no supported way to
+> migrate it again.
+>
+> **✅ Fixed 2026-09-05.** That script now exists and is committed:
+> [scripts/apply-migrations-turso.ts](scripts/apply-migrations-turso.ts), run as
+> `npm run db:migrate:turso`. The workflow is unchanged in shape — `prisma migrate dev`
+> locally against the SQLite file as normal, then this to carry the generated `migration.sql`
+> to Turso — but it is no longer done by hand, it records `_prisma_migrations` so
+> `prisma migrate status` stays truthful afterwards, and it dumps the database before it
+> writes. `npm run db:migrate` (`prisma migrate deploy`) still only works against a `file:`
+> URL — useful for Part B, not Part A.
 
 **Known and accepted:** Turso's free tier archives a database after 10 days idle — moot
 under daily use, and reversible with `turso group unarchive`. More seriously, Turso's
@@ -2373,14 +2379,31 @@ attached" before clicking. For reversals that re-check is the existing `findReve
 
 Neither is a design problem; both stop Part 2 landing if they are not dealt with first.
 
-**1. An eleventh migration has no path to the live pilot.** The staged sequence says
-`npx prisma migrate dev --name approval_requests`, which is right locally — but
+**1. ~~An eleventh migration has no path to the live pilot.~~ ✅ FIXED 2026-09-05.** The staged
+sequence says `npx prisma migrate dev --name approval_requests`, which is right locally — but
 `prisma migrate deploy` **cannot reach Turso** (`P1013: scheme not recognized`, recorded in the
 Phase 8 section above), and the one-off `executeMultiple()` script that applied the first ten
-migrations *was run once and discarded*. `scripts/` holds only `backup-database.ts`. So the
-migration would land on `dev.db` and silently never reach production. **Write and commit a
-`scripts/apply-migration-turso.ts` before stage 2**, and take a dump first — this is the first
-schema change against a database carrying the client's real stock.
+migrations *was run once and discarded*. So the migration would have landed on `dev.db` and
+silently never reached production.
+
+[scripts/apply-migrations-turso.ts](scripts/apply-migrations-turso.ts) is that script, kept this
+time: `npm run db:migrate:turso`. **Status-only by default** — you have to ask for a write with
+`--apply`, and it dumps the database first through the same `dumpDatabase()` the nightly backup
+uses, so nobody has to promise they took a backup.
+
+The half that is easy to forget is not applying the SQL but writing `_prisma_migrations`; skip
+that and the schema moves while Prisma still thinks the migration is pending, so the next
+`migrate dev` reports drift and offers to reset. The script writes that row with the same
+SHA-256-of-the-file checksum Prisma computes — **verified by applying all ten to a scratch
+database and having `npx prisma migrate status` report "Database schema is up to date!"**, then
+again with an eleventh migration applied incrementally on top.
+
+It also handles the state the pilot is most likely in. If those ten August migrations were
+applied *without* bookkeeping, the remote `_prisma_migrations` is missing while every table
+exists, and applying would run `CREATE TABLE` over live data. The script detects exactly that —
+schema present, bookkeeping absent — refuses, and points at `--baseline`, which records
+migrations as applied without executing them. **Run the status check against the pilot before
+Part 2 to find out which case you are in.**
 
 **2. The approve path's transaction is now coupled to `vercel.json`.** `approveRequest` puts the
 claim and the work in **one** `prisma.$transaction`, whose interactive timeout defaults to 5s.
