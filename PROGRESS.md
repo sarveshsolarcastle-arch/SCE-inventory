@@ -780,10 +780,14 @@ employees saw it. Finance now uses site pages every day for consumption and tran
 card is gated and non-admins get a read-only panel instead. Confirmed live before fixing: the
 form rendered, the save 500'd, the site was not renamed.
 
-**Still outstanding for Part 2:** `shelf/[shelfId]/page.tsx:46` derives `isAdmin` from a
-hardcoded `role === "ADMIN"` rather than `can()`. Harmless today — finance has no `shelf:manage`
-either way — but it must move to a capability check before Part 2, or finance will have nothing
-to click and therefore nothing to request.
+**✅ Also done 2026-09-05:** `shelf/[shelfId]/page.tsx` derived `isAdmin` from a hardcoded
+`role === "ADMIN"` rather than `can()`. Now `can(role, "shelf:manage")`, with the `ShelfGrid`
+prop renamed `canManage` — the old name named a role where the code meant a capability. The page
+also moved from `auth()` to `currentUser()`. Two dead ends went with it: `/shelf` and `/sites`
+showed everyone a "New Shelf"/"New Site" button that `proxy.ts` bounces them from, and the shelf
+map promised a read-only viewer they could relabel boxes. No behaviour changed for any role that
+exists today; Part 2 is what needed it. Phase 7's preserved interaction #4 (single-open popover,
+reset on Front/Back switch) was re-verified, since the edit touched that handler.
 
 #### Part 3 — as built, 2026-09-05 (`0b89701`, `45aea35`)
 
@@ -995,9 +999,9 @@ Decided in full with the user on 2026-09-05. **Parts 1 and 3 are built; Part 2 i
     default timeout; `reverseDispatch` on a 15-line batch is 90+ sequential statements, which
     fits only because `vercel.json` pins the function to Mumbai. Set an explicit `timeout` —
     and note that file stops being a performance tweak and becomes a correctness dependency.
-  - ⚠️ Inherited from Part 1: `shelf/[shelfId]/page.tsx:46` gates the whole `ShelfGrid` popover
-    on a hardcoded `role === "ADMIN"` rather than `can()`, so finance would have nothing to
-    click and therefore nothing to request.
+  - ✅ **The shelf grid reads a capability now.** `shelf/[shelfId]/page.tsx` used to gate the
+    whole `ShelfGrid` popover on a hardcoded `role === "ADMIN"`, so finance would have had
+    nothing to click and therefore nothing to request. Fixed 2026-09-05.
 
 Full reasoning, the rejected alternatives, and the four traps are in
 [REDESIGN-PLAN.md](REDESIGN-PLAN.md)'s "Decided 2026-09-05" section. Read it before writing

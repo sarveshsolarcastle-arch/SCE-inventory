@@ -1,16 +1,20 @@
 import Link from "next/link";
 import { LayoutGrid } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { can, currentUser } from "@/lib/permissions";
 import PageHeader from "@/components/ui/PageHeader";
 import { buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import EmptyState from "@/components/ui/EmptyState";
 
 export default async function ShelfListPage() {
-  const shelves = await prisma.shelf.findMany({
-    orderBy: { name: "asc" },
-    include: { _count: { select: { slots: true } } },
-  });
+  const [shelves, user] = await Promise.all([
+    prisma.shelf.findMany({
+      orderBy: { name: "asc" },
+      include: { _count: { select: { slots: true } } },
+    }),
+    currentUser(),
+  ]);
 
   return (
     <div className="space-y-4">
@@ -18,10 +22,15 @@ export default async function ShelfListPage() {
         title="Shelves"
         subtitle={`${shelves.length} shelf unit${shelves.length === 1 ? "" : "s"}`}
         actions={
-          <Link href="/shelf/new" className={buttonClasses("primary", "md")}>
-            <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M10 4v12M4 10h12" /></svg>
-            New Shelf
-          </Link>
+          // proxy.ts bounces anyone without shelf:manage off /shelf/new, so an
+          // unconditional button here is a link to a redirect. Harmless while
+          // only admins came to this page; finance arrives here routinely now.
+          can(user?.role, "shelf:manage") ? (
+            <Link href="/shelf/new" className={buttonClasses("primary", "md")}>
+              <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M10 4v12M4 10h12" /></svg>
+              New Shelf
+            </Link>
+          ) : undefined
         }
       />
 
