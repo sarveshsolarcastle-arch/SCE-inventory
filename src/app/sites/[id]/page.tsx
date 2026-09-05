@@ -102,33 +102,52 @@ export default async function SiteDetailPage({
       <PageHeader title={site.name} />
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle tone="info" icon={<Pencil size={13} />}>
-              Edit Site
-            </CardTitle>
-          </CardHeader>
-          <CardBody>
-            <form action={updateWithId} className="space-y-3">
-              <Field label="Name">
-                <Input name="name" defaultValue={site.name} required />
-              </Field>
-              <Field label="Location">
-                <Input name="location" defaultValue={site.location ?? ""} />
-              </Field>
-              <Field label="Notes">
-                <Input name="notes" defaultValue={site.notes ?? ""} />
-              </Field>
-              <Button type="submit">Save</Button>
-            </form>
+        {/* The whole card is gated, form included. It used to render the edit
+            form unconditionally while `updateSite` required site:manage, so a
+            non-admin got a form that threw NotPermittedError into the error
+            boundary on save. That was survivable while only employees saw it;
+            once finance absorbed the employee workspace (2026-09-05) this
+            became a page they use daily, for consumption and transfers. */}
+        {can(user?.role, "site:manage") ? (
+          <Card>
+            <CardHeader>
+              <CardTitle tone="info" icon={<Pencil size={13} />}>
+                Edit Site
+              </CardTitle>
+            </CardHeader>
+            <CardBody>
+              <form action={updateWithId} className="space-y-3">
+                <Field label="Name">
+                  <Input name="name" defaultValue={site.name} required />
+                </Field>
+                <Field label="Location">
+                  <Input name="location" defaultValue={site.location ?? ""} />
+                </Field>
+                <Field label="Notes">
+                  <Input name="notes" defaultValue={site.notes ?? ""} />
+                </Field>
+                <Button type="submit">Save</Button>
+              </form>
 
-            {can(user?.role, "site:manage") && (
               <div className="mt-5 border-t border-line pt-4">
                 <DeleteSiteButton siteId={site.id} siteName={site.name} />
               </div>
-            )}
-          </CardBody>
-        </Card>
+            </CardBody>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle tone="info" icon={<Pencil size={13} />}>
+                Site details
+              </CardTitle>
+            </CardHeader>
+            <CardBody className="space-y-1 text-sm font-semibold text-ink-subtle">
+              <p>{site.location || "No location recorded"}</p>
+              {site.notes && <p>{site.notes}</p>}
+              <p className="pt-2">Only an admin can rename or remove a site.</p>
+            </CardBody>
+          </Card>
+        )}
 
         <SiteMaterialPanel
           siteId={id}

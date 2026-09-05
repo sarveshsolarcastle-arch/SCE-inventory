@@ -25,12 +25,14 @@ const ROLE_TONE: Record<Role, BadgeTone> = {
   EMPLOYEE: "ok",
 };
 
-/** What each role is *for*, shown next to the picker. Roles here are
- * workspaces rather than levels, which is not guessable from the name. */
+/** What each role is *for*, shown next to the picker — not guessable from the
+ * name, and less so since finance absorbed the employee workspace. */
 const ROLE_BLURB: Record<Role, string> = {
-  ADMIN: "Everything, including reversing and adjusting stock.",
-  FINANCE: "Receives deliveries and owns the catalogue. Cannot issue stock.",
-  EMPLOYEE: "Moves material to and from sites. Cannot receive deliveries.",
+  ADMIN: "Everything, including reversing and adjusting stock, accounts and backups.",
+  FINANCE:
+    "Day-to-day stock work: receives deliveries, owns the catalogue, dispatches to sites and records returns. Cannot reverse or adjust stock, manage sites or shelves, or touch accounts and backups.",
+  EMPLOYEE:
+    "Retired — do not assign. Moves material to and from sites; finance now does this too. Move anyone still on it to Finance.",
 };
 
 export default async function UsersPage() {
@@ -93,10 +95,13 @@ export default async function UsersPage() {
               />
             </Field>
             <Field label="Role" htmlFor="role">
-              <Select id="role" name="role" defaultValue="EMPLOYEE" required>
-                <option value="EMPLOYEE">Employee</option>
+              {/* Defaults to Finance, not Employee: Employee is retired and a new
+                  account should never land on it. It stays in the list only so an
+                  existing holder's row can render its own value. */}
+              <Select id="role" name="role" defaultValue="FINANCE" required>
                 <option value="FINANCE">Finance</option>
                 <option value="ADMIN">Admin</option>
+                <option value="EMPLOYEE">Employee — retired, do not assign</option>
               </Select>
             </Field>
             <p className="text-sm font-medium text-ink-subtle sm:col-span-2">
@@ -156,9 +161,9 @@ export default async function UsersPage() {
                             title={isSelf ? "You cannot change your own role" : ROLE_BLURB[u.role]}
                             className="w-auto"
                           >
-                            <option value="EMPLOYEE">Employee</option>
                             <option value="FINANCE">Finance</option>
                             <option value="ADMIN">Admin</option>
+                            <option value="EMPLOYEE">Employee — retired</option>
                           </Select>
                           {!isSelf && (
                             <Button type="submit" variant="secondary" size="sm">

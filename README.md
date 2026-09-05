@@ -31,17 +31,20 @@ npx tsx prisma/seed.ts
 
 | Login | Password | Can |
 |---|---|---|
-| `admin@example.com` | `admin123` | everything, including reverse and adjust |
-| `finance@example.com` | `finance123` | receive deliveries, manage items — **cannot issue stock** |
-| `employee@example.com` | `employee123` | dispatch, return, consume, transfer — **cannot receive stock** |
+| `admin@example.com` | `admin123` | everything: the above plus reverse, adjust, sites, shelves, accounts, backups |
+| `finance@example.com` | `finance123` | the day-to-day job — receive deliveries, manage items, dispatch, return, consume, transfer, flag for collection |
+| `employee@example.com` | `employee123` | **retired 2026-09-05.** Still works, no longer assigned; finance now covers the same ground |
 
-**Change all three before any shared use.** Roles are *workspaces*, not levels — see
+**Change all three before any shared use.** Roles *were* workspaces rather than levels; since
+2026-09-05 finance is the combined operational role and admin is separated by *kind* — rewriting
+history, changing structure, accounts and backups. See
 [src/lib/permissions.ts](src/lib/permissions.ts).
 
-> **This table describes the code as it stands.** A decided-but-unbuilt change (Phase 11,
-> 2026-09-05) retires the employee account into finance and lets finance *request* the
-> admin-only actions, with any admin approving. Once it lands, finance is admin minus accounts
-> and backups, and the "roles are workspaces" line above stops being true. See PROGRESS.md §9.
+> **Note what this gave up.** One finance account can now receive goods *and* dispatch them with
+> nobody else involved. That separation was a real control; retiring the employee account traded
+> it away deliberately. Phase 11 Part 2 (not built) will let finance *request* the admin-only
+> actions, with any admin approving — accounts and backups stay outside that queue permanently.
+> See PROGRESS.md §9.
 
 Run the tests:
 
@@ -128,20 +131,25 @@ alternatives, and the two decisions still open.
   underlying dump/restore logic.
 - The seeded passwords above are still in place. You can now change them in the app.
 
-**Phase 11, decided 2026-09-05 — Part 3 is built, Parts 1 and 2 are not.** The employee role
+**Phase 11, decided 2026-09-05 — Parts 1 and 3 are built, Part 2 is not.** The employee role
 folds into finance, and finance gets an approval queue for the admin-only actions (any admin can
 answer; the first to do so clears it for everyone). Three independent parts:
 
+- ✅ **Part 1 — done 2026-09-05.** Finance absorbed the five employee capabilities. No migration;
+  the employee role is retired rather than removed, so existing logins keep working. Verified as
+  finance in the browser: issued stock to a site (attributed to the finance account), gained the
+  Stock Out nav group and the consume/transfer/flag controls, and was still refused `site:manage`
+  **by the server**, not merely by a hidden button.
 - ✅ **Part 3 — done 2026-09-05.** A stock count now records the *correction*, not the count, so
   a dispatch landing between opening the count form and submitting it is no longer erased. It
   also turned up a worse bug it was sitting on: `adjustStock` validated the `reason` field as a
   number, so **recording a stock count had never once worked** since Phase 3 built it. Both
   fixed; see PROGRESS.md §9 for the as-built note.
-- ❌ **Part 1** (~1 hr) — the capability merge. Note its plan misses `shelf/[shelfId]/page.tsx`,
-  which gates the shelf grid on a hardcoded `role === "ADMIN"` rather than `can()`.
 - ❌ **Part 2** (3-5 days) — the approval workflow itself. **Blocked on tooling:** it needs an
   eleventh migration, and `prisma migrate deploy` cannot reach Turso — the script used for the
-  first ten was discarded, so one has to be written and committed first.
+  first ten was discarded, so one has to be written and committed first. It also needs
+  `shelf/[shelfId]/page.tsx` moved off its hardcoded `role === "ADMIN"` check, which currently
+  gates the whole shelf grid.
 
 PROGRESS.md §9 has the summary; REDESIGN-PLAN.md's "Decided 2026-09-05" section has the
 reasoning and the four traps.
