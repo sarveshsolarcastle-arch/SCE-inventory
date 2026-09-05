@@ -52,11 +52,21 @@ Run the tests:
 npm test
 ```
 
-Apply schema changes:
+Apply schema changes locally:
 
 ```bash
 npx prisma migrate dev --name <description>
 ```
+
+Then apply the same migration to the hosted pilot — **`prisma migrate deploy` cannot do this**,
+because Prisma's migration engine does not understand `libsql://` (`P1013`):
+
+```bash
+npm run db:migrate:turso
+```
+
+That is a read-only status check. Add `-- --apply` to actually apply, which takes a dump first.
+It reads `.env` (the deployment database), not `.env.local`.
 
 > Prisma 7 requires an explicit driver adapter — plain `new PrismaClient()` throws. Use the
 > singleton in [src/lib/prisma.ts](src/lib/prisma.ts).
@@ -145,11 +155,10 @@ answer; the first to do so clears it for everyone). Three independent parts:
   also turned up a worse bug it was sitting on: `adjustStock` validated the `reason` field as a
   number, so **recording a stock count had never once worked** since Phase 3 built it. Both
   fixed; see PROGRESS.md §9 for the as-built note.
-- ❌ **Part 2** (3-5 days) — the approval workflow itself. **Blocked on tooling:** it needs an
-  eleventh migration, and `prisma migrate deploy` cannot reach Turso — the script used for the
-  first ten was discarded, so one has to be written and committed first. It also needs
+- ❌ **Part 2** (3-5 days) — the approval workflow itself. Its migration blocker is **cleared**:
+  `npm run db:migrate:turso` now applies migrations Prisma cannot. Still to do first, it needs
   `shelf/[shelfId]/page.tsx` moved off its hardcoded `role === "ADMIN"` check, which currently
-  gates the whole shelf grid.
+  gates the whole shelf grid, and an explicit `timeout` on the approve path's transaction.
 
 PROGRESS.md §9 has the summary; REDESIGN-PLAN.md's "Decided 2026-09-05" section has the
 reasoning and the four traps.
