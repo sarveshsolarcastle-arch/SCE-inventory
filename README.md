@@ -37,8 +37,9 @@ npx tsx prisma/seed.ts
 
 **Change all three before any shared use.** Roles *were* workspaces rather than levels; since
 2026-09-05 finance is the combined operational role and admin is separated by *kind* — rewriting
-history, changing structure, accounts and backups. See
-[src/lib/permissions.ts](src/lib/permissions.ts).
+history, changing structure, accounts and backups. The tables themselves are in
+[src/lib/capabilities.ts](src/lib/capabilities.ts) (kept import-free so they can be unit-tested);
+[src/lib/permissions.ts](src/lib/permissions.ts) re-exports them with the auth-aware half.
 
 > **Note what this gave up.** One finance account can now receive goods *and* dispatch them with
 > nobody else involved. That separation was a real control; retiring the employee account traded

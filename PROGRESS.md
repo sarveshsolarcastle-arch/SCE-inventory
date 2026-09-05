@@ -56,9 +56,9 @@ All core flows below were manually tested in a running dev server and confirmed 
 | UI overhaul + mobile web | ✅ Done (Phase 7) — light theme + user dark toggle, grouped sidebar, `src/components/ui/` primitives |
 | User accounts | ✅ Done (Phase 8) — admin `/users` page, self-service `/account`, deactivation |
 | Deployment | ✅ **Part A live** (Phase 8) — deployed at sce-inventory.vercel.app, on Turso. Still open: seeded passwords unchanged. Part B (offline production) not started |
-| Shelf deletion | ✅ **Done** (2026-09-04) — admin-only `deleteShelf`, its own `shelf:delete` capability rather than `shelf:manage`. Warns with counts on an occupied shelf instead of blocking, because a shelf holds placement and no history; open packs in it are unplaced, never deleted, and no stock moves. See REDESIGN-PLAN.md's "Decided 2026-09-04" section |
+| Shelf deletion | ✅ **Done** (2026-09-04) — `deleteShelf` under its own `shelf:delete` capability rather than `shelf:manage`. Warns with counts on an occupied shelf instead of blocking, because a shelf holds placement and no history; open packs in it are unplaced, never deleted, and no stock moves. Performing it stayed ADMIN-only when Phase 11 gave FINANCE `shelf:manage` the next day — which is what the separate capability was for — and `shelf.delete` is now an approvable kind FINANCE may request. ⚠️ **That request has no UI yet**: the delete card gates on bare `can()`, so finance sees nothing to request with — one instance of Part 2's missing gating, since no page consumes `canRequest`/`capabilityMode` yet. See REDESIGN-PLAN.md's "Decided 2026-09-04" section |
 | Database backups | ✅ **Automated, live** (Phase 9) — nightly GitHub Actions job dumps the database to the repo's `backups` branch (30-day retention), and an admin-only `/backups` page restores from any of them, or from an uploaded file, with no terminal required. Secrets set, deployed to Production. Still open: the live restore drill (see Phase 9 notes). Part B still needs a second drive |
-| Slow writes on the live deployment | ✅ **Root-caused and fixed** (Phase 10, 2026-09-04) — **not** a Turso or read-after-write problem. The Vercel function ran in `iad1` (Washington DC) while the database sits in `aws-ap-south-1` (Mumbai), so every SQL statement cost a ~230 ms round trip and a write path issuing 10-25 of them sequentially took 2-5 s. Fixed by [vercel.json](vercel.json) pinning the region to `bom1`. **Needs a deploy, then the two-step verification in Phase 10.** The proposed Supabase migration is **closed — paused by the user 2026-09-04**; Part A stays on Turso |
+| Slow writes on the live deployment | ✅ **Root-caused and fixed** (Phase 10, 2026-09-04) — **not** a Turso or read-after-write problem. The Vercel function ran in `iad1` (Washington DC) while the database sits in `aws-ap-south-1` (Mumbai), so every SQL statement cost a ~230 ms round trip and a write path issuing 10-25 of them sequentially took 2-5 s. Fixed by [vercel.json](vercel.json) pinning the region to `bom1`; **deployed and verified — `x-vercel-id` reads `bom1::bom1::` and warm `/login` fell from ~270 ms to 76 ms.** The proposed Supabase migration is **closed — paused by the user 2026-09-04**; Part A stays on Turso |
 
 ## 3. Tech Stack
 
@@ -214,7 +214,15 @@ src/
                             rows. HOUSEKEEPING ONLY; correctness comes from effectiveFlagged
     suggestions.ts          getPlacementSuggestions() — the frequency/placement engine
     boxTypes.ts             shared BOX_TYPES/BoxType
-    permissions.ts          capability table — see §"Permissions" below. currentUser()
+    capabilities.ts         the capability tables and the pure functions over them —
+                            CAPABILITIES, REQUESTABLE, can(), canRequest(). Its ONLY
+                            import is `import type { Role }`, which strip-types erases,
+                            which is what makes it testable. See §"Permissions" below
+    capabilities.test.ts    asserts the tables directly — the most security-critical
+                            table in the app, previously unreachable by the suite
+    permissions.ts          the auth-aware half: currentUser(), requireCapability(),
+                            NotPermittedError. Re-exports all of capabilities.ts, so
+                            callers need not know about the split. currentUser()
                             re-reads the User row rather than trusting the JWT, so
                             deactivation and role changes bind on the next request
     databaseUrl.ts          resolveDatabaseUrl() — throws in production rather than
@@ -245,7 +253,11 @@ backups/                    local dumps and manual dev.db copies (gitignored) �
   backup.yml                 nightly cron → dumps → commits to the `backups` branch
 ```
 
-**Permissions live in one place: [src/lib/permissions.ts](src/lib/permissions.ts).** Roles are *workspaces*, not levels — FINANCE receives stock and cannot issue it; EMPLOYEE moves stock to and from sites and cannot receive it; ADMIN does everything. Every server action calls `requireCapability(...)` for itself: `proxy.ts` route-gating and the filtered nav are convenience only, because a server action can be invoked regardless of what the page rendered.
+**The capability tables live in one place: [src/lib/capabilities.ts](src/lib/capabilities.ts)**, with [permissions.ts](src/lib/permissions.ts) re-exporting them alongside the auth-aware half (`currentUser`, `requireCapability`). The split exists so the tables can be unit-tested at all — `permissions.ts` imports `@/lib/auth` and `@/lib/prisma` at module scope and the `@/` alias does not resolve under `node --experimental-strip-types`, so the most security-critical table in the app was the one thing the suite could not reach.
+
+Roles are *workspaces*, not levels. **Since Phase 11 Part 1 (2026-09-05) FINANCE is the combined operational role** — it receives goods, owns the catalogue, and now moves material as well, the EMPLOYEE workspace having been folded into it wholesale. **EMPLOYEE is retired**: it keeps its five capabilities so existing logins keep working and every `Record<Role, …>` stays total, but it is no longer granted to new accounts. ADMIN does everything. What FINANCE still cannot do — rewriting history, changing structure, accounts, backups — it may in some cases **request**, via `REQUESTABLE` and the approval queue.
+
+Every server action calls `requireCapability(...)` for itself: `proxy.ts` route-gating and the filtered nav are convenience only, because a server action can be invoked regardless of what the page rendered.
 
 ## 7. Known Gaps / Suggested Next Steps
 
@@ -253,12 +265,14 @@ backups/                    local dumps and manual dev.db copies (gitignored) �
   It was **not** read-after-write latency and not a Turso problem: the Vercel function ran in
   `iad1` (Washington DC) against a database in `aws-ap-south-1` (Mumbai), ~230 ms per SQL
   statement, and Prisma's interactive transactions issue 10-25 of them **sequentially**.
-  [vercel.json](vercel.json) now pins the function region to `bom1` (Mumbai). **Still open:
-  deploy it and run the verification** — `curl -sI https://sce-inventory.vercel.app/login`
-  must show `x-vercel-id: bom1::bom1::`, not `bom1::iad1::`. Full writeup, including why the
+  [vercel.json](vercel.json) now pins the function region to `bom1` (Mumbai). **Deployed and
+  verified**: `x-vercel-id` reads `bom1::bom1::`, and warm `/login` — a page that touches no
+  database at all — fell from ~270 ms to **76 ms** median. ⏳ One check remains: nobody has
+  issued stock against an item needing a roll opened, the heaviest write path, while watching
+  the console. Full writeup, including why the
   cookie workaround and the Supabase migration were both aimed at the wrong thing:
   [REDESIGN-PLAN.md's "Reopened 2026-09-04" section](REDESIGN-PLAN.md).
-- **Not deployed yet.** The plan is now **two parts**: a temporary hosted pilot on Turso + Vercel carrying **real stock data**, then permanent **offline** production on a drive carried between 2-3 office PCs. **SQLite stays throughout** — `provider = "sqlite"` never changes, and Turso is SQLite-compatible, so every existing migration remains valid and only the Prisma adapter is swapped. **No data crosses the cutover**: stock is physically recounted into an Excel sheet and re-entered as an opening delivery. The full plan, including what was reversed and why, is in [REDESIGN-PLAN.md's Phase 8 section](REDESIGN-PLAN.md) — read it before changing any of it. (This bullet previously recorded "a real server behind real HTTPS, SQLite therefore stays, no code changes". That conclusion happens to survive; its premise does not.)
+- **Part A is deployed; Part B is not started.** *(This bullet read "Not deployed yet" until 2026-09-05, which had been wrong since 2026-08-25.)* The plan is **two parts**: a temporary hosted pilot on Turso + Vercel carrying **real stock data** — **live at sce-inventory.vercel.app**, with nightly backups (Phase 9) and the function pinned to Mumbai (Phase 10) — then permanent **offline** production on a drive carried between 2-3 office PCs, which has not been started. **SQLite stays throughout** — `provider = "sqlite"` never changes, and Turso is SQLite-compatible, so every existing migration remains valid and only the Prisma adapter is swapped. **No data crosses the cutover**: stock is physically recounted into an Excel sheet and re-entered as an opening delivery. The full plan, including what was reversed and why, is in [REDESIGN-PLAN.md's Phase 8 section](REDESIGN-PLAN.md) — read it before changing any of it. (This bullet previously recorded "a real server behind real HTTPS, SQLite therefore stays, no code changes". That conclusion happens to survive; its premise does not.)
 - **Change the seeded passwords** — all three accounts (`admin`/`finance`/`employee`), not just admin. There is now a self-service flow at `/account` and an admin reset at `/users`, so this no longer needs a code change — but the seeded passwords are still in place.
 - **⚠️ Test coverage stops at the pure modules, and the reason for deferring the rest has expired.** The 136 tests cover [allocation.ts](src/lib/allocation.ts), [corrections.ts](src/lib/corrections.ts), [matching.ts](src/lib/matching.ts), [dispatchPaste.ts](src/lib/dispatchPaste.ts), [siteBalance.ts](src/lib/siteBalance.ts), [adjustment.ts](src/lib/adjustment.ts), [siteBlockers.ts](src/lib/siteBlockers.ts), [capabilities.ts](src/lib/capabilities.ts), the approvals parsers/summaries, and [activeHref.ts](src/components/nav/activeHref.ts). **Everything that writes to the database has none**: [packs.ts](src/lib/packs.ts), `recordDispatch`, `recordDelivery`, and the whole site lifecycle. The subtlest code in the project is in there — `commitAllocation` resolves the planner's synthetic `new:<i>` pack ids onto rows it creates inside the same transaction. This was deferred on the grounds that "the app is not in real use until the remaining phases land"; **they have all landed**, and the untested surface grew with each one. This is now the single most valuable outstanding item.
 - ✅ **Corrections exist** (Phase 3): a movement can be reversed — restoring the exact prior pack state, and refusing when the packs have moved on since — and a physical count can be recorded as an `ADJUSTMENT` with a mandatory reason. Both are `ADMIN`-only. A whole dispatch can be reversed atomically (Phase 4).
@@ -664,10 +678,13 @@ the same city as the database. Per-statement cost drops from ~230 ms to low sing
 JSON takes no comments, so **do not delete that file as empty-looking config**; the
 reasoning is in REDESIGN-PLAN.md.
 
-**Not yet verified — it needs a deploy.** After deploying, confirm
-`curl -sI https://sce-inventory.vercel.app/login | grep x-vercel-id` reports
-`bom1::bom1::`. If it still says `iad1`, Vercel's project-level Function Region setting is
-overriding the file.
+**Verified on the live deployment.** `x-vercel-id` now reports `bom1::bom1::`, and warm
+`/login` dropped from ~270 ms to **76 ms** median — and that page does no database work at
+all, so it measures only the shorter trip to the function. The write paths, which were
+paying ~230 ms *per statement*, gain far more. ⏳ **One check still outstanding**: nobody has
+yet issued stock against an item needing a roll opened — the heaviest write path — while
+watching the console. If it ever reverts to `iad1`, Vercel's project-level Function Region
+setting overrides the file.
 
 **Why the two proposed remedies were both aimed elsewhere.** The cookie-based workaround the
 user found is real, but it addresses Turso **embedded/read replicas** — and
@@ -900,14 +917,20 @@ Three things came up in the build that the plan had wrong:
 2. **Assigning an item to an Opened/Recyclable box adopts its unplaced packs.** Nothing else ever set `OpenPack.shelfSlotId`, so those boxes would have stayed permanently empty.
 3. **Empty boxes say what kind of stock is missing** ("no sealed packs", "nothing open here") rather than "empty", which read as though the item had no stock when it merely had none of that condition.
 
-## 10. Handover — Picking Up Phase 8 and What Remains
+## 10. Handover — Picking Up Phase 11 and What Remains
 
 Written for whoever continues this next. Read in this order: **§1-§9 above**, then
 **[REDESIGN-PLAN.md](REDESIGN-PLAN.md)**, then the source files named below.
 
-**Phases 1-7 are all built.** What remains is Phase 8 (hosting, §9's deployment checklist)
-and — more urgently — **DB-layer test coverage**, which is still the largest outstanding
-risk. See "What to do next" below.
+**Phases 1-10 are built** — the six functional phases, the UI overhaul, the hosted pilot,
+automated backups, and the Mumbai region fix. What remains is **Phase 11 Part 2** (the
+approval workflow — its foundation is built, its gating is not), **Part B** (offline
+production, not started), and — still the largest outstanding risk — **DB-layer test
+coverage**. See "What to do next" below.
+
+*(This section was headed "Picking Up Phase 8" until 2026-09-05. Phase 8 Part A is live;
+the deployment checklist it pointed at is done bar the seeded passwords and the restore
+drill, both tracked in "What to do next".)*
 
 **If you are changing the UI**, read [REDESIGN-PLAN.md's Phase 7 section](REDESIGN-PLAN.md)
 first, especially the six interactions that must survive verbatim and the markup-only
@@ -1023,8 +1046,10 @@ Everything downstream assumes these. Breaking one corrupts stock silently rather
 
 ### What to do next
 
-**Phases 1-7 are built. Phase 8 is in progress** — accounts, the `DATABASE_URL` fail-fast
-and the build prerequisites landed 2026-08-23. The database work has not started.
+**Phases 1-7 are built. Phase 8 Part A is deployed and live**; Part B (offline production)
+has not started. Phases 9 (backups) and 10 (the Mumbai region fix) are done. **Phase 11 is
+the live front**: Parts 1 and 3 are built, Part 2's foundation is built and its gating is
+not.
 
 **Newest work, and where a fresh agent should probably start: Phase 11** (§9) — the employee
 role folds into finance, and finance gets an approval queue for the admin-only housekeeping.
@@ -1061,11 +1086,13 @@ Full reasoning, the rejected alternatives, and the four traps are in
 anything — two of the traps (the `"use server"` export hazard, and why `backup:manage` cannot be
 approvable) are the kind that get re-derived wrongly.
 
-**The immediate next step (Part A)**: provision a Turso database, swap the adapter to
-`@prisma/adapter-libsql`, deploy to Vercel, change the seeded passwords, and set up the
-automated daily dump. The provider, schema and migrations are all untouched. See
-[REDESIGN-PLAN.md's Phase 8 section](REDESIGN-PLAN.md) — it records what was reversed,
-superseded and re-derived, so read it before re-litigating any of it.
+> **Superseded — this used to read "the immediate next step (Part A): provision a Turso
+> database, swap the adapter, deploy to Vercel…".** All of it is done: the adapter swap and
+> the Vercel deploy landed 2026-08-25, the automated nightly dump in Phase 9, and the
+> region fix in Phase 10. **Two of its items are still genuinely outstanding and are listed
+> below rather than here**: changing the seeded passwords (item 2), and the live restore
+> drill (item 1). The provider, schema and migrations were never touched, as planned. See
+> [REDESIGN-PLAN.md's Phase 8 section](REDESIGN-PLAN.md) before re-litigating any of it.
 
 **⚠️ The biggest gap is now live, not hypothetical.** Part A runs the client's **real stock**
 through the untested write path, with **no parallel record to catch it** — the Excel sheet is

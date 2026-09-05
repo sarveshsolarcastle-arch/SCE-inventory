@@ -1966,14 +1966,21 @@ JSON permits no comments, so the reasoning lives here and in [README.md](README.
 than in the file. **Do not delete `vercel.json` as an empty-looking config** — it is the
 whole fix.
 
-### Verification — do this after the next deploy
+### Verification ✅ *1 and 2 passed on the live deployment 2026-09-04; 3 is still worth doing*
 
-1. `curl -sI https://sce-inventory.vercel.app/login | grep x-vercel-id` → the **second**
-   segment must read `bom1`, not `iad1`. If it still says `iad1`, the setting did not take;
+1. ✅ `curl -sI https://sce-inventory.vercel.app/login | grep x-vercel-id` → the **second**
+   segment must read `bom1`, not `iad1`. **Confirmed: `bom1::bom1::`**, and still reading
+   that on 2026-09-05. The plan-level restriction feared below did not materialise — the
+   file took effect on its own, with no dashboard change. If it ever reverts to `iad1`,
    check Vercel's project-level Function Region, which can override this file.
-2. Sign in and issue stock against an item that needs a roll opened — the heaviest write
-   path. It should feel immediate rather than a beat behind.
-3. Read the browser console on that check, not just the timing.
+2. ✅ **Warm `/login` went from ~270 ms to 76 ms median** (8 requests, from the office's
+   network). That page does **no** database work at all, so this measures only the shorter
+   trip to the function; the write paths, which were paying the ~230 ms *per statement*,
+   improve by much more than this figure suggests.
+3. ⏳ **Still outstanding — needs a signed-in session.** Issue stock against an item that
+   needs a roll opened, the heaviest write path. It should feel immediate rather than a beat
+   behind. Read the browser console on that check, not just the timing. This is the only
+   part of Phase 10 nobody has confirmed by hand.
 
 **If the region will not change.** Vercel's plans have at times restricted which regions a
 Hobby project may pick. If `iad1` persists after a deploy with this file in it, the setting
@@ -2095,12 +2102,29 @@ All three statements run in one `$transaction`, so a shelf cannot end up half-de
 
 ### Admin only — and a separate capability, not `shelf:manage`
 
-`shelf:manage` is admin-only *today*, but only because of how `CAPABILITIES` happens to be
-filled in. Granting it to FINANCE later — a plausible thing to want, since relabelling a box
-is routine work — would hand over the delete silently along with it. So this is its own
-`shelf:delete` capability, held by ADMIN alone. Relabelling a box and demolishing the shelf
-it sits on are different-sized actions and should not share a key. Invariant 5's pattern
-again: make the wrong state underivable rather than remembering not to derive it.
+`shelf:manage` was admin-only when this was written, but only because of how `CAPABILITIES`
+happened to be filled in. Granting it to FINANCE later — a plausible thing to want, since
+relabelling a box is routine work — would have handed over the delete silently along with
+it. So this is its own `shelf:delete` capability. Relabelling a box and demolishing the
+shelf it sits on are different-sized actions and should not share a key. Invariant 5's
+pattern again: make the wrong state underivable rather than remembering not to derive it.
+
+> **The hypothetical arrived the next day, which is the argument for having split them.**
+> Phase 11 gave FINANCE `shelf:manage` outright. Had the delete shared that key, finance
+> would have silently gained the power to demolish shelves as a side effect of a change about
+> relabelling boxes — with nothing in the diff to show it. Instead `shelf:delete` stayed
+> ADMIN-only and `shelf.delete` became an **approvable** operation: FINANCE may *request* it
+> (`REQUESTABLE` in [capabilities.ts](src/lib/capabilities.ts)), an admin decides. That is
+> the outcome the split was for, and it cost one line to get.
+>
+> ⚠️ **Not yet wired up in the UI, as of 2026-09-05.** The delete card on
+> `shelf/[shelfId]/page.tsx` renders on a bare `can(role, "shelf:delete")`, so FINANCE —
+> which may request it — is shown nothing to request *with*. This is Part 2's missing gating
+> rather than a regression: `canRequest` and `capabilityMode` exist and are tested, but
+> **no page consumes either of them yet** — `ShelfGrid`'s `canManage` is a plain `can()`
+> too, as is every other gate in the app. So this is one instance of the general gap, not a
+> shelf-specific oversight, and it should be fixed by whatever pattern Part 2 settles on for
+> all of them rather than patched here alone.
 
 ### Verification ✅ *all passed 2026-09-04, checked in the browser against a local copy*
 
@@ -2118,13 +2142,22 @@ again: make the wrong state underivable rather than remembering not to derive it
    standing. *(Verified: it does.)*
 5. Read the browser console on every check, not just the screenshot.
 
-### Not covered by a test, and why
+### Test coverage ✅ *the gap this section used to record has been closed*
 
-`permissions.ts` imports `auth` and `prisma` at module scope, so it cannot be imported by
-the pure `node:test` suite the way `databaseUrl.ts` can. The admin-only rule is therefore
-verified by the replay in check 4 and by nothing automated. Making it testable means lifting
-`Capability`/`CAPABILITIES`/`can` into a pure module — worth doing, deliberately not done
-here, since it is a refactor of a security-critical file and belongs in its own change.
+> **Superseded 2026-09-05 — recorded because the original reasoning was acted on.** This
+> section used to read: *"the admin-only rule is verified by the replay in check 4 and by
+> nothing automated,"* because `permissions.ts` imported `auth` and `prisma` at module scope
+> and so could not be reached by the pure `node:test` suite. It named the fix — lift
+> `Capability`/`CAPABILITIES`/`can` into a pure module — and deferred it as a refactor of a
+> security-critical file deserving its own change.
+>
+> That is exactly what `1a1f1b8` did. The tables now live in
+> [capabilities.ts](src/lib/capabilities.ts), whose only import is `import type { Role }`,
+> which strip-types erases. `shelf:delete` is asserted in
+> [capabilities.test.ts](src/lib/capabilities.test.ts), and
+> [approvals/args.test.ts](src/lib/approvals/args.test.ts) pins the thing this whole section
+> is about: *"shelf.delete needs `shelf:delete`, not `shelf:manage`"*. The rule that was
+> prose backed by one manual replay is now an executable assertion.
 
 ## Decided 2026-08-27: discontinuing an item — flag it, never delete it
 
