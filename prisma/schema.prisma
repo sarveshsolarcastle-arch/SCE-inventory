@@ -10,12 +10,20 @@ datasource db {
   provider = "sqlite"
 }
 
-/// Each role is a workspace, not a permission level: FINANCE brings stock in,
-/// EMPLOYEE moves it to and from sites, and neither can do the other's job.
+/// Roles WERE workspaces rather than permission levels — FINANCE brought stock
+/// in, EMPLOYEE moved it to and from sites, and neither could do the other's
+/// job. Since 2026-09-05 FINANCE is the combined operational role: the client
+/// retired the employee account and finance took over its work outright.
+/// ADMIN is separated by kind, not volume — rewriting history (reverse,
+/// adjust), changing structure (sites, shelves), accounts and backups.
 /// See src/lib/permissions.ts for the capability each one carries.
 enum Role {
   ADMIN
   FINANCE
+  /// RETIRED 2026-09-05. Kept so existing logins keep working and every
+  /// Record<Role, …> in the app stays total; no longer granted. Removing it
+  /// would need a migration with a hand-written backfill — the precedent is
+  /// 20260820150000_roles_finance_employee, which renamed STAFF this way.
   EMPLOYEE
 }
 

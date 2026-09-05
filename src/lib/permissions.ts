@@ -5,10 +5,30 @@ import type { Role } from "@/generated/prisma/enums";
 /* -------------------------------------------------------------------------
  * Who can do what — the single source of truth.
  *
- * Roles are workspaces, not permission levels: FINANCE brings stock in and
- * cannot issue it; EMPLOYEE moves it to and from sites and cannot record a
- * delivery. Each account therefore sees one focused app rather than one
- * overloaded one.
+ * Roles WERE workspaces rather than permission levels: FINANCE brought stock
+ * in and could not issue it, EMPLOYEE moved it to and from sites and could not
+ * record a delivery, and each account saw one focused app. That stopped being
+ * true on 2026-09-05, when the client retired the employee account and finance
+ * took over its work outright. FINANCE is now the combined operational role.
+ *
+ * What still separates ADMIN is not volume of features but KIND: the two
+ * operations that rewrite history (stock:reverse, stock:adjust), the two that
+ * change structure (site:manage, shelf:manage/shelf:delete), plus accounts and
+ * backups. Phase 11 Part 2 will let finance *request* the first four; accounts
+ * and backups stay hard admin-only and are not requestable — an approval flow
+ * that can mint an admin is not an approval flow, and an approved database
+ * restore would erase the request that authorised it.
+ *
+ * EMPLOYEE is RETIRED, not removed. Removing the enum member needs a migration
+ * with a hand-written backfill (precedent: 20260820150000_roles_finance_employee,
+ * which renamed STAFF → EMPLOYEE exactly that way), and it would break any
+ * existing employee login and every Record<Role, …> map in the app. So it stays,
+ * keeps working for anyone still on it, and is simply no longer granted — move
+ * those accounts to FINANCE one at a time from /users.
+ *
+ * A consequence worth naming rather than discovering: one FINANCE account can
+ * now receive goods AND dispatch them with nobody else in the loop. The old
+ * split was a real control, and it was traded away deliberately, not tidied.
  *
  * Adding a role is one edit here, not a hunt through the codebase.
  * ---------------------------------------------------------------------- */
@@ -71,10 +91,29 @@ const ALL: Capability[] = [
 
 const CAPABILITIES: Record<Role, readonly Capability[]> = {
   ADMIN: ALL,
-  // Receives goods and owns the catalogue, plus read-only visibility so
-  // consumption can be reconciled. Cannot issue stock. Sites stay admin-only.
-  FINANCE: ["delivery:record", "item:manage", "defect:flag", "defect:resolve", "ledger:view"],
-  // Moves material to and from sites. Cannot record a delivery.
+  // The combined operational role: receives goods, owns the catalogue, and
+  // since 2026-09-05 moves material as well. Everything except the operations
+  // that rewrite history or change structure, plus accounts and backups.
+  FINANCE: [
+    "delivery:record",
+    "item:manage",
+    "defect:flag",
+    "defect:resolve",
+    "ledger:view",
+    // The EMPLOYEE workspace, folded in wholesale. Kept as its own block rather
+    // than merged into the list above so the takeover stays legible: these five
+    // are here because the employee account was retired, not because finance
+    // was ever meant to move material.
+    "stock:issue",
+    "stock:return",
+    "stock:consume",
+    "stock:transfer",
+    "site:pickup",
+  ],
+  // RETIRED 2026-09-05 — kept so existing logins keep working and every
+  // Record<Role, …> stays total, but no longer granted to new accounts. Its
+  // five capabilities now live in FINANCE above. Do not add to this list;
+  // move the account to FINANCE instead.
   EMPLOYEE: [
     "stock:issue",
     "stock:return",

@@ -1,7 +1,7 @@
 # Inventory Management System — Progress Handover
 
 Last updated: 2026-09-05 (**Phase 8 Part A — the hosted pilot — is live**; **Phase 11 — role
-consolidation and admin approvals — is decided; its Part 3 is BUILT, Parts 1 and 2 are not**
+consolidation and admin approvals — is decided; Parts 1 and 3 are BUILT, Part 2 is not**
 — see §9)
 
 > **§1-§8 describe the code as it stands today.** The six-phase functional redesign and
@@ -48,7 +48,7 @@ All core flows below were manually tested in a running dev server and confirmed 
 | Mobile-responsive layout | ✅ Done |
 | Production build | ✅ Passes |
 | Automated tests | ⚠️ 86 unit tests (`npm test`): allocator, corrections, matching, paste parsing, site balances/FIFO age/pickup clamp, adjustment deltas, nav active-link matching, database-URL resolution; **no coverage of the DB layer or UI** |
-| Roles: ADMIN / FINANCE / EMPLOYEE, capability-gated | ✅ Done (Phase 2) — ⚠️ **changing**: Phase 11 retires EMPLOYEE into FINANCE and adds an admin approval queue. Decided 2026-09-05, **not built** |
+| Roles: ADMIN / FINANCE, capability-gated | ✅ Done (Phase 2); **consolidated 2026-09-05** (Phase 11 Part 1) — FINANCE absorbed the retired EMPLOYEE role and is now the combined operational role. EMPLOYEE still exists and still works, but is no longer assigned. The admin approval queue (Part 2) is **not built** |
 | Corrections: reversal and stocktake adjustment | ✅ Done (Phase 3) |
 | Bulk dispatch to site, from Excel paste | ✅ Done (Phase 4) |
 | Delivery entry (to store or direct to site) | ✅ Done (Phase 5) |
@@ -699,7 +699,7 @@ In-app only — no email, no push. Account management stays hard admin-only.
 
 | Part | What | Size | Risk | Status |
 |---|---|---|---|---|
-| 1 | Five employee capabilities added to the FINANCE array | ~1 hr | Low — one code table, no migration | ❌ not built |
+| 1 | Five employee capabilities added to the FINANCE array | ~1 hr | Low — one code table, no migration | ✅ **BUILT 2026-09-05** |
 | 3 | `adjustStock` stores a delta instead of an absolute count | ~½ day | **Highest** — the only stock arithmetic touched | ✅ **BUILT 2026-09-05** |
 | 2 | The approval workflow: `ApprovalRequest`, an operations registry, `/approvals` | 3-5 days | Medium — permission layer and UI, no ledger maths | ❌ not built |
 
@@ -742,6 +742,48 @@ modules under `src/lib/approvals/ops/` instead. See REDESIGN-PLAN.md for the oth
 rewires eleven live write actions on a deployment carrying real stock, and the DB layer still has
 no test coverage (§7, and the standing warning in §10) — the twelve-flow admin walkthrough is
 standing in for the tests that do not exist.
+
+#### Part 1 — as built, 2026-09-05
+
+Five capabilities (`stock:issue`, `stock:return`, `stock:consume`, `stock:transfer`,
+`site:pickup`) added to the `FINANCE` array in [permissions.ts](src/lib/permissions.ts), kept as
+their own commented block so the takeover stays legible rather than merging invisibly into the
+list above it. **No migration** — a code table, not a column. Everything else falls out on its
+own, exactly as planned: `AppShell` filters the nav on `can()` so the Stock Out group appears,
+`proxy.ts` maps `/transactions/new` and `/dispatches/new` to `stock:issue`, and
+`recordMovement`'s `CAPABILITY_FOR_TYPE` lookup starts passing.
+
+**`EMPLOYEE` is retired, not removed.** Its capability list is untouched so existing logins keep
+working and every `Record<Role, …>` stays total. What changed is that it is no longer *granted*:
+`/users` now defaults new accounts to Finance and labels the option "Employee — retired, do not
+assign". Both `ROLE_BLURB` maps and the `///` comment on `enum Role` were rewritten in the same
+change — the old text said finance "cannot issue stock", which the commit itself made false, and
+a doc that contradicts the code is worse than no doc because it is trusted.
+
+**Verified in the browser as `finance@example.com`, against the local copy:**
+- Nav gained the **Stock Out** group; Settings still shows only "Your account".
+- **Issued 10 Cable Ties to Kandivali through the real form.** Stock 217 → 207, and the row
+  reads `ISSUE | 10 | by Finance (FINANCE)` — the attribution `Transaction.userId` exists for.
+- Site page gained consume / transfer / flag-for-collection.
+- **The server still refuses what finance must not have**, which is the check that matters:
+  submitting the site edit form as finance left the site name **unchanged** in the database
+  (`NotPermittedError`), and `/users`, `/backups` and `/sites/new` all still bounce to
+  `/dashboard`. The item page offers finance no "Record a stock count" and no Reverse.
+- The retired `employee@example.com` still signs in and still works.
+- `npm test` 86/86, `tsc` clean, `npm run build` passes.
+
+**One fix folded in, because Part 1 promoted it from latent to daily.**
+[sites/[id]/page.tsx](src/app/sites/[id]/page.tsx) rendered the Edit Site form
+*unconditionally* while `updateSite` requires `site:manage` — so a non-admin got a form that
+threw `NotPermittedError` into the error boundary on save. That was survivable while only
+employees saw it. Finance now uses site pages every day for consumption and transfers, so the
+card is gated and non-admins get a read-only panel instead. Confirmed live before fixing: the
+form rendered, the save 500'd, the site was not renamed.
+
+**Still outstanding for Part 2:** `shelf/[shelfId]/page.tsx:46` derives `isAdmin` from a
+hardcoded `role === "ADMIN"` rather than `can()`. Harmless today — finance has no `shelf:manage`
+either way — but it must move to a capability check before Part 2, or finance will have nothing
+to click and therefore nothing to request.
 
 #### Part 3 — as built, 2026-09-05 (`0b89701`, `45aea35`)
 
@@ -930,13 +972,11 @@ and the build prerequisites landed 2026-08-23. The database work has not started
 
 **Newest work, and where a fresh agent should probably start: Phase 11** (§9) — the employee
 role folds into finance, and finance gets an approval queue for the admin-only housekeeping.
-Decided in full with the user on 2026-09-05. **Part 3 is built; Parts 1 and 2 are not**:
+Decided in full with the user on 2026-09-05. **Parts 1 and 3 are built; Part 2 is not**:
 
-- **Part 1** (≈1 hr) — five capabilities added to the FINANCE array in `permissions.ts`, plus
-  two comments that become false and must be rewritten in the same commit. No migration.
-  ⚠️ Its file list misses one thing: `shelf/[shelfId]/page.tsx` derives `isAdmin` from a
-  hardcoded `role === "ADMIN"`, not from `can()`, and that prop gates the whole `ShelfGrid`
-  popover. Left alone, finance sees a shelf map whose cells do not open.
+- **Part 1** — ✅ **BUILT 2026-09-05.** See the as-built note in §9. Folded in one fix it made
+  urgent: the site page's Edit form used to render for everyone while `updateSite` required
+  `site:manage`.
 - **Part 3** — ✅ **BUILT 2026-09-05** (`0b89701`, `45aea35`). See the as-built note in §9.
 - **Part 2** (3-5 days) — the approval workflow. Rewires eleven live write actions, so read the
   regression gate first. ⚠️ **Two blockers the plan does not cover.** Its schema stage says
@@ -946,7 +986,10 @@ Decided in full with the user on 2026-09-05. **Part 3 is built; Parts 1 and 2 ar
   `approveRequest` puts the claim and the work in one `$transaction` against Prisma's 5s default
   timeout; `reverseDispatch` on a 15-line batch is 90+ sequential statements, which fits only
   because `vercel.json` pins the function to Mumbai. That file stops being a performance tweak
-  and becomes a correctness dependency.
+  and becomes a correctness dependency. And a third, smaller one inherited from Part 1:
+  `shelf/[shelfId]/page.tsx:46` gates the whole `ShelfGrid` popover on a hardcoded
+  `role === "ADMIN"` rather than `can()`, so finance would have nothing to click and therefore
+  nothing to request.
 
 Full reasoning, the rejected alternatives, and the four traps are in
 [REDESIGN-PLAN.md](REDESIGN-PLAN.md)'s "Decided 2026-09-05" section. Read it before writing

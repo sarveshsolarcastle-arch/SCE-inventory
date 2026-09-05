@@ -7,10 +7,12 @@
 > — it was a Vercel region misconfiguration, not a database problem; see the Reopened
 > section near the end.**
 >
-> **Phase 11 (roles and admin approvals, decided 2026-09-05) is partly built: Part 3 — stock
-> counts storing a correction rather than a snapshot — landed 2026-09-05, along with a
-> two-phases-old bug that had stopped stock counts working at all. Parts 1 and 2 are not
-> started.** See "Decided 2026-09-05" in the cross-phase notes.
+> **Phase 11 (roles and admin approvals, decided 2026-09-05) is partly built. Part 1 — FINANCE
+> absorbing the retired EMPLOYEE role — and Part 3 — stock counts storing a correction rather
+> than a snapshot — both landed 2026-09-05, the latter along with a two-phases-old bug that had
+> stopped stock counts working at all. Part 2, the approval queue itself, is not started and is
+> blocked on a Turso migration script that does not exist yet.** See "Decided 2026-09-05" in the
+> cross-phase notes.
 >
 > Read [PROGRESS.md](PROGRESS.md) first for current state, then this for what to build next.
 >
@@ -82,7 +84,7 @@ does not physically have, and reordering would be decided against stock sitting 
 | 6 | ✅ **DONE** — site material lifecycle: consumption, pickup, transfers, cross-site view |
 | 7 | ✅ **DONE** — UI overhaul + mobile web; full record at the end of this file |
 | 8 | 🔨 **IN PROGRESS** — accounts, `DATABASE_URL` fail-fast and build prerequisites done; **Part A** (Turso + Vercel pilot) and **Part B** (offline, carried drive) both pending |
-| 11 | 🔨 **PART 3 DONE** — roles and admin approvals (decided 2026-09-05, in the cross-phase notes). Part 3 (adjustments store the correction) built; Parts 1 (fold EMPLOYEE into FINANCE) and 2 (the approval queue) not started |
+| 11 | 🔨 **PARTS 1 AND 3 DONE** — roles and admin approvals (decided 2026-09-05, in the cross-phase notes). Part 1 (FINANCE absorbs the retired EMPLOYEE role) and Part 3 (adjustments store the correction) built; Part 2 (the approval queue) not started |
 
 ## Why 7-8 were deferred, and what has changed since
 
@@ -662,6 +664,10 @@ export const HOME_FOR_ROLE: Record<Role, string>
    invocable. `recordTransaction` gets a *type-dependent* check (`ISSUE` → `stock:issue`,
    `RETURN` → `stock:return`, `STOCK_IN` → `delivery:record`) so finance cannot POST an issue.
 3. **UI** — `NavBar` filters links; pages hide action buttons.
+
+> ⚠️ **This table is the Phase 2 record, and the Finance column is out of date.** Phase 11
+> Part 1 (2026-09-05) gave FINANCE every capability shown here under Employee, and retired the
+> Employee account. Read the two columns as merged; see "Decided 2026-09-05" below.
 
 | | Finance | Employee | Admin |
 |---|---|---|---|
@@ -2193,7 +2199,7 @@ documenting that nobody should derive it. Invariant 5's pattern, applied to a sm
 4. The dashboard's *"+ N at M sites"* line disappears with the suppressed alert — it hangs
    off the low-stock list, so this should fall out for free. Confirm that it does.
 
-## Decided 2026-09-05: FINANCE absorbs EMPLOYEE, and asks an admin for the rest 🔨 PART 3 BUILT; PARTS 1 AND 2 NOT
+## Decided 2026-09-05: FINANCE absorbs EMPLOYEE, and asks an admin for the rest 🔨 PARTS 1 AND 3 BUILT; PART 2 NOT
 
 **This reverses an earlier call.** "Approval workflows (employee requests → finance approves)"
 sat in *Out of scope* below since the original plan. The requirement changed: the employee
@@ -2207,7 +2213,37 @@ nothing alike. The full implementation plan — file-by-file, with the staged se
 `C:\Users\Kavita\.claude\plans\hazy-weaving-spring.md`. **That file is outside the repo and is
 therefore not durable; this section is the record.**
 
-### Part 1 — fold EMPLOYEE into FINANCE (≈1 hour, no migration)
+### Part 1 — fold EMPLOYEE into FINANCE (≈1 hour, no migration) ✅ BUILT
+
+> **As built, 2026-09-05.** Exactly as written below: the five capabilities added to the
+> `FINANCE` array as their own commented block, both false comments rewritten
+> (`permissions.ts`'s header and the `///` on `enum Role`), and both `ROLE_BLURB` maps updated.
+> `EMPLOYEE` kept and documented as retired. **No migration.**
+>
+> **One addition the plan does not mention:** `/users` now defaults a new account to **Finance**
+> and labels the option *"Employee — retired, do not assign"*. "Stop granting it" is a rule
+> someone has to remember; a picker that still defaulted to Employee would have kept handing it
+> out. Same instinct as the rest of this file — make the wrong state harder to derive than to
+> avoid.
+>
+> **Verified as `finance@example.com` against a local copy** (never the pilot): the Stock Out nav
+> group appeared; **10 Cable Ties were issued to Kandivali through the real form**, stock 217 →
+> 207, recorded as `ISSUE | 10 | by Finance (FINANCE)`; the site page gained
+> consume/transfer/flag. And the boundary held **server-side**, which is the only check worth
+> anything here — submitting the site edit form as finance left the name unchanged in the
+> database, and `/users`, `/backups` and `/sites/new` all still bounced. The retired employee
+> account still signs in and still works. `npm test` 86/86, `tsc` clean, `npm run build` passes.
+>
+> **A pre-existing bug fixed in the same change, because Part 1 promoted it from latent to
+> daily.** [sites/[id]/page.tsx](src/app/sites/[id]/page.tsx) rendered the Edit Site form
+> unconditionally while `updateSite` requires `site:manage`, so a non-admin got a form that threw
+> `NotPermittedError` into the error boundary on save — reproduced live before fixing. Finance
+> now uses site pages every day, so the card is gated and non-admins get a read-only panel. This
+> is the bug §6 of the plan predicted would be fixed "incidentally" by Part 2's re-labelling; it
+> could not wait that long.
+>
+> **Not done, and needed before Part 2:** `shelf/[shelfId]/page.tsx:46`'s hardcoded `isAdmin`,
+> below. It is harmless today because finance holds no `shelf:manage` either way.
 
 The five employee capabilities — `stock:issue`, `stock:return`, `stock:consume`,
 `stock:transfer`, `site:pickup` — are added to the FINANCE array in
@@ -2556,8 +2592,8 @@ Smaller points, noted in passing and still undecided:
 - ~~Approval workflows (employee requests → finance approves).~~ **Reversed 2026-09-05** — see
   "FINANCE absorbs EMPLOYEE, and asks an admin for the rest" above. Note the direction is also
   inverted from what this line assumed: it is **finance requesting, admin approving**. Decided in
-  full; the queue itself (Part 2) is not built, though Part 3 — which was folded into the same
-  decision but stands alone — landed 2026-09-05.
+  full; the queue itself (Part 2) is not built, though Parts 1 and 3 of the same decision — the
+  role merge, and the adjustment delta, both of which stand alone — landed 2026-09-05.
 - Per-slot counts of *sealed* packs — sealed packs of a size are fungible, so "how many are
   in this particular box" has no operational answer worth storing.
 

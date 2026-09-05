@@ -17,9 +17,11 @@ const ROLE_TONE: Record<Role, BadgeTone> = {
 };
 
 const ROLE_BLURB: Record<Role, string> = {
-  ADMIN: "You can do everything, including reversing and adjusting stock.",
-  FINANCE: "You receive deliveries and own the catalogue. You cannot issue stock.",
-  EMPLOYEE: "You move material to and from sites. You cannot receive deliveries.",
+  ADMIN: "You can do everything, including reversing and adjusting stock, accounts and backups.",
+  FINANCE:
+    "You receive deliveries, own the catalogue, dispatch to sites and record returns. You cannot reverse or adjust stock, manage sites or shelves, or reach accounts and backups.",
+  EMPLOYEE:
+    "You move material to and from sites. This role has been retired — ask an admin to move you to Finance, which now covers the same work and more.",
 };
 
 export default async function AccountPage() {
@@ -43,7 +45,7 @@ export default async function AccountPage() {
         <CardBody className="space-y-2">
           <p className="text-sm font-medium text-ink-muted">{ROLE_BLURB[user.role]}</p>
           <p className="text-sm font-medium text-ink-subtle">
-            Roles are workspaces, not levels — only an admin can change yours.
+            Only an admin can change your role.
           </p>
         </CardBody>
       </Card>
