@@ -112,6 +112,10 @@ model User {
   dispatches     Dispatch[]
   deliveries     Delivery[]
   pickups        SitePickup[]
+  /// Two relations to one model must be named. Requester is required on the
+  /// row; decider is nullable, so a pending request has none yet.
+  approvalsRequested ApprovalRequest[] @relation("ApprovalRequester")
+  approvalsDecided   ApprovalRequest[] @relation("ApprovalDecider")
 }
 
 model Item {
@@ -430,4 +434,68 @@ model ShelfSlot {
   // No @@unique([itemId, boxType]): a large arrival may fill several boxes of
   // the same condition.
   @@index([itemId])
+}
+
+/// A FINANCE user asking an admin to carry out something only ADMIN holds.
+///
+/// The action is not merely described here, it is REPLAYABLE: `kind` names an
+/// entry in the operations registry and `args` is its JSON payload, re-parsed
+/// at approval time exactly as Transaction.appliedPlan is re-parsed at reversal
+/// time. Approving does not "unlock a button" — it runs the operation,
+/// attributed to the requester.
+///
+/// Not to be confused with ApprovedOpens / needsApproval in packs.ts and the
+/// transaction forms: those are the IN-REQUEST handshake where one user
+/// confirms "yes, break open 2 sealed packs". Same word, unrelated feature.
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  /// Approved, but the operation refused when it ran — its preconditions had
+  /// changed. NOTHING happened: the status write and the work share one
+  /// transaction, so a rollback takes both. The refusal is in decisionNote.
+  FAILED
+  REJECTED
+  /// Withdrawn by the requester while still pending.
+  CANCELLED
+}
+
+model ApprovalRequest {
+  id            String @id @default(cuid())
+  /// Registry key, e.g. "site.delete". Deliberately not an enum: the set lives
+  /// in src/lib/approvals/registry.ts, and a row whose kind has since been
+  /// removed must still render as history rather than fail to load.
+  kind          String
+  /// JSON arguments for the operation. Re-parsed on approval, never trusted
+  /// as-is — the requester controls this string.
+  args          String
+  /// Human summary, built SERVER-side at request time and frozen. Never from a
+  /// requester-supplied label: finance could otherwise label a delete of site A
+  /// as "delete site B" and phish an approval. Frozen because the site may be
+  /// renamed or gone by the time an admin looks; the live truth comes from
+  /// re-running the operation's own precheck at render time.
+  summary       String
+  /// Nullable: toggleFrontRow carries no form, so there is nowhere to type one.
+  reason        String?
+  /// The row acted on ("Site:ckx…"), used to collapse duplicate pending
+  /// requests. Two finance users can otherwise queue the same deletion twice,
+  /// and the second becomes a confusing FAILED after the first succeeds.
+  targetKey     String?
+
+  status    ApprovalStatus @default(PENDING)
+  createdAt DateTime       @default(now())
+
+  requestedBy   User   @relation("ApprovalRequester", fields: [requestedById], references: [id])
+  requestedById String
+  /// The first admin to answer. Set together with status by one guarded
+  /// updateMany, which is what makes the claim atomic.
+  decidedBy    User?     @relation("ApprovalDecider", fields: [decidedById], references: [id])
+  decidedById  String?
+  decidedAt    DateTime?
+  /// A rejection's note, or a FAILED row's refusal message.
+  decisionNote String?
+
+  @@index([status, createdAt])
+  @@index([requestedById])
+  @@index([decidedById])
+  @@index([kind, targetKey])
 }
