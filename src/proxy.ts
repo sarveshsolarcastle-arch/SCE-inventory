@@ -1,6 +1,8 @@
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
-import { can, HOME_FOR_ROLE, type Capability } from "@/lib/permissions";
+// Imported from capabilities.ts, not permissions.ts: this file runs in the
+// proxy, and permissions.ts pulls in Prisma and NextAuth at module scope.
+import { can, HOME_FOR_ROLE, type Capability } from "@/lib/capabilities";
 import type { Role } from "@/generated/prisma/enums";
 
 /** Route prefix → the capability needed to open it. First match wins, so list
@@ -9,7 +11,16 @@ import type { Role } from "@/generated/prisma/enums";
  * This layer is convenience, not security: it stops people landing on pages
  * that are useless to them. The real enforcement is `requireCapability` inside
  * each server action, because actions are directly invocable regardless of
- * which page the caller came from. */
+ * which page the caller came from.
+ *
+ * TODO (Phase 11 Part 2, stage 5): this will also need to admit a role that may
+ * only REQUEST what the page does — finance reaching /sites/new to raise a
+ * request is the point of the approvals work. That change must land WITH the
+ * rewired actions, not before them: on its own it would let finance open a
+ * create form whose action still throws NotPermittedError on submit, which is
+ * the same broken-form bug just fixed on the site detail page. /users and
+ * /backups stay shut to everyone but admin regardless, because neither is
+ * requestable by anyone. */
 const ROUTE_CAPABILITIES: [prefix: string, capability: Capability][] = [
   ["/items/new", "item:manage"],
   ["/sites/new", "site:manage"],
