@@ -10,10 +10,11 @@
 > **Phase 11 (roles and admin approvals, decided 2026-09-05) is partly built. Part 1 — FINANCE
 > absorbing the retired EMPLOYEE role — and Part 3 — stock counts storing a correction rather
 > than a snapshot — both landed 2026-09-05, the latter along with a two-phases-old bug that had
-> stopped stock counts working at all. Part 2, the approval queue, has its FOUNDATION built and
-> its GATING not: the schema, the capability tables, the argument parsers and the extracted
-> operations all exist, and none of them yet changes who can do what.** See "Decided
-> 2026-09-05" in the cross-phase notes for the stage-by-stage state.
+> stopped stock counts working at all. Part 2, the approval queue, WORKS END TO END as of
+> 2026-09-07: finance raises a request from a real form, every admin sees it at `/approvals`
+> with a live pre-check, and approving runs the operation recorded against whoever asked. Two
+> stages remain — the twelve call sites that still offer finance no button, and the final doc
+> pass.** See "Decided 2026-09-05" in the cross-phase notes for the stage-by-stage state.
 >
 > Read [PROGRESS.md](PROGRESS.md) first for current state, then this for what to build next.
 >
@@ -85,7 +86,7 @@ does not physically have, and reordering would be decided against stock sitting 
 | 6 | ✅ **DONE** — site material lifecycle: consumption, pickup, transfers, cross-site view |
 | 7 | ✅ **DONE** — UI overhaul + mobile web; full record at the end of this file |
 | 8 | 🔨 **IN PROGRESS** — accounts, `DATABASE_URL` fail-fast and build prerequisites done; **Part A** (Turso + Vercel pilot) and **Part B** (offline, carried drive) both pending |
-| 11 | 🔨 **PARTS 1 AND 3 DONE, PART 2 HALF** — roles and admin approvals (decided 2026-09-05, in the cross-phase notes). Part 1 (FINANCE absorbs the retired EMPLOYEE role) and Part 3 (adjustments store the correction) built; Part 2's foundation built, its gating not |
+| 11 | 🔨 **PARTS 1 AND 3 DONE, PART 2 WORKING (STAGES 8-9 LEFT)** — roles and admin approvals (decided 2026-09-05, in the cross-phase notes). Part 1 (FINANCE absorbs the retired EMPLOYEE role) and Part 3 (adjustments store the correction) built; Part 2 works end to end since 2026-09-07, with the twelve call sites and the doc pass outstanding |
 
 ## Why 7-8 were deferred, and what has changed since
 
@@ -2053,7 +2054,7 @@ spent.
 ## Still outstanding regardless
 
 **DB-layer test coverage.** Unchanged as the largest risk, and Part A now runs **real stock**
-through it. The 136 tests are all pure and will pass unchanged after the adapter swap **while
+through it. The 142 tests are all pure and will pass unchanged after the adapter swap **while
 proving nothing about it**. The cutover recount bounds the damage; it does not prevent it.
 
 # Cross-phase notes
@@ -2264,7 +2265,7 @@ documenting that nobody should derive it. Invariant 5's pattern, applied to a sm
 4. The dashboard's *"+ N at M sites"* line disappears with the suppressed alert — it hangs
    off the low-stock list, so this should fall out for free. Confirm that it does.
 
-## Decided 2026-09-05: FINANCE absorbs EMPLOYEE, and asks an admin for the rest 🔨 PARTS 1 AND 3 BUILT; PART 2 HALF-BUILT
+## Decided 2026-09-05: FINANCE absorbs EMPLOYEE, and asks an admin for the rest 🔨 PARTS 1 AND 3 BUILT; PART 2 WORKING, STAGES 8-9 LEFT
 
 **This reverses an earlier call.** "Approval workflows (employee requests → finance approves)"
 sat in *Out of scope* below since the original plan. The requirement changed: the employee
@@ -2359,11 +2360,12 @@ merge as tidying rather than as a deliberate loosening.
 Net effect once built: **FINANCE is ADMIN minus accounts and backups**, with five capabilities
 reachable only through an approval.
 
-### Part 2 — the approval workflow (≈3-5 days) 🔨 FOUNDATION BUILT, GATING NOT
+### Part 2 — the approval workflow (≈3-5 days) 🔨 WORKING END TO END; STAGES 8-9 LEFT
 
-> **As built so far, 2026-09-05** (`1a1f1b8`, `ee5a385`, `3564b74`, `3c2edd2`). Everything
-> below the gating layer exists; **nothing yet changes who can do what.** The app behaves
-> exactly as it did before these four commits.
+> **As built to 2026-09-05** (`1a1f1b8`, `ee5a385`, `3564b74`, `3c2edd2`) — **superseded by the
+> stage notes that follow.** At that point everything below the gating layer existed and
+> **nothing yet changed who could do what.** Stages 4c-7 landed on 2026-09-07; read the table
+> below for where each one stands now.
 >
 > | Stage | | |
 > |---|---|---|
@@ -2822,9 +2824,9 @@ Smaller points, noted in passing and still undecided:
 - ~~Approval workflows (employee requests → finance approves).~~ **Reversed 2026-09-05** — see
   "FINANCE absorbs EMPLOYEE, and asks an admin for the rest" above. Note the direction is also
   inverted from what this line assumed: it is **finance requesting, admin approving**. Decided in
-  full; the queue itself (Part 2) has its foundation built and its gating not, so nothing yet
-  changes who can do what. Parts 1 and 3 of the same decision — the role merge, and the
-  adjustment delta, both of which stand alone — landed 2026-09-05.
+  full, and the queue itself (Part 2) has worked end to end since 2026-09-07 — what remains is
+  the twelve call sites that still offer finance no button. Parts 1 and 3 of the same decision —
+  the role merge, and the adjustment delta, both of which stand alone — landed 2026-09-05.
 - Per-slot counts of *sealed* packs — sealed packs of a size are fungible, so "how many are
   in this particular box" has no operational answer worth storing.
 

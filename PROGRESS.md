@@ -48,7 +48,7 @@ All core flows below were manually tested in a running dev server and confirmed 
 | Mobile-responsive layout | ✅ Done |
 | Production build | ✅ Passes |
 | Automated tests | ⚠️ 136 unit tests (`npm test`): allocator, corrections, matching, paste parsing, site balances/FIFO age/pickup clamp, adjustment deltas, site-deletion blockers, capability/requestable tables, approval argument parsing, nav active-link matching, database-URL resolution; **no coverage of the DB layer or UI** |
-| Roles: ADMIN / FINANCE, capability-gated | ✅ Done (Phase 2); **consolidated 2026-09-05** (Phase 11 Part 1) — FINANCE absorbed the retired EMPLOYEE role and is now the combined operational role. EMPLOYEE still exists and still works, but is no longer assigned. The admin approval queue (Part 2) is **half-built: its foundation exists, its gating does not**, so nothing yet changes who can do what |
+| Roles: ADMIN / FINANCE, capability-gated | ✅ Done (Phase 2); **consolidated 2026-09-05** (Phase 11 Part 1) — FINANCE absorbed the retired EMPLOYEE role and is now the combined operational role. EMPLOYEE still exists and still works, but is no longer assigned. The admin approval queue (Part 2) **works end to end since 2026-09-07**: finance requests the admin-only actions and any admin approves, with the operation recorded against whoever asked. What is left is stage 8, the twelve call sites that still offer finance no button |
 | Corrections: reversal and stocktake adjustment | ✅ Done (Phase 3) |
 | Bulk dispatch to site, from Excel paste | ✅ Done (Phase 4) |
 | Delivery entry (to store or direct to site) | ✅ Done (Phase 5) |
@@ -281,7 +281,7 @@ Every server action calls `requireCapability(...)` for itself: `proxy.ts` route-
   [REDESIGN-PLAN.md's "Reopened 2026-09-04" section](REDESIGN-PLAN.md).
 - **Part A is deployed; Part B is not started.** *(This bullet read "Not deployed yet" until 2026-09-05, which had been wrong since 2026-08-25.)* The plan is **two parts**: a temporary hosted pilot on Turso + Vercel carrying **real stock data** — **live at sce-inventory.vercel.app**, with nightly backups (Phase 9) and the function pinned to Mumbai (Phase 10) — then permanent **offline** production on a drive carried between 2-3 office PCs, which has not been started. **SQLite stays throughout** — `provider = "sqlite"` never changes, and Turso is SQLite-compatible, so every existing migration remains valid and only the Prisma adapter is swapped. **No data crosses the cutover**: stock is physically recounted into an Excel sheet and re-entered as an opening delivery. The full plan, including what was reversed and why, is in [REDESIGN-PLAN.md's Phase 8 section](REDESIGN-PLAN.md) — read it before changing any of it. (This bullet previously recorded "a real server behind real HTTPS, SQLite therefore stays, no code changes". That conclusion happens to survive; its premise does not.)
 - **Change the seeded passwords** — all three accounts (`admin`/`finance`/`employee`), not just admin. There is now a self-service flow at `/account` and an admin reset at `/users`, so this no longer needs a code change — but the seeded passwords are still in place.
-- **⚠️ Test coverage stops at the pure modules, and the reason for deferring the rest has expired.** The 136 tests cover [allocation.ts](src/lib/allocation.ts), [corrections.ts](src/lib/corrections.ts), [matching.ts](src/lib/matching.ts), [dispatchPaste.ts](src/lib/dispatchPaste.ts), [siteBalance.ts](src/lib/siteBalance.ts), [adjustment.ts](src/lib/adjustment.ts), [siteBlockers.ts](src/lib/siteBlockers.ts), [capabilities.ts](src/lib/capabilities.ts), the approvals parsers/summaries, and [activeHref.ts](src/components/nav/activeHref.ts). **Everything that writes to the database has none**: [packs.ts](src/lib/packs.ts), `recordDispatch`, `recordDelivery`, and the whole site lifecycle. The subtlest code in the project is in there — `commitAllocation` resolves the planner's synthetic `new:<i>` pack ids onto rows it creates inside the same transaction. This was deferred on the grounds that "the app is not in real use until the remaining phases land"; **they have all landed**, and the untested surface grew with each one. This is now the single most valuable outstanding item.
+- **⚠️ Test coverage stops at the pure modules, and the reason for deferring the rest has expired.** The 142 tests cover [allocation.ts](src/lib/allocation.ts), [corrections.ts](src/lib/corrections.ts), [matching.ts](src/lib/matching.ts), [dispatchPaste.ts](src/lib/dispatchPaste.ts), [siteBalance.ts](src/lib/siteBalance.ts), [adjustment.ts](src/lib/adjustment.ts), [siteBlockers.ts](src/lib/siteBlockers.ts), [capabilities.ts](src/lib/capabilities.ts), the approvals parsers/summaries, and [activeHref.ts](src/components/nav/activeHref.ts). **Everything that writes to the database has none**: [packs.ts](src/lib/packs.ts), `recordDispatch`, `recordDelivery`, and the whole site lifecycle. The subtlest code in the project is in there — `commitAllocation` resolves the planner's synthetic `new:<i>` pack ids onto rows it creates inside the same transaction. This was deferred on the grounds that "the app is not in real use until the remaining phases land"; **they have all landed**, and the untested surface grew with each one. This is now the single most valuable outstanding item.
 - ✅ **Corrections exist** (Phase 3): a movement can be reversed — restoring the exact prior pack state, and refusing when the packs have moved on since — and a physical count can be recorded as an `ADJUSTMENT` with a mandatory reason. Both are `ADMIN`-only. A whole dispatch can be reversed atomically (Phase 4).
 - ✅ **Existing items reviewed after the Phase 1 migration** (2026-08-20, during Phase 4). `CBL-200` and `SCR-M4` were the two that predated the pack model; both checked — see §9's Phase 4 note and §10's "State of the working copy". Any *new* item added later still needs `measure`, `packUnit` and `scrapThreshold` set correctly at creation, same as always.
 - ✅ **The app refuses to start against a phantom database** (Phase 8). [prisma.ts](src/lib/prisma.ts) used to read `process.env.DATABASE_URL ?? "file:./dev.db"`, so a production server with the variable unset started *successfully* against an empty file in its working directory — no error raised, an inventory that merely looks empty, and every write landing somewhere the next deploy deletes. [databaseUrl.ts](src/lib/databaseUrl.ts) now throws in production while keeping the dev default, covered by 7 tests. The previous guard was a checklist item in this document, which is the weakest enforcement available for a failure nobody can see happening.
@@ -726,9 +726,9 @@ fast for the same reason this fix is fast, and would have credited Supabase for 
 database; nothing to terminate later; Part A continues on Turso. Treat this as a closed
 ticket rather than a deferred one — reopening it needs a new reason, not this one.
 
-### Phase 11 — FINANCE absorbs EMPLOYEE, and asks an admin for the rest 🔨 PARTS 1 AND 3 BUILT; PART 2 HALF-BUILT
+### Phase 11 — FINANCE absorbs EMPLOYEE, and asks an admin for the rest 🔨 PARTS 1 AND 3 BUILT; PART 2 WORKING, STAGES 8-9 LEFT
 
-**Parts 1 and 3 shipped on 2026-09-05; Part 2's foundation is built and its gating is not** —
+**Parts 1 and 3 shipped on 2026-09-05; Part 2 has worked end to end since 2026-09-07, with stages 8-9 left** —
 the as-built notes for all three are further down this section, and they are what to trust.
 Nothing in Part 2 yet changes who can do what. The design is settled with the user and recorded
 in [REDESIGN-PLAN.md](REDESIGN-PLAN.md) ("Decided 2026-09-05"), which is the durable version. The
@@ -748,7 +748,7 @@ In-app only — no email, no push. Account management stays hard admin-only.
 |---|---|---|---|---|
 | 1 | Five employee capabilities added to the FINANCE array | ~1 hr | Low — one code table, no migration | ✅ **BUILT 2026-09-05** |
 | 3 | `adjustStock` stores a delta instead of an absolute count | ~½ day | **Highest** — the only stock arithmetic touched | ✅ **BUILT 2026-09-05** |
-| 2 | The approval workflow: `ApprovalRequest`, an operations registry, `/approvals` | 3-5 days | Medium — permission layer and UI, no ledger maths | 🔨 **foundation built, gating not** |
+| 2 | The approval workflow: `ApprovalRequest`, an operations registry, `/approvals` | 3-5 days | Medium — permission layer and UI, no ledger maths | 🔨 **working end to end 2026-09-07; stages 8-9 left** |
 
 Recommended order was **1 → 3 → 2**. **Part 3 went first in the end** and that was right: it
 fixed two live bugs that had nothing to do with approvals, and shipping it alone kept the only
@@ -885,9 +885,14 @@ ticket.**
 
 #### Part 2 — foundation built 2026-09-05, gating NOT (`1a1f1b8`, `ee5a385`, `3564b74`, `3c2edd2`)
 
-**Read this before assuming the feature works: nothing yet changes who can do what.** All four
-commits are additive or behaviour-preserving. Finance still cannot manage sites or shelves,
-reverse, or adjust; there is no `/approvals` page and no way to raise a request.
+> **SUPERSEDED — this section describes those four commits only.** Stages 4c-7 landed on
+> 2026-09-07 and the feature now works end to end; the as-built notes for them follow below.
+> Kept because the staging, and the reason each thing was deliberately left undone at the time,
+> is the record of how it was built.
+
+**True of those four commits: nothing yet changed who could do what.** All four
+commits are additive or behaviour-preserving. Finance still could not manage sites or shelves,
+reverse, or adjust; there was no `/approvals` page and no way to raise a request.
 
 | Stage | | |
 |---|---|---|
@@ -1454,7 +1459,7 @@ argument was always "the app is not in real use until the remaining phases land"
 functional ones have landed. Meanwhile the untested surface has grown considerably:
 `packs.ts` (including `commitAllocation`'s synthetic `new:<i>` pack-id resolution, still the
 subtlest code in the project), `recordDispatch`, `recordDelivery`, and the whole of Phase 6.
-The pure modules are well covered at 136 tests; **everything that actually writes to the
+The pure modules are well covered at 142 tests; **everything that actually writes to the
 database has none**. On 2026-09-05 that gap cashed in: `adjustStock` had been refusing every
 stock count since Phase 3 built it, and no test, no build and no phase verification caught it —
 the bug lived in the six lines between a `"use server"` boundary and a Prisma call, which is
