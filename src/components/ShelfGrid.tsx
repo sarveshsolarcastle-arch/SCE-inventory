@@ -6,6 +6,7 @@ import Badge from "@/components/ui/Badge";
 import { Select } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
 import { BOX_TYPE_TONE } from "@/components/ui/tones";
+import { controlLabel, requestHint, type ControlMode } from "@/lib/approvals/labels";
 import { Star } from "lucide-react";
 
 type BoxType = "FRESH" | "OPENED" | "RECYCLABLE";
@@ -52,20 +53,25 @@ export default function ShelfGrid({
   columns,
   slots,
   items,
-  canManage,
+  mode,
 }: {
   rows: number;
   columns: number;
   slots: SlotData[];
   items: { id: string; name: string; sku: string }[];
-  /** Whether the viewer holds `shelf:manage`, which is what the three actions in
-   * the popover actually require. This was `isAdmin` — a role test rather than a
-   * capability test — which happened to give the right answer only because ADMIN
-   * was the sole holder. Granting `shelf:manage` to anyone else would have left
-   * the controls hidden with nothing to explain why. Cosmetic either way: each
-   * action re-checks server-side. */
-  canManage: boolean;
+  /** What the viewer can do with `shelf:manage`, which is what the three
+   * actions in the popover actually require.
+   *
+   * This was `isAdmin` — a role test rather than a capability test — which
+   * happened to give the right answer only because ADMIN was the sole holder;
+   * then `canManage: boolean`, which was right about permission and wrong
+   * about the third case, a role that may only ASK. `none` still opens no
+   * popover. Cosmetic either way: each action re-checks server-side, and on
+   * the request path redirects back to this shelf with an acknowledgement. */
+  mode: ControlMode;
 }) {
+  const canOpen = mode !== "none";
+  const asking = mode === "request";
   const [side, setSide] = useState<"FRONT" | "BACK">("FRONT");
   const [openSlotId, setOpenSlotId] = useState<string | null>(null);
 
@@ -114,7 +120,7 @@ export default function ShelfGrid({
               return (
                 <div key={slot.id} className="relative">
                   <button
-                    onClick={() => canManage && setOpenSlotId(isOpen ? null : slot.id)}
+                    onClick={() => canOpen && setOpenSlotId(isOpen ? null : slot.id)}
                     className={`relative flex h-24 w-full flex-col items-center justify-center gap-0.5 rounded-control border p-1 text-center text-xs transition-shadow hover:shadow-card ${
                       slot.item ? CELL_OCCUPIED[slot.boxType] : CELL_EMPTY
                     } ${slot.isFrontRow ? "ring-2 ring-accent" : ""}`}
@@ -160,6 +166,7 @@ export default function ShelfGrid({
                       <p className="text-[10px] font-semibold text-ink-subtle">
                         Set which item lives in this box. How much is in it is not stored — it
                         comes from that item&apos;s packs.
+                        {asking && " Each of these is sent to the admins to approve."}
                       </p>
                       <form
                         action={async (formData) => {
@@ -180,7 +187,7 @@ export default function ShelfGrid({
                           ))}
                         </Select>
                         <Button type="submit" variant="secondary" size="sm" className="w-full">
-                          Save item
+                          {controlLabel(mode, "Save item", "change the item")}
                         </Button>
                       </form>
                       <form
@@ -201,7 +208,7 @@ export default function ShelfGrid({
                           ))}
                         </Select>
                         <Button type="submit" size="sm" className="w-full">
-                          Save
+                          {controlLabel(mode, "Save", "change the box type")}
                         </Button>
                       </form>
                       <Button
@@ -212,8 +219,19 @@ export default function ShelfGrid({
                         size="sm"
                         className="w-full"
                       >
-                        {slot.isFrontRow ? "Unmark front-row" : "Mark as front-row (accessible)"}
+                        {controlLabel(
+                          mode,
+                          slot.isFrontRow
+                            ? "Unmark front-row"
+                            : "Mark as front-row (accessible)",
+                          slot.isFrontRow ? "unmark front-row" : "mark this front-row"
+                        )}
                       </Button>
+                      {requestHint(mode) && (
+                        <p className="text-[10px] font-semibold text-ink-subtle">
+                          {requestHint(mode)}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>

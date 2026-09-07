@@ -2,7 +2,8 @@ import Link from "next/link";
 import { MapPin } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { materialAcrossSites } from "@/lib/stock";
-import { can, currentUser } from "@/lib/permissions";
+import { capabilityMode, currentUser } from "@/lib/permissions";
+import { controlLabel } from "@/lib/approvals/labels";
 import PageHeader from "@/components/ui/PageHeader";
 import { buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -15,6 +16,8 @@ export default async function SitesPage() {
     materialAcrossSites(),
     currentUser(),
   ]);
+
+  const siteMode = capabilityMode(user?.role, "site:manage");
 
   // The cards used to show name and location only, which said nothing about
   // whether a site actually has anything on it.
@@ -39,13 +42,13 @@ export default async function SitesPage() {
         title="Sites"
         subtitle={`${sites.length} site${sites.length === 1 ? "" : "s"}`}
         actions={
-          // Same as /shelf: proxy.ts redirects anyone without site:manage away
-          // from /sites/new, so showing the button to finance offers a door
-          // that closes in their face.
-          can(user?.role, "site:manage") ? (
+          // proxy.ts admits holders AND requesters to /sites/new since stage 6,
+          // so the door no longer closes in finance's face — but the label has
+          // to say which of the two pressing it will get.
+          siteMode !== "none" ? (
             <Link href="/sites/new" className={buttonClasses("primary", "md")}>
               <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M10 4v12M4 10h12" /></svg>
-              New Site
+              {controlLabel(siteMode, "New Site", "add a site")}
             </Link>
           ) : undefined
         }

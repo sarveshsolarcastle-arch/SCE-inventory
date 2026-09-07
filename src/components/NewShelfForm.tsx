@@ -6,6 +6,7 @@ import { Field, Input } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
 import PillToggle from "@/components/ui/PillToggle";
 import { BOX_TYPE_TONE } from "@/components/ui/tones";
+import { controlLabel, requestHint, type ControlMode } from "@/lib/approvals/labels";
 import Badge from "@/components/ui/Badge";
 
 type BoxType = "FRESH" | "OPENED" | "RECYCLABLE";
@@ -18,7 +19,11 @@ const CELL_TONE_CLASSES: Record<BoxType, string> = {
   RECYCLABLE: "border-special-line bg-special-soft",
 };
 
-export default function NewShelfForm() {
+/** `mode` decides only what the final button SAYS. proxy.ts admits a role that
+ * may request `shelf:manage` to this page, and `createShelf` decides which of
+ * the two happens — so a button reading "Create Shelf" for someone who can only
+ * ask would be the promise the whole of stage 8 exists to stop making. */
+export default function NewShelfForm({ mode }: { mode: ControlMode }) {
   const [step, setStep] = useState<"size" | "layout">("size");
   const [name, setName] = useState("");
   const [rows, setRows] = useState(4);
@@ -130,8 +135,14 @@ export default function NewShelfForm() {
         <Button type="button" onClick={() => setStep("size")} variant="secondary">
           Back
         </Button>
-        <Button type="submit">Create Shelf</Button>
+        <Button type="submit">
+          {controlLabel(mode, "Create Shelf", "create this shelf")}
+        </Button>
       </div>
+
+      {requestHint(mode) && (
+        <p className="text-xs font-semibold text-ink-subtle">{requestHint(mode)}</p>
+      )}
     </form>
   );
 }

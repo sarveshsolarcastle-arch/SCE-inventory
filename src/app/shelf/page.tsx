@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { LayoutGrid } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { can, currentUser } from "@/lib/permissions";
+import { capabilityMode, currentUser } from "@/lib/permissions";
+import { controlLabel } from "@/lib/approvals/labels";
 import PageHeader from "@/components/ui/PageHeader";
 import { buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -16,19 +17,21 @@ export default async function ShelfListPage() {
     currentUser(),
   ]);
 
+  const shelfMode = capabilityMode(user?.role, "shelf:manage");
+
   return (
     <div className="space-y-4">
       <PageHeader
         title="Shelves"
         subtitle={`${shelves.length} shelf unit${shelves.length === 1 ? "" : "s"}`}
         actions={
-          // proxy.ts bounces anyone without shelf:manage off /shelf/new, so an
-          // unconditional button here is a link to a redirect. Harmless while
-          // only admins came to this page; finance arrives here routinely now.
-          can(user?.role, "shelf:manage") ? (
+          // proxy.ts admits holders AND requesters to /shelf/new since stage 6.
+          // Employees still get nothing, which is why this is a three-way mode
+          // and not a boolean.
+          shelfMode !== "none" ? (
             <Link href="/shelf/new" className={buttonClasses("primary", "md")}>
               <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M10 4v12M4 10h12" /></svg>
-              New Shelf
+              {controlLabel(shelfMode, "New Shelf", "add a shelf")}
             </Link>
           ) : undefined
         }
