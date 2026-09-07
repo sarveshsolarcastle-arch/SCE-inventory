@@ -148,7 +148,12 @@ src/
                             materials panel (consume / transfer / flag for collection);
                             activity groups dispatch lines instead of listing them loose
     at-sites/               cross-site "Material at Sites" view — quantities, flagged
-                            amounts, FIFO age; filter by awaiting-collection, sort by age
+                            amounts, FIFO age; filter by awaiting-collection, sort by age.
+                            Age is shown as a COLOUR as well as a number (local `ageTone`:
+                            ≥30 days danger, ≥7 days warn, else ok), on both the per-item
+                            badge and the site card's header — the page exists to answer
+                            "is a detour worth making", so the answer is scannable.
+                            Thresholds are deliberately coarse: a nudge, not an SLA.
     transactions/new/       Issue / Return form (single row; Stock In removed in Phase 5)
     users/                  ADMIN-only account management (Phase 8) — create, set role,
                             deactivate, reset password
@@ -174,8 +179,10 @@ src/
                             (+Input/Select/Textarea), Table (+SortableTh), PillToggle, Alert,
                             PageHeader, StatCard, EmptyState, FilterPills, SearchBar. No
                             primitive carries "use client"; conflict-prone ones take explicit
-                            props (Tr tone, Input invalid) rather than relying on className
-                            override order.
+                            props (Tr tone, Input invalid, StatCard tone, CardTitle tone/icon)
+                            rather than relying on className override order. Every tone comes
+                            from the BadgeTone set in tones.ts, so colour means the same thing
+                            everywhere and dark mode adapts for free.
     TransactionForm.tsx     client form: pack/pieces entry + the open-pack confirmation screen
     DispatchBatchForm.tsx   client form: paste → parse → match → plan → review, one card per
                             row at every viewport width (mobile-first, no table)
@@ -281,7 +288,7 @@ Every server action calls `requireCapability(...)` for itself: `proxy.ts` route-
 - ✅ **Deactivation is not a silent no-op** (Phase 8). Sessions are JWTs, so a deactivated account would have kept working until its token expired and a demoted one would have kept its old powers — neither visible. `currentUser()` in [permissions.ts](src/lib/permissions.ts) now re-reads the row instead of trusting the token, at the cost of one indexed lookup per call.
 - ✅ **The Arial-font bug is fixed** (Phase 7): [globals.css](src/app/globals.css) no longer sets `font-family: Arial` on `body`, so the Geist font [layout.tsx](src/app/layout.tsx) loads now actually renders.
 - ✅ **Dark mode is now a user toggle** (Phase 7), not OS-only. `@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));` in globals.css overrides Tailwind's built-in `dark:` variant, an inline `<script>` (`ThemeScript.tsx`) applies the saved choice before first paint, and `ThemeToggle.tsx` (sidebar footer + login page) flips `data-theme` and persists to `localStorage`.
-- ✅ **`src/components/ui/` now exists** (Phase 7) — Button, Card, Badge, Field/Input/Select/Textarea, Table/SortableTh, PillToggle, Alert, PageHeader, StatCard, EmptyState, FilterPills, SearchBar, plus `tones.ts` as the single badge-tone source of truth. The three separate badge tone maps, the copy-pasted pill toggle, and the four duplicate `Field` helpers are gone.
+- ✅ **`src/components/ui/` now exists** (Phase 7) — Button, Card, Badge, Field/Input/Select/Textarea, Table/SortableTh, PillToggle, Alert, PageHeader, StatCard, EmptyState, FilterPills, SearchBar, plus `tones.ts` as the single badge-tone source of truth. The three separate badge tone maps, the copy-pasted pill toggle, and the four duplicate `Field` helpers are gone. `StatCard` and `CardTitle` take a `tone` (and `CardTitle` an `icon`), so a card's colour carries meaning rather than decoration — see §9's Phase 7 colour-pass note for what was deliberately *not* coloured, and why.
 - **Shelf tag codes are auto-generated and not editable** (`F1-1`, `B2-3`, etc., generated at shelf-creation time). If physical stickers don't match this scheme, either the seed logic needs adjusting or an edit-tag UI needs adding.
 - **No file/photo attachments** on items or transactions — not requested, but a common ask for this type of tool.
 - **No CSV export / reporting page** — dashboard covers the "what do we have / what's low / what's issued where" questions live, but there's no printable/exportable report yet.
@@ -422,6 +429,27 @@ sortable columns landed on the items list; the dashboard gained three more stat 
 **Two live bugs fixed along the way:** [globals.css](src/app/globals.css) no longer sets
 `font-family: Arial` on `body` — the Geist font [layout.tsx](src/app/layout.tsx) loads now
 actually renders — and dark mode is now a user choice, not OS-only.
+
+**A follow-up colour pass** (same phase, after first review): the first cut read flat, and the
+cause was not "too little colour" but that `StatCard` had only two tones hardcoded, so four of
+the five dashboard cards rendered the same pale blue. Fixed by making tone a real prop:
+
+- **`StatCard` takes `tone`** (plus `alert`, which forces `danger`). Each dashboard card now
+  carries its own meaning — blue Total Items, green Low Stock flipping red when non-zero,
+  violet Material at Sites, amber Awaiting Collection, Open Claims red-or-green by count —
+  shown as a thin coloured top edge plus a matching icon chip.
+- **`CardTitle` takes `icon` and `tone`**, and `CardHeader` is tinted (`bg-surface-sunken`),
+  so section headers read as headers rather than text floating on white.
+- Colour was added where rows were plain text: the low-stock rows, the placement-suggestion
+  frequency (now a badge), and the site/shelf card grids (location pin, grid icon).
+
+**Deliberately NOT done: tinting whole card backgrounds.** It would fight the light/warm
+direction the mockups settled on and make the dense tables harder to read. The colour sits on
+edges, icons and badges instead. `tone` is an **explicit prop, not a `className` override** —
+there is no `tailwind-merge` here, so competing utilities resolve by CSS source order, not
+prop order, and an override would silently lose (the same reasoning as `Tr tone` and
+`Input invalid`). Everything uses the existing tokens, so dark mode adapts with no extra work
+— verified in both themes.
 
 **The constraint held: markup only.** `git status` against `src/lib`, `src/lib/actions`, and
 `prisma/schema.prisma` shows zero changes. The two agreed exceptions were used exactly as
@@ -698,10 +726,12 @@ fast for the same reason this fix is fast, and would have credited Supabase for 
 database; nothing to terminate later; Part A continues on Turso. Treat this as a closed
 ticket rather than a deferred one — reopening it needs a new reason, not this one.
 
-### Phase 11 — FINANCE absorbs EMPLOYEE, and asks an admin for the rest 📋 DECIDED 2026-09-05, NOT BUILT
+### Phase 11 — FINANCE absorbs EMPLOYEE, and asks an admin for the rest 🔨 PARTS 1 AND 3 BUILT; PART 2 HALF-BUILT
 
-**Nothing in this phase is written yet.** The design is settled with the user and recorded in
-[REDESIGN-PLAN.md](REDESIGN-PLAN.md) ("Decided 2026-09-05"), which is the durable version. The
+**Parts 1 and 3 shipped on 2026-09-05; Part 2's foundation is built and its gating is not** —
+the as-built notes for all three are further down this section, and they are what to trust.
+Nothing in Part 2 yet changes who can do what. The design is settled with the user and recorded
+in [REDESIGN-PLAN.md](REDESIGN-PLAN.md) ("Decided 2026-09-05"), which is the durable version. The
 file-by-file implementation plan is at
 `C:\Users\Kavita\.claude\plans\hazy-weaving-spring.md` — **outside the repo, so do not rely on
 it**; if it is gone, REDESIGN-PLAN.md carries every decision and its reasoning.
