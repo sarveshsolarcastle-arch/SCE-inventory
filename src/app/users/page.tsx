@@ -27,12 +27,21 @@ const ROLE_TONE: Record<Role, BadgeTone> = {
 
 /** What each role is *for*, shown next to the picker — not guessable from the
  * name, and less so since finance absorbed the employee workspace. */
+/* These sentences are what an admin reads while choosing someone's role, so they
+ * have to describe the app as it behaves, not as the capability table reads. Since
+ * Part 2 (2026-09-07) "cannot" is no longer the whole truth for FINANCE: it cannot
+ * DO the five structural/history capabilities, but it can ASK, and the app now shows
+ * it a button that says so. A blurb still saying "cannot reverse or adjust stock"
+ * would contradict the screen the same person sees on /approvals.
+ *
+ * Accounts and backups are the exception and are worded absolutely on purpose —
+ * nobody can request those, ever. See REQUESTABLE in capabilities.ts. */
 const ROLE_BLURB: Record<Role, string> = {
-  ADMIN: "Everything, including reversing and adjusting stock, accounts and backups.",
+  ADMIN: "Everything, including reversing and adjusting stock, accounts and backups — and answering approval requests.",
   FINANCE:
-    "Day-to-day stock work: receives deliveries, owns the catalogue, dispatches to sites and records returns. Cannot reverse or adjust stock, manage sites or shelves, or touch accounts and backups.",
+    "Day-to-day stock work: receives deliveries, owns the catalogue, dispatches to sites and records returns. Cannot reverse or adjust stock, or manage sites and shelves, on its own — it can ask an admin, and any admin can approve. Accounts and backups stay out of reach entirely.",
   EMPLOYEE:
-    "Retired — do not assign. Moves material to and from sites; finance now does this too. Move anyone still on it to Finance.",
+    "Retired — do not assign. Moves material to and from sites; finance now does this too, and can also request the admin-only jobs. Move anyone still on it to Finance.",
 };
 
 export default async function UsersPage() {

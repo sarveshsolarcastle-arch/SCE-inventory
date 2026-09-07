@@ -16,12 +16,17 @@ const ROLE_TONE: Record<Role, BadgeTone> = {
   EMPLOYEE: "ok",
 };
 
+/* Written for the person whose account it is. Since Part 2 (2026-09-07) the FINANCE
+ * line had to change: telling someone they "cannot reverse or adjust stock" while the
+ * item page offers them "Ask an admin to correct this item's stock" is the document
+ * contradicting the screen. Accounts and backups stay worded as a flat no, because
+ * they are one — no role can request them. See REQUESTABLE in capabilities.ts. */
 const ROLE_BLURB: Record<Role, string> = {
-  ADMIN: "You can do everything, including reversing and adjusting stock, accounts and backups.",
+  ADMIN: "You can do everything, including reversing and adjusting stock, accounts and backups — and you answer the approval requests other people raise.",
   FINANCE:
-    "You receive deliveries, own the catalogue, dispatch to sites and record returns. You cannot reverse or adjust stock, manage sites or shelves, or reach accounts and backups.",
+    "You receive deliveries, own the catalogue, dispatch to sites and record returns. Reversing or adjusting stock, and managing sites and shelves, need an admin's approval — you can ask from the same buttons, and follow what happens under Approvals. Accounts and backups are not available to you at all.",
   EMPLOYEE:
-    "You move material to and from sites. This role has been retired — ask an admin to move you to Finance, which now covers the same work and more.",
+    "You move material to and from sites. This role has been retired — ask an admin to move you to Finance, which covers the same work, and can request the admin-only jobs as well.",
 };
 
 export default async function AccountPage() {

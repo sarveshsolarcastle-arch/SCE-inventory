@@ -16,7 +16,12 @@ datasource db {
 /// retired the employee account and finance took over its work outright.
 /// ADMIN is separated by kind, not volume — rewriting history (reverse,
 /// adjust), changing structure (sites, shelves), accounts and backups.
-/// See src/lib/permissions.ts for the capability each one carries.
+/// Since 2026-09-07 FINANCE may REQUEST the first five through the approval
+/// queue (see ApprovalRequest below); accounts and backups are requestable by
+/// NOBODY, and that is a fact rather than a setting — an approval flow that
+/// can mint an admin is not an approval flow, and an approved restore drops
+/// the table holding the request that authorised it.
+/// See src/lib/capabilities.ts for CAPABILITIES and REQUESTABLE.
 enum Role {
   ADMIN
   FINANCE

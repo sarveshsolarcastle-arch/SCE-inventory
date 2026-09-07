@@ -1,8 +1,8 @@
 # Inventory Management System — Progress Handover
 
-Last updated: 2026-09-05 (**Phase 8 Part A — the hosted pilot — is live**; **Phase 11 — role
-consolidation and admin approvals — is decided; Parts 1 and 3 are BUILT, Part 2's foundation
-is built and its gating is not** — see §9)
+Last updated: 2026-09-07 (**Phase 8 Part A — the hosted pilot — is live**; **Phase 11 — role
+consolidation and admin approvals — is BUILT, all three parts** — see §9. The migration it
+needs is applied locally only; the pilot still reports it pending)
 
 > **§1-§8 describe the code as it stands today.** The six-phase functional redesign and
 > Phase 7 (UI overhaul) are **complete**. **Phase 8 Part A (the hosted pilot) is deployed**:
@@ -47,8 +47,8 @@ All core flows below were manually tested in a running dev server and confirmed 
 | Placement suggestions (usage-frequency based) | ✅ Done |
 | Mobile-responsive layout | ✅ Done |
 | Production build | ✅ Passes |
-| Automated tests | ⚠️ 136 unit tests (`npm test`): allocator, corrections, matching, paste parsing, site balances/FIFO age/pickup clamp, adjustment deltas, site-deletion blockers, capability/requestable tables, approval argument parsing, nav active-link matching, database-URL resolution; **no coverage of the DB layer or UI** |
-| Roles: ADMIN / FINANCE, capability-gated | ✅ Done (Phase 2); **consolidated 2026-09-05** (Phase 11 Part 1) — FINANCE absorbed the retired EMPLOYEE role and is now the combined operational role. EMPLOYEE still exists and still works, but is no longer assigned. The admin approval queue (Part 2) **works end to end since 2026-09-07**: finance requests the admin-only actions and any admin approves, with the operation recorded against whoever asked. What is left is stage 8, the twelve call sites that still offer finance no button |
+| Automated tests | ⚠️ 153 unit tests (`npm test`): allocator, corrections, matching, paste parsing, site balances/FIFO age/pickup clamp, adjustment deltas, site-deletion blockers, capability/requestable tables, approval argument parsing/summaries/outcomes/labels, nav active-link matching, database-URL resolution; **no coverage of the DB layer or UI** |
+| Roles: ADMIN / FINANCE, capability-gated | ✅ Done (Phase 2); **consolidated 2026-09-05** (Phase 11 Part 1) — FINANCE absorbed the retired EMPLOYEE role and is now the combined operational role. EMPLOYEE still exists and still works, but is no longer assigned. The admin approval queue (Part 2) is **BUILT and reachable since 2026-09-07**: finance raises a request from a real control, any admin answers it, and the operation runs recorded against whoever asked. **`user:manage` and `backup:manage` are requestable by nobody, and must stay that way** — see §5 for why |
 | Corrections: reversal and stocktake adjustment | ✅ Done (Phase 3) |
 | Bulk dispatch to site, from Excel paste | ✅ Done (Phase 4) |
 | Delivery entry (to store or direct to site) | ✅ Done (Phase 5) |
@@ -56,7 +56,7 @@ All core flows below were manually tested in a running dev server and confirmed 
 | UI overhaul + mobile web | ✅ Done (Phase 7) — light theme + user dark toggle, grouped sidebar, `src/components/ui/` primitives |
 | User accounts | ✅ Done (Phase 8) — admin `/users` page, self-service `/account`, deactivation |
 | Deployment | ✅ **Part A live** (Phase 8) — deployed at sce-inventory.vercel.app, on Turso. Still open: seeded passwords unchanged. Part B (offline production) not started |
-| Shelf deletion | ✅ **Done** (2026-09-04) — `deleteShelf` under its own `shelf:delete` capability rather than `shelf:manage`. Warns with counts on an occupied shelf instead of blocking, because a shelf holds placement and no history; open packs in it are unplaced, never deleted, and no stock moves. Performing it stayed ADMIN-only when Phase 11 gave FINANCE `shelf:manage` the next day — which is what the separate capability was for — and `shelf.delete` is now an approvable kind FINANCE may request. ⚠️ **That request has no UI yet**: the delete card gates on bare `can()`, so finance sees nothing to request with — one instance of Part 2's missing gating, since no page consumes `canRequest`/`capabilityMode` yet. See REDESIGN-PLAN.md's "Decided 2026-09-04" section |
+| Shelf deletion | ✅ **Done** (2026-09-04) — `deleteShelf` under its own `shelf:delete` capability rather than `shelf:manage`. Warns with counts on an occupied shelf instead of blocking, because a shelf holds placement and no history; open packs in it are unplaced, never deleted, and no stock moves. Performing it stayed ADMIN-only when Phase 11 gave FINANCE `shelf:manage` the next day — which is what the separate capability was for — and `shelf.delete` is now an approvable kind FINANCE may request. ✅ **That request has a UI since stage 8 (2026-09-07)**: the delete card gates on `capabilityMode()`, so finance gets a secondary "Ask an admin to delete this shelf" that collects a reason. See REDESIGN-PLAN.md's "Decided 2026-09-04" section |
 | Database backups | ✅ **Automated, live** (Phase 9) — nightly GitHub Actions job dumps the database to the repo's `backups` branch (30-day retention), and an admin-only `/backups` page restores from any of them, or from an uploaded file, with no terminal required. Secrets set, deployed to Production. Still open: the live restore drill (see Phase 9 notes). Part B still needs a second drive |
 | Slow writes on the live deployment | ✅ **Root-caused and fixed** (Phase 10, 2026-09-04) — **not** a Turso or read-after-write problem. The Vercel function ran in `iad1` (Washington DC) while the database sits in `aws-ap-south-1` (Mumbai), so every SQL statement cost a ~230 ms round trip and a write path issuing 10-25 of them sequentially took 2-5 s. Fixed by [vercel.json](vercel.json) pinning the region to `bom1`; **deployed and verified — `x-vercel-id` reads `bom1::bom1::` and warm `/login` fell from ~270 ms to 76 ms.** The proposed Supabase migration is **closed — paused by the user 2026-09-04**; Part A stays on Turso |
 
@@ -262,7 +262,19 @@ backups/                    local dumps and manual dev.db copies (gitignored) �
 
 **The capability tables live in one place: [src/lib/capabilities.ts](src/lib/capabilities.ts)**, with [permissions.ts](src/lib/permissions.ts) re-exporting them alongside the auth-aware half (`currentUser`, `requireCapability`). The split exists so the tables can be unit-tested at all — `permissions.ts` imports `@/lib/auth` and `@/lib/prisma` at module scope and the `@/` alias does not resolve under `node --experimental-strip-types`, so the most security-critical table in the app was the one thing the suite could not reach.
 
-Roles are *workspaces*, not levels. **Since Phase 11 Part 1 (2026-09-05) FINANCE is the combined operational role** — it receives goods, owns the catalogue, and now moves material as well, the EMPLOYEE workspace having been folded into it wholesale. **EMPLOYEE is retired**: it keeps its five capabilities so existing logins keep working and every `Record<Role, …>` stays total, but it is no longer granted to new accounts. ADMIN does everything. What FINANCE still cannot do — rewriting history, changing structure, accounts, backups — it may in some cases **request**, via `REQUESTABLE` and the approval queue.
+Roles are *workspaces*, not levels. **Since Phase 11 Part 1 (2026-09-05) FINANCE is the combined operational role** — it receives goods, owns the catalogue, and now moves material as well, the EMPLOYEE workspace having been folded into it wholesale. **EMPLOYEE is retired**: it keeps its five capabilities so existing logins keep working and every `Record<Role, …>` stays total, but it is no longer granted to new accounts. ADMIN does everything.
+
+**There are two tables, and the second is not a softening of the first.** `CAPABILITIES` answers "may do it, now, alone"; `REQUESTABLE` answers "may ASK an admin to". `can()` is unchanged and stays the hard gate — every `requireCapability` in the app depends on it meaning the first thing — and `canRequest()` only decides whether a refusal becomes an `ApprovalRequest` row instead. Five capabilities are requestable by FINANCE: `site:manage`, `shelf:manage`, `shelf:delete`, `stock:reverse`, `stock:adjust`.
+
+<a id="the-two-exclusions"></a>
+> ### ⛔ `user:manage` and `backup:manage` are requestable by NOBODY — and this is the conclusion most likely to be re-derived wrongly
+>
+> Both look like ordinary admin capabilities that the approval queue simply has not got round to yet. They are not, and neither exclusion is a policy preference to revisit when someone finds it inconvenient:
+>
+> - **`user:manage` — an approval flow that can mint an admin is not an approval flow.** If finance can request `user:manage`, the request "make me an admin" is one approval away from granting the power to approve. Every other exclusion in the app becomes decorative at that point, because the excluded thing can be reached by first becoming the person who is allowed to do it. Account management stays hard admin-only, at the client's explicit instruction.
+> - **`backup:manage` — an approved restore would delete the record that authorised it.** `restoreDatabase` in [restore.ts](src/lib/backup/restore.ts) drops and recreates *every* table, `ApprovalRequest` included. So approving a restore erases the row that asked for it **and** the record of which admin approved it: the feature would destroy its own audit trail as its final act, leaving a database that cannot answer who did this or on whose say-so. This is not an opinion about risk appetite — it is a fact about what restore does to that table.
+>
+> **Where this is enforced, so it cannot be lost by an edit that looks harmless:** the `REQUESTABLE` doc comment in [capabilities.ts](src/lib/capabilities.ts) states both; `capabilities.test.ts` asserts neither appears in any role's requestable list ("THE INVARIANT"); and `args.test.ts` asserts no *operation kind* maps to either — a third table, `CAPABILITY_FOR_KIND`, that a new registry entry touches without ever opening `capabilities.ts`. That third check was added on 2026-09-07 because the exclusions had been recorded only in `REQUESTABLE`, and **both invariants were verified by breaking them**, not by watching them pass.
 
 Every server action calls `requireCapability(...)` for itself: `proxy.ts` route-gating and the filtered nav are convenience only, because a server action can be invoked regardless of what the page rendered.
 
@@ -281,7 +293,7 @@ Every server action calls `requireCapability(...)` for itself: `proxy.ts` route-
   [REDESIGN-PLAN.md's "Reopened 2026-09-04" section](REDESIGN-PLAN.md).
 - **Part A is deployed; Part B is not started.** *(This bullet read "Not deployed yet" until 2026-09-05, which had been wrong since 2026-08-25.)* The plan is **two parts**: a temporary hosted pilot on Turso + Vercel carrying **real stock data** — **live at sce-inventory.vercel.app**, with nightly backups (Phase 9) and the function pinned to Mumbai (Phase 10) — then permanent **offline** production on a drive carried between 2-3 office PCs, which has not been started. **SQLite stays throughout** — `provider = "sqlite"` never changes, and Turso is SQLite-compatible, so every existing migration remains valid and only the Prisma adapter is swapped. **No data crosses the cutover**: stock is physically recounted into an Excel sheet and re-entered as an opening delivery. The full plan, including what was reversed and why, is in [REDESIGN-PLAN.md's Phase 8 section](REDESIGN-PLAN.md) — read it before changing any of it. (This bullet previously recorded "a real server behind real HTTPS, SQLite therefore stays, no code changes". That conclusion happens to survive; its premise does not.)
 - **Change the seeded passwords** — all three accounts (`admin`/`finance`/`employee`), not just admin. There is now a self-service flow at `/account` and an admin reset at `/users`, so this no longer needs a code change — but the seeded passwords are still in place.
-- **⚠️ Test coverage stops at the pure modules, and the reason for deferring the rest has expired.** The 142 tests cover [allocation.ts](src/lib/allocation.ts), [corrections.ts](src/lib/corrections.ts), [matching.ts](src/lib/matching.ts), [dispatchPaste.ts](src/lib/dispatchPaste.ts), [siteBalance.ts](src/lib/siteBalance.ts), [adjustment.ts](src/lib/adjustment.ts), [siteBlockers.ts](src/lib/siteBlockers.ts), [capabilities.ts](src/lib/capabilities.ts), the approvals parsers/summaries, and [activeHref.ts](src/components/nav/activeHref.ts). **Everything that writes to the database has none**: [packs.ts](src/lib/packs.ts), `recordDispatch`, `recordDelivery`, and the whole site lifecycle. The subtlest code in the project is in there — `commitAllocation` resolves the planner's synthetic `new:<i>` pack ids onto rows it creates inside the same transaction. This was deferred on the grounds that "the app is not in real use until the remaining phases land"; **they have all landed**, and the untested surface grew with each one. This is now the single most valuable outstanding item.
+- **⚠️ Test coverage stops at the pure modules, and the reason for deferring the rest has expired.** The 153 tests cover [allocation.ts](src/lib/allocation.ts), [corrections.ts](src/lib/corrections.ts), [matching.ts](src/lib/matching.ts), [dispatchPaste.ts](src/lib/dispatchPaste.ts), [siteBalance.ts](src/lib/siteBalance.ts), [adjustment.ts](src/lib/adjustment.ts), [siteBlockers.ts](src/lib/siteBlockers.ts), [capabilities.ts](src/lib/capabilities.ts), the approvals parsers/summaries, and [activeHref.ts](src/components/nav/activeHref.ts). **Everything that writes to the database has none**: [packs.ts](src/lib/packs.ts), `recordDispatch`, `recordDelivery`, and the whole site lifecycle. The subtlest code in the project is in there — `commitAllocation` resolves the planner's synthetic `new:<i>` pack ids onto rows it creates inside the same transaction. This was deferred on the grounds that "the app is not in real use until the remaining phases land"; **they have all landed**, and the untested surface grew with each one. This is now the single most valuable outstanding item.
 - ✅ **Corrections exist** (Phase 3): a movement can be reversed — restoring the exact prior pack state, and refusing when the packs have moved on since — and a physical count can be recorded as an `ADJUSTMENT` with a mandatory reason. Both are `ADMIN`-only. A whole dispatch can be reversed atomically (Phase 4).
 - ✅ **Existing items reviewed after the Phase 1 migration** (2026-08-20, during Phase 4). `CBL-200` and `SCR-M4` were the two that predated the pack model; both checked — see §9's Phase 4 note and §10's "State of the working copy". Any *new* item added later still needs `measure`, `packUnit` and `scrapThreshold` set correctly at creation, same as always.
 - ✅ **The app refuses to start against a phantom database** (Phase 8). [prisma.ts](src/lib/prisma.ts) used to read `process.env.DATABASE_URL ?? "file:./dev.db"`, so a production server with the variable unset started *successfully* against an empty file in its working directory — no error raised, an inventory that merely looks empty, and every write landing somewhere the next deploy deletes. [databaseUrl.ts](src/lib/databaseUrl.ts) now throws in production while keeping the dev default, covered by 7 tests. The previous guard was a checklist item in this document, which is the weakest enforcement available for a failure nobody can see happening.
@@ -329,7 +341,7 @@ what stops them being re-derived.** What actually holds today:
 **Phase 7 (UI overhaul + mobile web) is also built and verified**, on 2026-08-21 — see its
 as-built note below. **Phase 8 (hosting) is in progress** — see its entry below for what has
 landed and what the remaining blocker is. **Phase 11 (role consolidation + admin approvals) is
-decided but NOT built** — every entry above it describes code that exists; that one does not.
+BUILT** — all three parts, the last of them on 2026-09-07.
 
 ### Phase 1 — built 2026-08-20
 
@@ -726,11 +738,14 @@ fast for the same reason this fix is fast, and would have credited Supabase for 
 database; nothing to terminate later; Part A continues on Turso. Treat this as a closed
 ticket rather than a deferred one — reopening it needs a new reason, not this one.
 
-### Phase 11 — FINANCE absorbs EMPLOYEE, and asks an admin for the rest 🔨 PARTS 1 AND 3 BUILT; PART 2 WORKING, STAGES 8-9 LEFT
+### Phase 11 — FINANCE absorbs EMPLOYEE, and asks an admin for the rest ✅ ALL THREE PARTS BUILT
 
-**Parts 1 and 3 shipped on 2026-09-05; Part 2 has worked end to end since 2026-09-07, with stages 8-9 left** —
-the as-built notes for all three are further down this section, and they are what to trust.
-Nothing in Part 2 yet changes who can do what. The design is settled with the user and recorded
+**Parts 1 and 3 shipped on 2026-09-05; Part 2 was completed on 2026-09-07** — the as-built
+notes for all three are further down this section, and they are what to trust. **Part 2 changed
+who can do what**, which nothing before it had: a FINANCE user attempting one of the five
+requestable operations is no longer refused, the attempt becomes an `ApprovalRequest`, and any
+admin can carry it out attributed to whoever asked. What it did **not** change is the two
+exclusions — see [the box in §5](#the-two-exclusions). The design is settled with the user and recorded
 in [REDESIGN-PLAN.md](REDESIGN-PLAN.md) ("Decided 2026-09-05"), which is the durable version. The
 file-by-file implementation plan is at
 `C:\Users\Kavita\.claude\plans\hazy-weaving-spring.md` — **outside the repo, so do not rely on
@@ -748,7 +763,7 @@ In-app only — no email, no push. Account management stays hard admin-only.
 |---|---|---|---|---|
 | 1 | Five employee capabilities added to the FINANCE array | ~1 hr | Low — one code table, no migration | ✅ **BUILT 2026-09-05** |
 | 3 | `adjustStock` stores a delta instead of an absolute count | ~½ day | **Highest** — the only stock arithmetic touched | ✅ **BUILT 2026-09-05** |
-| 2 | The approval workflow: `ApprovalRequest`, an operations registry, `/approvals` | 3-5 days | Medium — permission layer and UI, no ledger maths | 🔨 **working end to end 2026-09-07; stages 8-9 left** |
+| 2 | The approval workflow: `ApprovalRequest`, an operations registry, `/approvals` | 3-5 days | Medium — permission layer and UI, no ledger maths | ✅ **BUILT 2026-09-07** (stages 0-9) |
 
 Recommended order was **1 → 3 → 2**. **Part 3 went first in the end** and that was right: it
 fixed two live bugs that had nothing to do with approvals, and shipping it alone kept the only
@@ -777,7 +792,9 @@ hide an item nobody actually ran** — §7's warning about DB-layer coverage is 
 an approval flow that can mint an admin is not an approval flow; and `backup:manage`, because
 `restoreDatabase` drops and recreates every table — an approved restore would erase the request
 row that authorised it and the record of who approved it. Neither is a preference to revisit
-casually.
+casually. **Both are now in force, enforced by two test files, and written out in full in
+[§5's box](#the-two-exclusions)** — read that before changing `REQUESTABLE`, `CAPABILITY_FOR_KIND`
+or anything that adds an operation kind.
 
 **The trap most likely to be walked into.** The obvious way to give the approval path access to
 an action's body is to export an unguarded core from the action file. Every one of those files
@@ -905,7 +922,8 @@ reverse, or adjust; there was no `/approvals` page and no way to raise a request
 | 5 | the eleven actions rewired through `runOrRequest` | ✅ |
 | 6 | decide actions, `/approvals`, `ApprovalDecision`, the `proxy.ts` bypass | ✅ |
 | 7 | nav link + header pill (`icons.ts`, `navLinks.ts`, `AppShell.tsx`) | ✅ |
-| 8-9 | re-labelling twelve call sites, docs | ❌ |
+| 8 | the twelve call sites re-labelled | ✅ **the request arm is now reachable from the UI** |
+| 9 | docs | ✅ **Part 2 recorded as built in both durable docs, 2026-09-07** |
 
 **Tests 86 → 136.** The most valuable of those are the seven invariants in
 `capabilities.test.ts`, which is possible at all only because the tables moved out of
@@ -1254,6 +1272,94 @@ worth anything if you say how you checked.
 `npm test` 142/142, `tsc` clean, lint unchanged (the same 1 pre-existing error and 2 warnings),
 `npm run build` passes. `dev.db` restored from a pre-verification copy.
 
+#### Stage 8 — as built, 2026-09-07
+
+**The feature is now reachable by the people it was built for.** Every prior stage gated its
+controls on a bare `can()`, so a FINANCE user saw no button for any of the five capabilities
+they are allowed to request; the only way to raise a request was to replay a POST or be
+redirected to `/sites/new`. Twelve call sites now read `capabilityMode()` instead, and the
+`requested` arm of the five result-returning actions — **which had never run** — has been
+exercised on screen for every one of them.
+
+New pure [labels.ts](src/lib/approvals/labels.ts) (`controlLabel`, `pendingLabel`,
+`requestHint`, `noticeFor`, `ASK`), 11 tests, 142 → **153**.
+
+**The defect it exists to prevent is `noticeFor`, and it is a colour.** Every requestable
+action returns `ok: false` on the request path — deliberately, see outcome.ts — and every
+component consuming it does `if (!result.ok) setError(result.message)`, which renders **danger
+red**. So a finance user would have asked for something, succeeded, and been told in the colour
+of failure that it had not worked. `ok` answers "did the thing happen"; it does not answer "did
+anything go wrong", and on exactly this path those have different answers. `noticeFor` is the
+one place they stop being conflated, and `danger` is its default for anything it does not
+recognise — silently reassuring someone about a real failure is the worse mistake.
+
+**The twelve call sites.**
+
+| Capability | Where | In `request` mode |
+|---|---|---|
+| `site:manage` | `/sites` header | "Ask an admin to add a site" |
+| | `/sites/new` submit | "Ask an admin to create this site" + hint |
+| | `/sites/[id]` edit card | the form itself, not the read-only panel |
+| | `/sites/[id]` save | "Ask an admin to save these changes" |
+| | `DeleteSiteButton` | secondary, not danger; **collects a reason** |
+| `shelf:manage` | `/shelf` header | "Ask an admin to add a shelf" |
+| | `/shelf/new` submit | "Ask an admin to create this shelf" + hint |
+| | `/shelf/[id]` subtitle | "You can ask an admin to relabel a box…" |
+| | `ShelfGrid` popover | opens; its three buttons reworded |
+| `shelf:delete` | `DeleteShelfButton` | secondary; **collects a reason** |
+| `stock:adjust` | `AdjustStockForm` | "Ask an admin to correct this item's stock" |
+| `stock:reverse` | `ReverseButton` ×2 | "Request reversal" |
+
+**Two things added rather than reworded, and both change what an admin sees.**
+
+The two delete buttons now **collect a reason**. `deleteSite`/`deleteShelf` have taken an
+optional `reason` since stage 5 and nothing was passing one, so every delete request would have
+reached the queue with `reason: null` — the frozen summary says *what*, and nothing said *why*
+for the two most consequential operations in the set. They are onClick handlers rather than
+forms, so the value lives in component state; Send stays disabled until it is non-empty. Live
+verification confirmed the reason reaching the row and being quoted back on `/approvals`.
+
+And the notice is rendered **outside** the confirm/expanded branch in all four components, so it
+survives the collapse back to the resting state. That is the direct answer to the standing
+warning from the 4c-6 re-verification: what needed watching was not that the request is raised
+but that its sentence is still **on screen afterwards**. It is — watched, not inferred.
+
+**Two wording defects the build could not see, both found by reading the screen.**
+
+1. **The prefix composed twice.** `controlLabel` was given `asking` phrases that were already
+   requests: the site card title came out *"Ask an admin to request a change"*, and the reversal
+   panel's submit — inside a paragraph already reading *"Ask an admin to undo this…"* — came out
+   *"Ask an admin to send the request"*. Fixed at the call sites (`asking` is the object of the
+   ask, never another ask), and a test now pins the rule against all fourteen phrases in use.
+2. **"Ask an admin to reverse this" wrapped to four lines** in the ~60px transaction-history
+   table cell, in every row. That control is now the literal "Request reversal" with a comment
+   saying why it does not go through `controlLabel` — the labels module cannot know how wide its
+   caller is. Nothing is lost: the panel it opens still leads with the full sentence.
+
+**Verified live, against a local copy — never the pilot.**
+
+| Check | Result |
+|---|---|
+| **ADMIN unchanged** | `/sites`, `/sites/[id]`, `/shelf`, `/shelf/[id]`, `/items/[id]`, `/dispatches/[id]` all read exactly as before — "New Site", "Edit Site", "Save", "Delete site", "Reverse", "Record a stock count" |
+| All seven request kinds raised | site.create, site.update, site.delete, shelf.delete, shelf.slot.boxType, stock.adjust, stock.reverseDispatch — each through a real control |
+| **The message survives** | shelf delete, site delete, stock count and dispatch reversal all left the info sentence on screen after the re-render; nothing unmounted it |
+| **Info, not danger** | every raised request rendered blue; no red anywhere on a successful ask |
+| Reason reaches the row | `"Rack was dismantled during the storeroom move"` stored and quoted on `/approvals` |
+| Duplicate collapse | a second shelf-delete ask produced *"Someone has already asked for this…"* and **one** row, not two |
+| Redirect path | the slot relabel returned to the shelf with the `?requested` banner, popover closed, box unchanged |
+| **Approved end to end** | the stock correction approved as admin: 2 → **3** sealed 100 m rolls, `ADJUSTMENT` of 100 recorded **by Finance**, not by the approving admin |
+| Employee unaffected | read-only site panel, no reverse, no stock count, "Relabelling a box is an admin job", no delete card |
+
+Console clean on every page touched, no server errors. `npm test` 153/153, `tsc` clean, lint
+unchanged (the same 1 pre-existing error and 2 warnings), `npm run build` passes. `dev.db`
+restored from a pre-verification copy — 0 `ApprovalRequest` rows, pack stock back to 2/2/2.
+
+**One gap named rather than quietly closed.** `site.create` and `site.update` still reach the
+queue with `reason: null`: their forms collect a name and a location, not a justification, and
+adding a reason field to the create form changes a form that admins use too. The frozen summary
+carries enough for those two — *"Create the site \"Andheri Depot\""* is self-explaining in a way
+that *"Delete notify-push"* is not, which is why the deletes got a field and these did not.
+
 ### Resolved by the redesign — all of it has now landed
 
 | Originally stated | Resolved by |
@@ -1275,11 +1381,16 @@ Three things came up in the build that the plan had wrong:
 Written for whoever continues this next. Read in this order: **§1-§9 above**, then
 **[REDESIGN-PLAN.md](REDESIGN-PLAN.md)**, then the source files named below.
 
-**Phases 1-10 are built** — the six functional phases, the UI overhaul, the hosted pilot,
-automated backups, and the Mumbai region fix. What remains is **Phase 11 Part 2** (the
-approval workflow — its foundation is built, its gating is not), **Part B** (offline
-production, not started), and — still the largest outstanding risk — **DB-layer test
-coverage**. See "What to do next" below.
+**Phases 1-11 are built** — the six functional phases, the UI overhaul, the hosted pilot,
+automated backups, the Mumbai region fix, and, as of 2026-09-07, the role consolidation and
+the admin approval queue. What remains is **deploying Phase 11** (its migration is applied
+locally only — the pilot reports one pending), **Part B** (offline production, not started),
+and — still the largest outstanding risk — **DB-layer test coverage**. See "What to do next".
+
+**If you are touching the approval queue, read [§5's box on the two exclusions](#the-two-exclusions)
+first.** `user:manage` and `backup:manage` are requestable by nobody, both for reasons that are
+facts rather than preferences, and both are the kind of conclusion a later reader re-derives
+wrongly from first principles.
 
 *(This section was headed "Picking Up Phase 8" until 2026-09-05. Phase 8 Part A is live;
 the deployment checklist it pointed at is done bar the seeded passwords and the restore
@@ -1401,20 +1512,29 @@ Everything downstream assumes these. Breaking one corrupts stock silently rather
 
 **Phases 1-7 are built. Phase 8 Part A is deployed and live**; Part B (offline production)
 has not started. Phases 9 (backups) and 10 (the Mumbai region fix) are done. **Phase 11 is
-the live front**: Parts 1 and 3 are built, Part 2's foundation is built and its gating is
-not.
+built in full** as of 2026-09-07 — and is the one built phase **not yet on the pilot**.
 
-**Newest work, and where a fresh agent should probably start: Phase 11** (§9) — the employee
-role folds into finance, and finance gets an approval queue for the admin-only housekeeping.
-Decided in full with the user on 2026-09-05. **Parts 1 and 3 are built; Part 2's foundation is
-built and its gating is not** — see the as-built notes in §9 before assuming anything works:
+**The first thing a fresh agent should do about Phase 11 is deploy it, not extend it.** Its
+migration (`ApprovalRequest`) is applied to the local database only; `npm run db:migrate:turso`
+reports it pending against the pilot. The code is live-ready and was verified end to end
+against a local copy, never against the pilot — deliberately, because the pilot carries the
+client's real stock.
+
+**Phase 11** (§9) — the employee role folds into finance, and finance gets an approval queue
+for the admin-only housekeeping. Decided in full with the user on 2026-09-05, **all three parts
+built by 2026-09-07** — the as-built notes in §9 are what to trust:
 
 - **Part 1** — ✅ **BUILT 2026-09-05.** See the as-built note in §9. Folded in one fix it made
   urgent: the site page's Edit form used to render for everyone while `updateSite` required
   `site:manage`.
 - **Part 3** — ✅ **BUILT 2026-09-05** (`0b89701`, `45aea35`). See the as-built note in §9.
-- **Part 2** (3-5 days) — the approval workflow. Rewires eleven live write actions, so read the
-  regression gate first. Three things the plan does not cover, one now cleared:
+- **Part 2** — ✅ **BUILT 2026-09-07**, stages 0-9, each with its own as-built note in §9.
+  A FINANCE user raises a request from a real control, every admin sees it at `/approvals` with
+  a live pre-check, and the first to answer decides it for everyone; approving runs the
+  operation attributed to whoever asked. Eleven write actions were rewired through
+  `runOrRequest` and **admin behaviour is unchanged** — the twelve-flow regression gate was run
+  at stages 4b, 5 and 8. ⛔ **`user:manage` and `backup:manage` are requestable by nobody** —
+  [§5's box](#the-two-exclusions). Three things the plan did not cover, all now resolved:
   - ✅ **The migration path exists again, and the pilot is ready for it.**
     `prisma migrate deploy` cannot reach Turso (`P1013`, see the Phase 8 section) and the
     one-off script used for the first ten migrations had been discarded, so an eleventh had
@@ -1426,10 +1546,13 @@ built and its gating is not** — see the as-built notes in §9 before assuming 
     database (all twelve tables matched) and then **baselined on 2026-09-05**; it now reports
     all ten applied, nothing pending, and the live app was unaffected. The eleventh migration
     can go straight through `npm run db:migrate:turso -- --apply`.
-  - ⚠️ `approveRequest` puts the claim and the work in one `$transaction` against Prisma's 5s
-    default timeout; `reverseDispatch` on a 15-line batch is 90+ sequential statements, which
-    fits only because `vercel.json` pins the function to Mumbai. Set an explicit `timeout` —
-    and note that file stops being a performance tweak and becomes a correctness dependency.
+  - ✅ **The approve transaction has an explicit timeout.** `approveRequest` puts the claim and
+    the work in one `$transaction`, and Prisma's 5s default was not enough: `reverseDispatch` on
+    a 15-line batch is 90+ sequential statements, which fits only because `vercel.json` pins the
+    function to Mumbai. `runOrRequest` sets **20s** explicitly. ⚠️ **The consequence stands and
+    is easy to lose**: `vercel.json` is no longer a performance tweak, it is a correctness
+    dependency — moving that function out of Mumbai lengthens every statement in the batch and
+    can push an approval past the limit.
   - ✅ **The shelf grid reads a capability now.** `shelf/[shelfId]/page.tsx` used to gate the
     whole `ShelfGrid` popover on a hardcoded `role === "ADMIN"`, so finance would have had
     nothing to click and therefore nothing to request. Fixed 2026-09-05.
@@ -1459,7 +1582,7 @@ argument was always "the app is not in real use until the remaining phases land"
 functional ones have landed. Meanwhile the untested surface has grown considerably:
 `packs.ts` (including `commitAllocation`'s synthetic `new:<i>` pack-id resolution, still the
 subtlest code in the project), `recordDispatch`, `recordDelivery`, and the whole of Phase 6.
-The pure modules are well covered at 142 tests; **everything that actually writes to the
+The pure modules are well covered at 153 tests; **everything that actually writes to the
 database has none**. On 2026-09-05 that gap cashed in: `adjustStock` had been refusing every
 stock count since Phase 3 built it, and no test, no build and no phase verification caught it —
 the bug lived in the six lines between a `"use server"` boundary and a Prisma call, which is
