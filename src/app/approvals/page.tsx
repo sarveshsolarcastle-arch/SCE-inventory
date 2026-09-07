@@ -60,7 +60,9 @@ function when(date: Date): string {
 export default async function ApprovalsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sent?: string; withdrawn?: string }>;
+  /** `?sent=<id>` — where createSite and createShelf land a requester, since
+   * the thing they asked for does not exist to navigate to yet. */
+  searchParams: Promise<{ sent?: string }>;
 }) {
   const user = await currentUser();
   // Page-level gating is convenience; every action re-checks for itself.

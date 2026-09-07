@@ -12,6 +12,7 @@ import {
   TrendingUp,
   Recycle,
   AlertTriangle,
+  ClipboardCheck,
   Users,
   UserCog,
   DatabaseBackup,
@@ -32,6 +33,7 @@ export type IconName =
   | "suggestions"
   | "recycle"
   | "defective"
+  | "approvals"
   | "users"
   | "account"
   | "backups";
@@ -52,6 +54,8 @@ export const ICONS: Record<IconName, LucideIcon> = {
   suggestions: TrendingUp,
   recycle: Recycle,
   defective: AlertTriangle,
+  // Same icon the /approvals page heads its queue with — one feature, one mark.
+  approvals: ClipboardCheck,
   users: Users,
   account: UserCog,
   backups: DatabaseBackup,

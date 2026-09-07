@@ -2375,7 +2375,8 @@ reachable only through an approval.
 > | 4c | `registry.ts`, `runOrRequest.ts`, `queue.ts` | ✅ **nothing calls them yet** |
 > | 5 | the eleven actions rewired through `runOrRequest` | ✅ **no UI path reaches the request arm yet** |
 > | 6 | decide actions, `/approvals`, `proxy.ts` bypass | ✅ **end-to-end, verified live** |
-> | 7-9 | shell pill + nav, re-labelling, docs | ❌ |
+> | 7 | nav link + header pill | ✅ |
+> | 8-9 | re-labelling twelve call sites, docs | ❌ |
 >
 > **Tests: 86 → 136.** `permissions.ts` had never had a test because it imports `@/lib/auth`
 > and `@/lib/prisma` at module scope and the `@/` alias does not resolve under
@@ -2459,6 +2460,33 @@ reachable only through an approval.
 > `router.refresh()`, then, after that was fixed, by `markFailed`'s `revalidatePath`, which makes
 > Next re-render the page with the action's response and unmount the component regardless. The
 > first fix alone would have passed review and still lost the message. Full note in PROGRESS.md.
+>
+> **Re-verification of 4c-6, 2026-09-07.** `CAPABILITY_FOR_KIND` turned out to be a **third**
+> capability table with no invariants over it — `capabilities.test.ts` guards the other two
+> against each other, but nothing stopped an operation kind being pointed at `user:manage` or
+> `backup:manage`, whose exclusion was recorded only in `REQUESTABLE`, in a file a new registry
+> entry never has to touch. Two invariants added (140 → **142**), and **both were checked by
+> breaking them** rather than by watching them pass. Also removed a dead `withdrawn` search param
+> on `/approvals`. **Standing warning for stage 8:** the `requested` arm of the five
+> result-returning actions has still never run, and what needs watching is not that the request is
+> raised but that its sentence is still on screen afterwards — stage 6 lost that exact message
+> twice. Full note in PROGRESS.md.
+>
+> **Stage 7, 2026-09-07.** `/approvals` is now reachable: a Settings nav entry gated on
+> `approval:view`, and a header pill carrying AppShell's one and only Prisma query. The wording
+> splits by audience — *"2 requests awaiting your approval"* for an admin, *"2 requests of yours
+> awaiting approval"* for a requester — because a pill claiming something awaits *your* approval
+> from someone who cannot approve would be false. `tones.ts` was deliberately **not** touched:
+> the plan's `APPROVAL_STATUS_TONE` already exists in `status.ts`, typed and tested, and a second
+> copy would be two tables naming one thing.
+>
+> **The build could not see the one real defect.** At 375px the pill wrapped to two lines and
+> burst the fixed-height header, taking *Sign out* with it; `tsc`, tests, lint and build were all
+> green before and after the fix. Below `sm` the pill is now icon + count, with the sentence in
+> `aria-label`. Verified at both breakpoints and for all three roles, including that an employee
+> gets no link, no pill and no query. The **warn** pre-check tone also appeared for the first
+> time, on a `shelf.delete` against a shelf holding placed packs — all four tones have now been
+> seen on screen. Full note in PROGRESS.md.
 
 
 
