@@ -32,7 +32,7 @@ npx tsx prisma/seed.ts
 | Login | Password | Can |
 |---|---|---|
 | `admin@example.com` | `admin123` | everything: the above plus reverse, adjust, sites, shelves, accounts, backups |
-| `finance@example.com` | `finance123` | the day-to-day job — receive deliveries, manage items, dispatch, return, consume, transfer, flag for collection |
+| `finance@example.com` | `finance123` | the day-to-day job — receive deliveries, manage items, dispatch, return, consume, transfer, flag for collection. Can *ask* an admin to reverse, adjust, or change sites and shelves |
 | `employee@example.com` | `employee123` | **retired 2026-09-05.** Still works, no longer assigned; finance now covers the same ground |
 
 **Change all three before any shared use.** Roles *were* workspaces rather than levels; since
@@ -43,9 +43,19 @@ history, changing structure, accounts and backups. The tables themselves are in
 
 > **Note what this gave up.** One finance account can now receive goods *and* dispatch them with
 > nobody else involved. That separation was a real control; retiring the employee account traded
-> it away deliberately. Phase 11 Part 2 gives some of it back: finance *requests* the admin-only
-> actions and any admin approves, with the work recorded against whoever asked. Accounts and
-> backups stay outside that queue permanently. See PROGRESS.md §9.
+> it away deliberately. Phase 11 Part 2 (built 2026-09-07) gives some of it back: finance
+> *requests* the admin-only actions and any admin approves, with the work recorded against
+> whoever asked.
+>
+> ⛔ **Accounts and backups are outside that queue permanently, and this is not an unfinished
+> corner.** `user:manage` is excluded because an approval flow that can mint an admin is not an
+> approval flow — "make me an admin" would be one approval away from granting the power to
+> approve, and every other restriction becomes decorative. `backup:manage` is excluded because
+> `restoreDatabase` drops and recreates every table, `ApprovalRequest` included: an approved
+> restore would erase the row that authorised it *and* the record of who approved it, destroying
+> its own audit trail as its last act. The first is the client's explicit instruction; the second
+> is a fact about what restore does. Both are enforced by invariants in `capabilities.test.ts`
+> and `args.test.ts`. See PROGRESS.md §9 and REDESIGN-PLAN.md.
 
 Run the tests:
 
@@ -91,8 +101,9 @@ It reads `.env` (the deployment database), not `.env.local`.
   not yet built. And the 2026-09-05 decision on **roles and approvals** (Phase 11) — finance
   absorbs the employee role, and gains an admin-approval queue for the rest. It reverses the
   earlier "approval workflows are out of scope" call, and records why account management and
-  backup restore must stay outside that queue. **Part 3 of it is built** (stock counts store a
-  correction, not a snapshot); Parts 1 and 2 are not.
+  backup restore must stay outside that queue — the two conclusions in that section most likely
+  to be re-derived wrongly later. **All three parts are built** as of 2026-09-07; the migration
+  is applied locally only.
 - [.env.example](.env.example) — every environment variable, and what breaks without it.
 - [inventory_management.md.txt](inventory_management.md.txt) — the original problem statement.
 - [storeroom-heavy-stock-plan.md](storeroom-heavy-stock-plan.md) — physical storage plan for
@@ -102,7 +113,7 @@ It reads `.env` (the deployment database), not `.env.local`.
 
 All seven phases — the six-phase functional redesign and the Phase 7 UI overhaul — are built
 and verified in the browser; `npx tsc --noEmit` and `npm run build` pass, and `npm test` runs
-136 unit tests.
+153 unit tests.
 
 **Phase 8 — hosting — is in progress; re-planned 2026-08-25 into two parts.** Already built:
 account management (`/users` for an admin, `/account` for everyone), a `DATABASE_URL` that
@@ -128,10 +139,10 @@ alternatives, and the two decisions still open.
 
 **Not production-ready yet.** Before real stock goes in:
 
-- **The database layer has no test coverage.** The 142 tests cover the pure modules
+- **The database layer has no test coverage.** The 153 tests cover the pure modules
   (allocation, corrections, matching, paste parsing, site balances, adjustment deltas,
-  capability tables, approval argument parsing, nav active-link matching, database-URL
-  resolution). Everything that writes to the database —
+  capability tables, approval argument parsing/summaries/outcomes/labels, nav active-link
+  matching, database-URL resolution). Everything that writes to the database —
   `packs.ts`, `recordDispatch`, `recordDelivery`, the site lifecycle — has none. This is the
   largest outstanding risk, and **Part A puts real stock through exactly that code with no
   parallel record to catch a mistake.** It is not a theoretical risk: recording a stock count
@@ -143,10 +154,9 @@ alternatives, and the two decisions still open.
   underlying dump/restore logic.
 - The seeded passwords above are still in place. You can now change them in the app.
 
-**Phase 11, decided 2026-09-05 — Parts 1 and 3 are built; Part 2 works end to end, with two
-stages left.** The employee role
-folds into finance, and finance gets an approval queue for the admin-only actions (any admin can
-answer; the first to do so clears it for everyone). Three independent parts:
+**Phase 11, decided 2026-09-05 — all three parts built, the last on 2026-09-07.** The employee
+role folds into finance, and finance gets an approval queue for the admin-only actions (any admin
+can answer; the first to do so clears it for everyone). Three independent parts:
 
 - ✅ **Part 1 — done 2026-09-05.** Finance absorbed the five employee capabilities. No migration;
   the employee role is retired rather than removed, so existing logins keep working. Verified as
@@ -158,18 +168,14 @@ answer; the first to do so clears it for everyone). Three independent parts:
   also turned up a worse bug it was sitting on: `adjustStock` validated the `reason` field as a
   number, so **recording a stock count had never once worked** since Phase 3 built it. Both
   fixed; see PROGRESS.md §9 for the as-built note.
-- 🔨 **Part 2 — the approval workflow. Working end to end as of 2026-09-07, two stages left.**
-  A finance user raises a request from a real form, every admin sees it at `/approvals` with a
-  **live pre-check** of what would happen *now*, and approving **runs the operation**, recorded
-  against whoever asked. The claim and the work share one transaction, so two admins answering at
-  once cannot double-execute and a refusal leaves nothing half-done. Built: the operations
-  registry, `runOrRequest`, the eleven rewired actions, the decision actions, the page, and the
-  nav entry and header pill.
-
-  **Still to come (stages 8-9):** the twelve call sites that still say nothing to finance —
-  until they are re-labelled, the only way in is `/sites/new` and `/shelf/new`, so
-  "Request deletion", "Request this count" and "Request reversal" do not exist yet. Then the
-  final doc pass.
+- ✅ **Part 2 — the approval workflow. Done 2026-09-07**, across ten staged commits.
+  A finance user raises a request from a real control — every one of the twelve now says so,
+  "Ask an admin to delete this site", "Request reversal" — every admin sees it at `/approvals`
+  with a **live pre-check** of what would happen *now*, and approving **runs the operation**,
+  recorded against whoever asked. The claim and the work share one transaction, so two admins
+  answering at once cannot double-execute and a refusal leaves nothing half-done. Eleven write
+  actions were rewired through a single gate and **admin behaviour is unchanged** — a
+  twelve-flow regression walkthrough was run three times over the course of the work.
 
   **Two caveats before this goes near the pilot.** The `ApprovalRequest` migration is applied
   locally only — the pilot reports **1 pending** through `npm run db:migrate:turso`. And

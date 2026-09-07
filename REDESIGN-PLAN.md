@@ -12,9 +12,16 @@
 > than a snapshot — both landed 2026-09-05, the latter along with a two-phases-old bug that had
 > stopped stock counts working at all. Part 2, the approval queue, WORKS END TO END as of
 > 2026-09-07: finance raises a request from a real form, every admin sees it at `/approvals`
-> with a live pre-check, and approving runs the operation recorded against whoever asked. Two
-> stages remain — the twelve call sites that still offer finance no button, and the final doc
-> pass.** See "Decided 2026-09-05" in the cross-phase notes for the stage-by-stage state.
+> with a live pre-check, and approving runs the operation recorded against whoever asked.
+> Stage 8 (2026-09-07) made it REACHABLE — the twelve call sites that hid their controls behind
+> a bare `can()` now offer finance a control saying it will ask. **Part 2 is COMPLETE, stages
+> 0-9.**
+>
+> ⛔ **The one conclusion to carry out of this file: `user:manage` and `backup:manage` are
+> requestable by NOBODY, and that is not an unfinished corner of the feature.** An approval flow
+> that can mint an admin is not an approval flow, and an approved restore drops the table holding
+> the request that authorised it. Written out in full in Part 2 below, and enforced by invariants
+> in `capabilities.test.ts` and `args.test.ts`.** See "Decided 2026-09-05" in the cross-phase notes for the stage-by-stage state.
 >
 > Read [PROGRESS.md](PROGRESS.md) first for current state, then this for what to build next.
 >
@@ -86,7 +93,7 @@ does not physically have, and reordering would be decided against stock sitting 
 | 6 | ✅ **DONE** — site material lifecycle: consumption, pickup, transfers, cross-site view |
 | 7 | ✅ **DONE** — UI overhaul + mobile web; full record at the end of this file |
 | 8 | 🔨 **IN PROGRESS** — accounts, `DATABASE_URL` fail-fast and build prerequisites done; **Part A** (Turso + Vercel pilot) and **Part B** (offline, carried drive) both pending |
-| 11 | 🔨 **PARTS 1 AND 3 DONE, PART 2 WORKING (STAGES 8-9 LEFT)** — roles and admin approvals (decided 2026-09-05, in the cross-phase notes). Part 1 (FINANCE absorbs the retired EMPLOYEE role) and Part 3 (adjustments store the correction) built; Part 2 works end to end since 2026-09-07, with the twelve call sites and the doc pass outstanding |
+| 11 | ✅ **ALL THREE PARTS BUILT** — roles and admin approvals (decided 2026-09-05, in the cross-phase notes). Part 1 (FINANCE absorbs the retired EMPLOYEE role) and Part 3 (adjustments store the correction) built 2026-09-05; **Part 2, the approval queue, completed 2026-09-07** across stages 0-9. ⛔ `user:manage` and `backup:manage` are requestable by nobody — see the section for why that is a fact, not a gap. **Not yet deployed: its migration is applied locally only** |
 
 ## Why 7-8 were deferred, and what has changed since
 
@@ -2054,7 +2061,7 @@ spent.
 ## Still outstanding regardless
 
 **DB-layer test coverage.** Unchanged as the largest risk, and Part A now runs **real stock**
-through it. The 142 tests are all pure and will pass unchanged after the adapter swap **while
+through it. The 153 tests are all pure and will pass unchanged after the adapter swap **while
 proving nothing about it**. The cutover recount bounds the damage; it does not prevent it.
 
 # Cross-phase notes
@@ -2265,7 +2272,7 @@ documenting that nobody should derive it. Invariant 5's pattern, applied to a sm
 4. The dashboard's *"+ N at M sites"* line disappears with the suppressed alert — it hangs
    off the low-stock list, so this should fall out for free. Confirm that it does.
 
-## Decided 2026-09-05: FINANCE absorbs EMPLOYEE, and asks an admin for the rest 🔨 PARTS 1 AND 3 BUILT; PART 2 WORKING, STAGES 8-9 LEFT
+## Decided 2026-09-05: FINANCE absorbs EMPLOYEE, and asks an admin for the rest ✅ ALL THREE PARTS BUILT (Part 2 completed 2026-09-07)
 
 **This reverses an earlier call.** "Approval workflows (employee requests → finance approves)"
 sat in *Out of scope* below since the original plan. The requirement changed: the employee
@@ -2360,7 +2367,7 @@ merge as tidying rather than as a deliberate loosening.
 Net effect once built: **FINANCE is ADMIN minus accounts and backups**, with five capabilities
 reachable only through an approval.
 
-### Part 2 — the approval workflow (≈3-5 days) 🔨 WORKING END TO END; STAGES 8-9 LEFT
+### Part 2 — the approval workflow ✅ BUILT 2026-09-07 (stages 0-9)
 
 > **As built to 2026-09-05** (`1a1f1b8`, `ee5a385`, `3564b74`, `3c2edd2`) — **superseded by the
 > stage notes that follow.** At that point everything below the gating layer existed and
@@ -2378,7 +2385,8 @@ reachable only through an approval.
 > | 5 | the eleven actions rewired through `runOrRequest` | ✅ **no UI path reaches the request arm yet** |
 > | 6 | decide actions, `/approvals`, `proxy.ts` bypass | ✅ **end-to-end, verified live** |
 > | 7 | nav link + header pill | ✅ |
-> | 8-9 | re-labelling twelve call sites, docs | ❌ |
+> | 8 | the twelve call sites re-labelled | ✅ **the request arm is now reachable from the UI** |
+> | 9 | docs | ✅ **2026-09-07** |
 >
 > **Tests: 86 → 136.** `permissions.ts` had never had a test because it imports `@/lib/auth`
 > and `@/lib/prisma` at module scope and the `@/` alias does not resolve under
@@ -2472,7 +2480,36 @@ reachable only through an approval.
 > on `/approvals`. **Standing warning for stage 8:** the `requested` arm of the five
 > result-returning actions has still never run, and what needs watching is not that the request is
 > raised but that its sentence is still on screen afterwards — stage 6 lost that exact message
-> twice. Full note in PROGRESS.md.
+> twice. Full note in PROGRESS.md. *(Stage 8 acted on this: the notice is rendered outside the
+> confirm/expanded branch in all four components, and all five arms were watched on screen. It
+> survives. The related defect that warning did not anticipate was the COLOUR — see below.)*
+>
+> **Stage 8, 2026-09-07 — the feature is now reachable by the people it was built for.** Every
+> stage before this gated its controls on a bare `can()`, so FINANCE saw no button for any of the
+> five capabilities it may request; the twelve call sites now read `capabilityMode()`, and the
+> `requested` arm of the five result-returning actions — never once executed until now — was
+> exercised on screen for every one. New pure `labels.ts` (142 → **153** tests).
+>
+> **The defect it exists to prevent is a colour.** Requestable actions return `ok: false` on the
+> request path and every consuming component does `if (!result.ok) setError(…)`, which renders
+> danger red — so a successful ask would have been reported in the colour of failure. `ok`
+> answers "did the thing happen", not "did anything go wrong", and those differ on exactly this
+> path; `noticeFor` is where they stop being conflated, with `danger` as its default.
+>
+> **Two things added rather than reworded.** The two delete buttons now COLLECT A REASON —
+> `deleteSite`/`deleteShelf` have taken an optional one since stage 5 and nothing passed it, so
+> every delete request would have reached the queue with `reason: null` for the two most
+> consequential operations in the set. And the notice renders OUTSIDE the confirm/expanded branch
+> in all four components, which is the direct answer to the 4c-6 standing warning: the sentence
+> is still on screen afterwards, watched rather than inferred.
+>
+> **Two wording defects a green build could not see, both found by reading the screen**: the ASK
+> prefix composed twice where a control sat inside an already-prefixed paragraph ("Ask an admin
+> to send the request"), now pinned by a test over all fourteen phrases in use; and "Ask an admin
+> to reverse this" wrapped to four lines in a ~60px table cell, now the literal "Request
+> reversal". **ADMIN behaviour is byte-for-byte unchanged** across all six pages, employee still
+> gets nothing, and an approved stock correction ran attributed to the requester (2 → 3 sealed
+> rolls). Full note in PROGRESS.md.
 >
 > **Stage 7, 2026-09-07.** `/approvals` is now reachable: a Settings nav entry gated on
 > `approval:view`, and a header pill carrying AppShell's one and only Prisma query. The wording
@@ -2500,15 +2537,40 @@ navigation because `AppShell` already calls `auth()` and is therefore dynamic.
 
 Requestable: `site:manage`, `shelf:manage`, `shelf:delete`, `stock:reverse`, `stock:adjust`.
 
-**Two capabilities are deliberately NOT requestable, and this is the part most likely to be
-re-litigated wrongly:**
-
-- **`user:manage`.** An approval flow that can mint an admin is not an approval flow. Account
-  management stays hard admin-only, at the client's explicit instruction.
-- **`backup:manage`.** `restoreDatabase` in [restore.ts](src/lib/backup/restore.ts) drops and
-  recreates every table. An approved restore would erase the `ApprovalRequest` row that
-  authorised it *and* the record of which admin approved it. The feature would delete its own
-  audit trail. This is not a policy preference — it is a fact about what restore does.
+> ## ⛔ Two capabilities are requestable by NOBODY — the part most likely to be re-litigated wrongly
+>
+> **This is in force, not aspirational.** Both look like ordinary admin capabilities the queue
+> has simply not got round to, and both will look like an easy win to someone reading
+> `REQUESTABLE`, seeing five entries where there could be seven, and assuming the gap is
+> unfinished work. It is not. Neither exclusion is a judgement about risk appetite that a future
+> conversation can trade away.
+>
+> - **`user:manage` — an approval flow that can mint an admin is not an approval flow.** If
+>   finance may request `user:manage`, then "make me an admin" is one approval away from
+>   granting the power to approve, and *every other restriction in the app becomes decorative* —
+>   any excluded thing is reachable by first becoming the person allowed to do it. The exclusion
+>   is not protecting the accounts page; it is what stops the queue undermining itself. Account
+>   management stays hard admin-only, at the client's explicit instruction.
+> - **`backup:manage` — an approved restore deletes the record that authorised it.**
+>   `restoreDatabase` in [restore.ts](src/lib/backup/restore.ts) drops and recreates *every*
+>   table, `ApprovalRequest` among them. So approving a restore erases the row that asked for it
+>   **and** the record of which admin approved it: the feature destroys its own audit trail as
+>   its last act, leaving a database that cannot say who did this or on whose authority — and no
+>   way to tell that from a restore nobody requested. This is not a policy preference; it is a
+>   fact about what restore does to that table.
+>
+> **Three places enforce this, because one was not enough.** The `REQUESTABLE` doc comment in
+> [capabilities.ts](src/lib/capabilities.ts) states both reasons where the table is edited;
+> `capabilities.test.ts` asserts neither capability appears in any role's requestable list; and
+> `args.test.ts` asserts no operation *kind* maps to either. The third was added on 2026-09-07,
+> during the stage 4c-6 re-verification, because `CAPABILITY_FOR_KIND` in `kinds.ts` is a **third
+> capability table** that a new registry entry has to touch and `capabilities.ts` is not — so the
+> exclusions could have been undone by an edit that never went near the file recording them, with
+> no type error and no visible symptom. **Both invariants were checked by breaking them**:
+> re-pointing `stock.adjust` at `user:manage` fails exactly those two tests and nothing else.
+>
+> **If a future requirement genuinely needs one of these, it does not need this queue.** The
+> answer is a second admin account, not a requestable `user:manage`.
 
 `item:manage` needed no work: it was **already** in the FINANCE list, so finance has been able to
 add item types all along. The original request listed it as an admin feature to unlock; it wasn't
