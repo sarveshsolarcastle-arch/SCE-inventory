@@ -899,7 +899,8 @@ reverse, or adjust; there is no `/approvals` page and no way to raise a request.
 | 4c | [registry.ts](src/lib/approvals/registry.ts), [runOrRequest.ts](src/lib/approvals/runOrRequest.ts), [queue.ts](src/lib/approvals/queue.ts) | ✅ |
 | 5 | the eleven actions rewired through `runOrRequest` | ✅ |
 | 6 | decide actions, `/approvals`, `ApprovalDecision`, the `proxy.ts` bypass | ✅ |
-| 7-9 | shell pill + nav, re-labelling twelve call sites, docs | ❌ |
+| 7 | nav link + header pill (`icons.ts`, `navLinks.ts`, `AppShell.tsx`) | ✅ |
+| 8-9 | re-labelling twelve call sites, docs | ❌ |
 
 **Tests 86 → 136.** The most valuable of those are the seven invariants in
 `capabilities.test.ts`, which is possible at all only because the tables moved out of
@@ -1151,6 +1152,102 @@ SQLite/libsql's serialisation of write transactions covers, and it goes through 
 **Not covered, and worth naming:** a replayed `approveRequest` POST from a finance account. It is
 guarded by the same `requireCapability("approval:decide")` used by every other action in the app,
 but that specific replay was not exercised.
+
+#### Re-verification of stages 4c-6, 2026-09-07
+
+A read-through of what had been committed, looking for the things a passing build cannot see.
+Two findings and one tidy.
+
+**1. A third capability table had no invariants. Fixed — 140 → 142 tests.**
+`capabilities.test.ts` guards `CAPABILITIES` and `REQUESTABLE` against each other, but
+`CAPABILITY_FOR_KIND` in [kinds.ts](src/lib/approvals/kinds.ts) is a **third** table saying which
+capability each operation needs, and nothing checked it against the other two. A wrong entry
+there produces no type error and no visible symptom. Two invariants now live in
+`args.test.ts`:
+
+- **No operation may map to `user:manage` or `backup:manage`.** Those exclusions are facts rather
+  than preferences — an approval flow that can mint an admin is not an approval flow, and
+  `restoreDatabase` would erase the row that authorised it — but they were recorded only in
+  `REQUESTABLE`, in a file that a new registry entry never has to touch. This is the edit that
+  would have undone them by accident.
+- **Every operation's capability must be requestable by somebody.** Otherwise the registry entry
+  is unreachable: `runOrRequest` refuses it for every role that lacks the capability and executes
+  it directly for every role that holds it. Dead weight that still looks like part of the feature.
+
+**Both were checked by breaking them**, not just by watching them pass: re-pointing
+`stock.adjust` at `user:manage` fails exactly those two tests and nothing else. A test that has
+never been seen to fail is not evidence.
+
+**2. A dead search param.** `/approvals` declared `withdrawn?: string` in its `searchParams` type
+and neither read it nor had anything produce it. Removed, and the surviving `sent` now says where
+it comes from.
+
+**3. The hazard stage 8 must not walk into, written down while it is fresh.** The `requested` arm
+of the five **result-returning** actions — `deleteSite`, `deleteShelf` and the three corrections —
+**has still never run**, because `can()` hides those controls from finance until stage 8
+re-labels them. When it does, the thing to check is not that the request is raised; it is that
+`describeRequested`'s sentence is still **on screen afterwards**. Stage 6 lost that exact message
+twice, and the second cause was server-side: `runOrRequest` calls `revalidateApprovals()` on the
+request path, which includes `revalidatePath("/", "layout")`, and a revalidating server action
+makes Next re-render with the action's own response.
+
+The reasoning says it survives here — `DeleteSiteButton` and `CorrectionPanel` stay mounted in
+the same position across a re-render, unlike the approvals card, which was **removed from a
+list** and so lost its state. But that is reasoning, not evidence, and the same reasoning looked
+sound before stage 6 proved it wasn't. **Watch the screen, do not infer it from the row.**
+
+#### Stage 7 — as built, 2026-09-07 (handed to a second agent, then reviewed and fixed)
+
+`/approvals` had been reachable only by URL or by being redirected there. Now:
+[icons.ts](src/components/nav/icons.ts) gains `"approvals"` → `ClipboardCheck` (the same mark
+the page heads its queue with), [navLinks.ts](src/components/nav/navLinks.ts) gains the Settings
+entry gated on `approval:view`, and [AppShell.tsx](src/components/AppShell.tsx) gains the header
+pill and **the shell's one and only Prisma query**.
+
+**The wording distinguishes the two audiences, because the count means different things.** An
+admin reads *"2 requests awaiting your approval"*; a finance user reads *"2 requests of yours
+awaiting approval"*. A pill telling someone something awaits *their* approval when they cannot
+approve anything would be false. Plurals are spelled out rather than derived — the
+`siteBlockers.ts` rule.
+
+**`tones.ts` was left alone, deliberately.** The plan called for an `APPROVAL_STATUS_TONE` there;
+it already exists in [status.ts](src/lib/approvals/status.ts), typed over the union that file
+owns and under test. A second copy would be two tables naming the same thing with no type link
+between them.
+
+**A defect found in review, not by the build: the pill broke the mobile header.** At 375px the
+full sentence wrapped to two lines and burst the `h-16 shrink-0` header, dragging *Sign out* onto
+two lines with it. Below `sm` the pill is now the icon plus the bare count, with the full
+sentence kept in `aria-label`/`title`; from `sm` up it reads in full. `tsc`, `npm test`, lint and
+`npm run build` were all clean **before** that fix and all clean after — a fixed-height header
+overflowing is not something any of them can see. The mobile checklist at the top of
+REDESIGN-PLAN.md is why this counts as a defect rather than a nitpick.
+
+**Verified in the browser, both breakpoints and all three roles:**
+
+| Check | Result |
+|---|---|
+| Finance | Approvals nav link present; pill reads *"1 request of yours awaiting approval"* |
+| Admin | Same link; pill reads *"1 request awaiting your approval"* |
+| Plural | Second request queued → *"2 requests awaiting your approval"* |
+| Liveness | A request answered out-of-band dropped the count 2 → 1 **on the next navigation**, which is exactly the documented behaviour: no polling, fresh per navigation |
+| Empty queue | Admin with 0 pending sees **no pill**, and the nav link stays (it is how you reach the page) |
+| Employee | **No nav link and no pill**, and `pendingApprovalCount` returns 0 without touching the database |
+| 375px | Icon + count on one line, header height intact, Sign out back on one line |
+
+**A pre-check tone got its first real outing here too.** Queueing a `shelf.delete` against Shelf A
+produced the **warn** branch, never hit in stage 6: *"This will work, and will forget where things
+sit: 5 boxes have an item assigned and 5 packs are recorded on this shelf. No stock and no
+history is lost."* All four tones — ok, warn, danger, neutral — have now been seen on screen.
+
+**One console error chased to ground rather than waved through.** `ClipboardCheck is not defined`
+appeared in the console — from the moment the JSX existed but its import did not, retained in the
+tab's buffer. A fresh tab against a restarted server renders the pill with a completely clean
+console and no server errors. Recorded because "I saw an error and decided it was stale" is only
+worth anything if you say how you checked.
+
+`npm test` 142/142, `tsc` clean, lint unchanged (the same 1 pre-existing error and 2 warnings),
+`npm run build` passes. `dev.db` restored from a pre-verification copy.
 
 ### Resolved by the redesign — all of it has now landed
 

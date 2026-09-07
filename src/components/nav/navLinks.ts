@@ -83,6 +83,12 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Settings",
     links: [
+      // `approval:view`, not `canRequest`: ADMIN and FINANCE hold it, EMPLOYEE
+      // does not, so the filter AppShell already applies is the whole gate.
+      // Softening it to "anyone who may request something" would show the queue
+      // to a role that cannot read it — /approvals redirects on the same
+      // capability.
+      { href: "/approvals", label: "Approvals", capability: "approval:view", icon: "approvals" },
       // Everyone can reach their own account; only admins see Accounts.
       { href: "/account", label: "Your account", capability: null, icon: "account" },
       { href: "/users", label: "Accounts", capability: "user:manage", icon: "users" },

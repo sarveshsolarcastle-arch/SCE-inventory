@@ -11,6 +11,9 @@ import {
   parseStockAdjustArgs,
 } from "./args.ts";
 import { CAPABILITY_FOR_KIND, OPERATION_KINDS, isOperationKind } from "./kinds.ts";
+import { REQUESTABLE } from "../capabilities.ts";
+
+const ROLES = ["ADMIN", "FINANCE", "EMPLOYEE"] as const;
 
 /* These parsers run twice: once from a form, and again hours later against
  * JSON that round-tripped through the database and was ultimately supplied by
@@ -27,6 +30,41 @@ test("shelf.delete needs shelf:delete, not shelf:manage", () => {
   // The split exists so granting the relabel never silently grants the demolish.
   assert.equal(CAPABILITY_FOR_KIND["shelf.delete"], "shelf:delete");
   assert.equal(CAPABILITY_FOR_KIND["shelf.slot.boxType"], "shelf:manage");
+});
+
+/* The two invariants below tie CAPABILITY_FOR_KIND to REQUESTABLE. Neither was
+ * enforced anywhere until 2026-09-07: capabilities.test.ts guards the two
+ * capability tables against each other, but CAPABILITY_FOR_KIND is a THIRD
+ * table, and a wrong entry in it produces no type error and no visible symptom.
+ * Same reasoning as the invariants in capabilities.test.ts — make the wrong
+ * state fail the build rather than trusting anyone to remember. */
+
+test("THE INVARIANT: no operation may touch accounts or backups", () => {
+  // These two are absent from REQUESTABLE for reasons that are facts, not
+  // preferences: an approval flow that can mint an admin is not an approval
+  // flow, and restoreDatabase would erase the very row that authorised it.
+  // Adding an operation kind for either is how that exclusion would be undone
+  // by accident, from a file that never mentions REQUESTABLE.
+  for (const kind of OPERATION_KINDS) {
+    const capability = CAPABILITY_FOR_KIND[kind];
+    assert.notEqual(capability, "user:manage", `${kind} must not exist`);
+    assert.notEqual(capability, "backup:manage", `${kind} must not exist`);
+  }
+});
+
+test("THE INVARIANT: every operation is one that somebody can actually request", () => {
+  // An operation whose capability nobody may request can never reach the
+  // approval path at all: runOrRequest would refuse it for every role that
+  // does not already hold it, and execute it directly for every role that
+  // does. The registry entry would be dead weight that still LOOKS like part
+  // of the feature — which is worse than not being there.
+  const requestable = new Set(ROLES.flatMap((role) => REQUESTABLE[role]));
+  for (const kind of OPERATION_KINDS) {
+    assert.ok(
+      requestable.has(CAPABILITY_FOR_KIND[kind]),
+      `${kind} needs ${CAPABILITY_FOR_KIND[kind]}, which no role may request`
+    );
+  }
 });
 
 test("an unknown kind is not a kind", () => {
