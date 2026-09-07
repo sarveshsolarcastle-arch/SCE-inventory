@@ -98,11 +98,15 @@ export type Operation<Args, Result> = {
   /** After commit, on both the direct and the approved path. Never inside the
    * transaction callback: it would advertise a change that later rolled back. */
   revalidate(args: Args, result: Result): void;
-
-  /** Direct-execution path only; /approvals ignores it, because the thing it
-   * would navigate to is not where the admin was working. */
-  redirectTo?(args: Args, result: Result): string;
 };
+
+/* NO `redirectTo` here, though stage 4c had one. It turned out to have exactly
+ * one consumer each — the action that owns it — because /approvals deliberately
+ * ignores it: where to go after a write is a fact about the screen the user was
+ * on, not about the operation. Two places describing one navigation, reached
+ * through an optional call, cost more than the literal `redirect()` now sitting
+ * in the action beside the form it belongs to. Removed in stage 5, when the
+ * second consumer failed to appear. */
 
 /* Deliberately NO `capability` field on Operation, though the plan sketched
  * one. It already exists — CAPABILITY_FOR_KIND in kinds.ts — in a file pure
@@ -214,7 +218,6 @@ export const OPERATIONS: Registry = {
     precheck: async () => CLEAR,
     execute: (tx, args) => siteOps.createSite(tx, args),
     revalidate: () => revalidateSites(),
-    redirectTo: (_args, result) => `/sites/${result.id}`,
   },
 
   "site.update": {
@@ -226,7 +229,6 @@ export const OPERATIONS: Registry = {
       (await siteName(args.siteId)) === null ? missing("That site") : CLEAR,
     execute: (tx, args) => siteOps.updateSite(tx, args),
     revalidate: (args) => revalidateSites(args.siteId),
-    redirectTo: (args) => `/sites/${args.siteId}`,
   },
 
   "site.delete": {
@@ -258,7 +260,6 @@ export const OPERATIONS: Registry = {
     precheck: async () => CLEAR,
     execute: (tx, args) => shelfOps.createShelf(tx, args),
     revalidate: () => revalidateShelf(),
-    redirectTo: (_args, result) => `/shelf/${result.id}`,
   },
 
   "shelf.delete": {

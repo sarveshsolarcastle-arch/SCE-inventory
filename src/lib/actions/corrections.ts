@@ -1,7 +1,9 @@
 "use server";
 
 /* The auth boundary and the transport shape. Operations live in
- * @/lib/approvals/ops/corrections — see ops/sites.ts for why.
+ * @/lib/approvals/ops/corrections — see ops/sites.ts for why, and
+ * actions/sites.ts for why runOrRequest replaced requireCapability without
+ * loosening anything.
  *
  * Two different problems that are easy to conflate, and must not be:
  *
@@ -15,19 +17,36 @@
  *
  * Conflating reversal and return silently corrupts pack state: a reversal puts
  * 75 m back on the roll it was cut from, a return creates a fresh 75 m offcut.
+ *
+ * All three collect a mandatory reason already, so the approval reason comes
+ * for free — it is the same sentence, and it should be: "why are you undoing
+ * this" and "why are you asking me to undo this" are one question.
  */
 
-import { prisma } from "@/lib/prisma";
-import { requireCapability } from "@/lib/permissions";
-import * as ops from "@/lib/approvals/ops/corrections";
-import { revalidateCorrections } from "@/lib/approvals/revalidate";
+import { NotPermittedError } from "@/lib/permissions";
 import {
   parseReverseDispatchArgs,
   parseReverseTransactionArgs,
   parseStockAdjustArgs,
 } from "@/lib/approvals/args";
+import { runOrRequest } from "@/lib/approvals/runOrRequest";
+import { describeRequested, type RequestedResult } from "@/lib/approvals/outcome";
 
-export type CorrectionResult = { ok: true } | { ok: false; message: string };
+export type CorrectionResult =
+  | { ok: true }
+  | { ok: false; message: string }
+  | RequestedResult;
+
+/** Every failure here is a sentence for the user, never a throw: these actions
+ * are called from CorrectionPanel and the reversal buttons, which render
+ * `result.message` in an Alert. A NotPermittedError is the one case worth
+ * naming separately — it is not a refusal by the operation, it is the account. */
+function refusal(error: unknown, fallback: string): CorrectionResult {
+  if (error instanceof NotPermittedError) {
+    return { ok: false, message: "Your account cannot correct stock records" };
+  }
+  return { ok: false, message: error instanceof Error ? error.message : fallback };
+}
 
 /** Undoes a movement recorded in error by restoring the exact prior state.
  *
@@ -38,43 +57,32 @@ export async function reverseTransaction(
   transactionId: string,
   formData: FormData
 ): Promise<CorrectionResult> {
-  const { id: userId } = await requireCapability("stock:reverse");
-
   const reason = String(formData.get("reason") ?? "").trim();
   if (!reason) return { ok: false, message: "A reason is required to reverse a movement" };
 
   try {
     const args = parseReverseTransactionArgs({ transactionId, reason });
-    await prisma.$transaction((tx) => ops.reverseTransaction(tx, args, userId));
+    const outcome = await runOrRequest("stock.reverseTransaction", args, reason);
+    return outcome.kind === "executed" ? { ok: true } : describeRequested(outcome);
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Reversal failed" };
+    return refusal(error, "Reversal failed");
   }
-
-  revalidateCorrections();
-  return { ok: true };
 }
 
 export async function reverseDispatch(
   dispatchId: string,
   formData: FormData
 ): Promise<CorrectionResult> {
-  const { id: userId } = await requireCapability("stock:reverse");
-
   const reason = String(formData.get("reason") ?? "").trim();
   if (!reason) return { ok: false, message: "A reason is required to reverse a dispatch" };
 
   try {
     const args = parseReverseDispatchArgs({ dispatchId, reason });
-    await prisma.$transaction((tx) => ops.reverseDispatch(tx, args, userId));
+    const outcome = await runOrRequest("stock.reverseDispatch", args, reason);
+    return outcome.kind === "executed" ? { ok: true } : describeRequested(outcome);
   } catch (error) {
-    return {
-      ok: false,
-      message: error instanceof Error ? error.message : "Dispatch reversal failed",
-    };
+    return refusal(error, "Dispatch reversal failed");
   }
-
-  revalidateCorrections();
-  return { ok: true };
 }
 
 /** Records a physical count that disagrees with the ledger.
@@ -86,6 +94,10 @@ export async function reverseDispatch(
  * ledger figure it showed them, so the server can work out the size of the
  * error they found and apply THAT.
  *
+ * Under an approval that stops being a nicety. The gap between counting and
+ * applying becomes hours, and only the size of an error survives legitimate
+ * movement in between.
+ *
  * Field names, all from CorrectionPanel's AdjustStockForm:
  *   sealed_<packSize>        counted number of sealed packs of that size
  *   open_<packId>            counted remaining in that open pack
@@ -95,8 +107,6 @@ export async function adjustStock(
   itemId: string,
   formData: FormData
 ): Promise<CorrectionResult> {
-  const { id: userId } = await requireCapability("stock:adjust");
-
   const reason = String(formData.get("reason") ?? "").trim();
   if (!reason) return { ok: false, message: "A reason is required for a stock adjustment" };
 
@@ -143,11 +153,9 @@ export async function adjustStock(
 
   try {
     const args = parseStockAdjustArgs({ itemId, sealed, open, reason });
-    await prisma.$transaction((tx) => ops.adjustStock(tx, args, userId));
+    const outcome = await runOrRequest("stock.adjust", args, reason);
+    return outcome.kind === "executed" ? { ok: true } : describeRequested(outcome);
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Adjustment failed" };
+    return refusal(error, "Adjustment failed");
   }
-
-  revalidateCorrections();
-  return { ok: true };
 }

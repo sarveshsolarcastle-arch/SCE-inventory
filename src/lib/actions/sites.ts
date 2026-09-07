@@ -5,19 +5,27 @@
  * transaction — see the header there for why they cannot live in this file.
  *
  * Every async export here is a network-reachable RPC endpoint, because of the
- * `"use server"` above. That is the whole reason each one starts with
- * requireCapability: hiding a button proves nothing. */
+ * `"use server"` above. That is why each one goes through runOrRequest, which
+ * holds the gate: hiding a button proves nothing. `requireCapability` no longer
+ * appears here and its absence is not a relaxation — runOrRequest checks
+ * `can()` exactly as before and throws the same NotPermittedError. What changed
+ * is only what happens to a role that may ASK: instead of the refusal, it gets
+ * an ApprovalRequest row and a sentence saying so.
+ *
+ * Nothing here revalidates, either: the operation's own path list runs inside
+ * runOrRequest, so the direct and approved paths cannot invalidate different
+ * things. Redirects stay here, because where to go afterwards is a fact about
+ * the screen the user was on.
+ */
 
-import { prisma } from "@/lib/prisma";
-import { NotPermittedError, requireCapability } from "@/lib/permissions";
+import { NotPermittedError } from "@/lib/permissions";
 import { redirect } from "next/navigation";
-import * as ops from "@/lib/approvals/ops/sites";
-import { revalidateSites } from "@/lib/approvals/revalidate";
 import { parseSiteCreateArgs, parseSiteUpdateArgs } from "@/lib/approvals/args";
+import { runOrRequest } from "@/lib/approvals/runOrRequest";
+import { describeRequested, type RequestedResult } from "@/lib/approvals/outcome";
 
 export async function createSite(formData: FormData) {
   "use server";
-  await requireCapability("site:manage");
 
   const args = parseSiteCreateArgs({
     name: formData.get("name"),
@@ -25,17 +33,20 @@ export async function createSite(formData: FormData) {
     notes: formData.get("notes"),
   });
 
-  const site = await prisma.$transaction((tx) => ops.createSite(tx, args));
+  const outcome = await runOrRequest("site.create", args);
 
-  revalidateSites();
-  // Outside the transaction: redirect() throws NEXT_REDIRECT, which inside
-  // would roll the write back.
-  redirect(`/sites/${site.id}`);
+  // Outside the transaction, and after runOrRequest has returned: redirect()
+  // throws NEXT_REDIRECT, which inside would roll the write back.
+  redirect(
+    outcome.kind === "executed"
+      ? `/sites/${outcome.value.id}`
+      : // The site does not exist yet, so there is nowhere else to send them.
+        `/approvals?sent=${outcome.requestId}`
+  );
 }
 
 export async function updateSite(siteId: string, formData: FormData) {
   "use server";
-  await requireCapability("site:manage");
 
   const args = parseSiteUpdateArgs({
     siteId,
@@ -44,33 +55,39 @@ export async function updateSite(siteId: string, formData: FormData) {
     notes: formData.get("notes"),
   });
 
-  await prisma.$transaction((tx) => ops.updateSite(tx, args));
+  const outcome = await runOrRequest("site.update", args);
 
-  revalidateSites(siteId);
-  redirect(`/sites/${siteId}`);
+  // Back to the site either way. On the request path the page shows an
+  // acknowledgement from `?requested`, rather than bouncing someone out of the
+  // site they were editing to read a queue.
+  redirect(
+    outcome.kind === "executed"
+      ? `/sites/${siteId}`
+      : `/sites/${siteId}?requested=${outcome.requestId}`
+  );
 }
 
-export type DeleteSiteResult = { ok: true } | { ok: false; message: string };
+export type DeleteSiteResult =
+  | { ok: true }
+  | { ok: false; message: string }
+  | RequestedResult;
 
-export async function deleteSite(siteId: string): Promise<DeleteSiteResult> {
+/** `reason` is optional because this is called from an onClick rather than a
+ * form; it becomes the approval's reason when the caller can only request. */
+export async function deleteSite(
+  siteId: string,
+  reason?: string
+): Promise<DeleteSiteResult> {
   try {
-    await requireCapability("site:manage");
+    const outcome = await runOrRequest("site.delete", { siteId }, reason?.trim() || null);
+    return outcome.kind === "executed" ? { ok: true } : describeRequested(outcome);
   } catch (error) {
     if (error instanceof NotPermittedError) {
       return { ok: false, message: "Your account cannot delete sites" };
     }
-    return { ok: false, message: "Not signed in" };
-  }
-
-  try {
-    await prisma.$transaction((tx) => ops.deleteSite(tx, { siteId }));
-  } catch (error) {
     return {
       ok: false,
       message: error instanceof Error ? error.message : "Could not delete the site",
     };
   }
-
-  revalidateSites();
-  return { ok: true };
 }

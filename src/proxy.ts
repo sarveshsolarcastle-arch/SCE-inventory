@@ -13,14 +13,18 @@ import type { Role } from "@/generated/prisma/enums";
  * each server action, because actions are directly invocable regardless of
  * which page the caller came from.
  *
- * TODO (Phase 11 Part 2, stage 5): this will also need to admit a role that may
+ * TODO (Phase 11 Part 2, stage 6): this will also need to admit a role that may
  * only REQUEST what the page does — finance reaching /sites/new to raise a
- * request is the point of the approvals work. That change must land WITH the
- * rewired actions, not before them: on its own it would let finance open a
- * create form whose action still throws NotPermittedError on submit, which is
- * the same broken-form bug just fixed on the site detail page. /users and
- * /backups stay shut to everyone but admin regardless, because neither is
- * requestable by anyone. */
+ * request is the point of the approvals work. Add ["/approvals",
+ * "approval:view"] and make the test `!can(role, needed) && !canRequest(role,
+ * needed)`.
+ *
+ * STAGE 5 (2026-09-07) MOVED THE BLOCKER RATHER THAN CLEARING IT. The actions
+ * no longer throw on submit — createSite now enqueues a request and redirects
+ * to /approvals — but that page does not exist until stage 6, so opening the
+ * form early would replace one broken path with another: a form whose submit
+ * lands on a 404. It goes in with the page. /users and /backups stay shut to
+ * everyone but admin regardless, because neither is requestable by anyone. */
 const ROUTE_CAPABILITIES: [prefix: string, capability: Capability][] = [
   ["/items/new", "item:manage"],
   ["/sites/new", "site:manage"],
