@@ -6,22 +6,14 @@
 import { prisma } from "@/lib/prisma";
 import { NotPermittedError, requireCapability } from "@/lib/permissions";
 import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
 import * as ops from "@/lib/approvals/ops/shelf";
+import { revalidateShelf } from "@/lib/approvals/revalidate";
 import {
   parseShelfCreateArgs,
   parseSlotBoxTypeArgs,
   parseSlotFrontRowArgs,
   parseSlotItemArgs,
 } from "@/lib/approvals/args";
-
-function revalidateShelf(shelfId?: string) {
-  revalidatePath("/shelf");
-  if (shelfId) revalidatePath(`/shelf/${shelfId}`);
-  revalidatePath("/items");
-  revalidatePath("/dashboard");
-  revalidatePath("/shelf/suggestions");
-}
 
 export async function createShelf(formData: FormData) {
   "use server";

@@ -896,7 +896,7 @@ reverse, or adjust; there is no `/approvals` page and no way to raise a request.
 | 3 | [capabilities.ts](src/lib/capabilities.ts) + tests; `permissions.ts` re-exports | ✅ |
 | 4a | [kinds.ts](src/lib/approvals/kinds.ts), [args.ts](src/lib/approvals/args.ts) + tests | ✅ |
 | 4b | `summary`/`precheck`/`status` + tests; `ops/*` extracted, actions delegate | ✅ |
-| 4c | `registry.ts`, `runOrRequest.ts`, `queue.ts` | ❌ |
+| 4c | [registry.ts](src/lib/approvals/registry.ts), [runOrRequest.ts](src/lib/approvals/runOrRequest.ts), [queue.ts](src/lib/approvals/queue.ts) | ✅ |
 | 5-9 | gating, `/approvals`, shell pill, re-labelling twelve call sites, docs | ❌ |
 
 **Tests 86 → 136.** The most valuable of those are the seven invariants in
@@ -930,6 +930,69 @@ All twelve flows passed as admin. Two worth recording:
 the rewired actions, or it opens a create form whose action still throws on submit, which is
 the broken-form bug fixed in Part 1 reintroduced through the front door. And the migration is
 applied locally only; the pilot reports it as 1 pending through `npm run db:migrate:turso`.
+
+#### Stage 4c — as built, 2026-09-07
+
+The choke point exists. **Still nothing calls it**, by design: 4c adds
+[registry.ts](src/lib/approvals/registry.ts),
+[runOrRequest.ts](src/lib/approvals/runOrRequest.ts) and
+[queue.ts](src/lib/approvals/queue.ts) as additive modules, and stage 5 is what rewires the
+eleven actions to go through them. The app behaves exactly as it did before.
+
+**Three departures from the plan's sketch, all deliberate.**
+
+1. **`Operation` carries no `capability` field.** The plan put one on every registry entry, but
+   it already exists as `CAPABILITY_FOR_KIND` in [kinds.ts](src/lib/approvals/kinds.ts) — in a
+   file pure enough to be tested. A second copy would be a second thing to keep right, and a
+   wrong entry there produces no type error, no runtime error and no visible symptom until
+   someone can do work they should have had to ask for. `runOrRequest` reads the table.
+   Completeness of the registry is likewise a *type* obligation, not a test: `Registry` is a
+   mapped type over `OperationKind`, so a missing entry fails the build instead of surfacing as
+   an `undefined` at the moment an admin clicks Approve.
+2. **`targetKey` is not null for creates.** The plan describes it as "the row acted on", and a
+   site that does not exist yet has no row — but two finance users asking for the same new site
+   is exactly the duplicate worth collapsing. Creates key on the name (`Site:new:<lowercased>`),
+   so only an exact match collapses.
+3. **The revalidation lists moved to [revalidate.ts](src/lib/approvals/revalidate.ts)** and the
+   three action files now import them. Two paths can run an operation — directly, from the
+   action, and later from the registry when an admin approves — and if their path lists drifted,
+   the approved path would leave a stale page behind. The bug would only ever appear for
+   finance, the one role whose work goes through the queue. Same instinct as extracting and
+   delegating in one step: remove the window rather than document it.
+
+**`runOrRequest` sets an explicit 20s transaction timeout**, against Prisma's 5s default,
+with the reasoning in the code: a 15-line dispatch reversal is 90+ sequential statements, about
+1.4s at the ~15 ms per statement measured from Mumbai and about 20s at the ~230 ms it paid
+before the region fix. **`vercel.json` has therefore stopped being a performance tweak and
+become a correctness dependency** — `"regions": ["bom1"]` is now load-bearing for this feature,
+not just for latency.
+
+**Verified against a local copy — never the pilot** — with a throwaway script, because the DB
+halves of `summarise` and `precheck` are outside the pure-test convention and would otherwise
+ship unexecuted. Every registry entry's summary and pre-check was run against real rows, and
+the three tones that matter all came out right on data that happened to hold them:
+
+- `site.delete` on Borivali Site → **danger**, *"This will now fail: … 15 stock movements, 1
+  dispatch, 1 defective-item record, 1 collection flag attached"* — the operation's own
+  sentence, from `describeSiteBlockers`, not a second wording.
+- `shelf.delete` on Shelf A → **warn**, naming 5 assigned boxes and 5 placed packs and saying
+  plainly that no stock and no history is lost.
+- `stock.reverseDispatch` → **danger**, *"expected 90 left, found 85"* — the same
+  `describeObstacle` string the operation would produce, which is the whole point of sharing
+  `findObstaclesFor` between the two.
+- A deleted target degrades to **neutral** ("no longer exists") rather than throwing, and
+  reversing an `ADJUSTMENT` is refused up front.
+
+The enqueue transaction's two statements were run against the real schema too — create, the
+duplicate probe finding it, a different `kind` on the same `targetKey` *not* collapsing onto it,
+and `pendingApprovalCount` returning 1 to the finance user who raised it and to an admin, 0 to
+another finance user and 0 to an employee without touching the database. The row was deleted
+afterwards; `dev.db` holds no `ApprovalRequest` rows.
+
+**What is still unexecuted, and should not be claimed otherwise:** `runOrRequest` itself. It
+reads the session, so it cannot be driven from a script — stage 5 gives it its first caller, and
+that is when the request path gets exercised in a browser as finance. `npm test` 136/136
+(unchanged — nothing added here is pure), `tsc` clean, `npm run build` passes.
 
 ### Resolved by the redesign — all of it has now landed
 
