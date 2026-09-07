@@ -1379,6 +1379,31 @@ change rather than once.
 >
 > Everything else matches the plan as written below, including the primitives table, the
 > nav grouping, the dark-variant mechanism, and the 14-step order.
+>
+> **Follow-up colour pass, same phase, after first review.** The first cut read flat against
+> the light background. The cause was diagnosed rather than papered over: `StatCard` had only
+> two tones hardcoded (`info`, or `danger` when `alert`), so four of the five dashboard cards
+> rendered the identical pale blue. **The fix was to make tone a real prop, not to add colour
+> for its own sake** — `StatCard` gained `tone` (with `alert` still forcing `danger`), and
+> `CardTitle` gained `tone` + `icon`. Each dashboard card now carries a meaning-bearing
+> colour: blue Total Items, green Low Stock flipping red when non-zero, violet Material at
+> Sites, amber Awaiting Collection, Open Claims red-or-green by count — rendered as a thin
+> coloured top edge plus a matching icon chip. `CardHeader` picked up a `bg-surface-sunken`
+> tint so section headers stop reading as text floating on white, and colour was added where
+> rows were plain text: low-stock rows, the placement-suggestion frequency (now a badge), and
+> the site/shelf card grids.
+>
+> **Rejected: tinting whole card backgrounds.** It fights the light/warm direction the three
+> reference images settled on, and it makes the dense tables harder to read — the same reason
+> the Command Center reference was mined for *structure* and the cloud app for *warmth*, not
+> the other way round. Colour sits on edges, icon chips and badges instead.
+>
+> **`tone` is an explicit prop for the same reason `Tr tone` and `Input invalid` are** (see
+> "Conflict-prone primitives take explicit props" below): there is no `tailwind-merge` here,
+> so a `className` override resolves by CSS source order rather than prop order and can
+> silently lose. And because every tone resolves through `BadgeTone` in `ui/tones.ts`, the
+> dark theme adapted with no extra work — checked in both themes, with the tones brightening
+> against the dark surface rather than muddying.
 
 The trigger: phases 2-6 deliberately shipped plain UI (see "Build plain, not polished"
 above), so the app now has complete functionality wearing the bare Bootstrap-era look of a
@@ -2718,8 +2743,9 @@ Smaller points, noted in passing and still undecided:
 - ~~Approval workflows (employee requests → finance approves).~~ **Reversed 2026-09-05** — see
   "FINANCE absorbs EMPLOYEE, and asks an admin for the rest" above. Note the direction is also
   inverted from what this line assumed: it is **finance requesting, admin approving**. Decided in
-  full; the queue itself (Part 2) is not built, though Parts 1 and 3 of the same decision — the
-  role merge, and the adjustment delta, both of which stand alone — landed 2026-09-05.
+  full; the queue itself (Part 2) has its foundation built and its gating not, so nothing yet
+  changes who can do what. Parts 1 and 3 of the same decision — the role merge, and the
+  adjustment delta, both of which stand alone — landed 2026-09-05.
 - Per-slot counts of *sealed* packs — sealed packs of a size are fungible, so "how many are
   in this particular box" has no operational answer worth storing.
 
