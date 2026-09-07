@@ -43,9 +43,9 @@ history, changing structure, accounts and backups. The tables themselves are in
 
 > **Note what this gave up.** One finance account can now receive goods *and* dispatch them with
 > nobody else involved. That separation was a real control; retiring the employee account traded
-> it away deliberately. Phase 11 Part 2 (half-built) will let finance *request* the admin-only
-> actions, with any admin approving — accounts and backups stay outside that queue permanently.
-> See PROGRESS.md §9.
+> it away deliberately. Phase 11 Part 2 gives some of it back: finance *requests* the admin-only
+> actions and any admin approves, with the work recorded against whoever asked. Accounts and
+> backups stay outside that queue permanently. See PROGRESS.md §9.
 
 Run the tests:
 
@@ -128,7 +128,7 @@ alternatives, and the two decisions still open.
 
 **Not production-ready yet.** Before real stock goes in:
 
-- **The database layer has no test coverage.** The 136 tests cover the pure modules
+- **The database layer has no test coverage.** The 142 tests cover the pure modules
   (allocation, corrections, matching, paste parsing, site balances, adjustment deltas,
   capability tables, approval argument parsing, nav active-link matching, database-URL
   resolution). Everything that writes to the database —
@@ -143,7 +143,8 @@ alternatives, and the two decisions still open.
   underlying dump/restore logic.
 - The seeded passwords above are still in place. You can now change them in the app.
 
-**Phase 11, decided 2026-09-05 — Parts 1 and 3 are built; Part 2 is half-built.** The employee role
+**Phase 11, decided 2026-09-05 — Parts 1 and 3 are built; Part 2 works end to end, with two
+stages left.** The employee role
 folds into finance, and finance gets an approval queue for the admin-only actions (any admin can
 answer; the first to do so clears it for everyone). Three independent parts:
 
@@ -157,15 +158,24 @@ answer; the first to do so clears it for everyone). Three independent parts:
   also turned up a worse bug it was sitting on: `adjustStock` validated the `reason` field as a
   number, so **recording a stock count had never once worked** since Phase 3 built it. Both
   fixed; see PROGRESS.md §9 for the as-built note.
-- 🔨 **Part 2** — the approval workflow. **Foundation built, gating not**, so *nothing yet
-  changes who can do what*: finance still cannot manage sites or shelves, reverse or adjust,
-  and there is no `/approvals` page. Done so far — the `ApprovalRequest` schema (applied
-  locally, **1 pending on the pilot**), the capability tables lifted somewhere testable, the
-  argument parsers, and the operation bodies moved out of the `"use server"` files into
-  `src/lib/approvals/ops/`. That last one is a behaviour-preserving refactor of eleven live
-  write actions, and the twelve-flow regression gate was run against it. Still to come: the
-  registry, `runOrRequest`, the atomic claim, the `/approvals` page, the shell pill, twelve
-  re-labelled call sites, and an explicit `timeout` on the approve path's transaction.
+- 🔨 **Part 2 — the approval workflow. Working end to end as of 2026-09-07, two stages left.**
+  A finance user raises a request from a real form, every admin sees it at `/approvals` with a
+  **live pre-check** of what would happen *now*, and approving **runs the operation**, recorded
+  against whoever asked. The claim and the work share one transaction, so two admins answering at
+  once cannot double-execute and a refusal leaves nothing half-done. Built: the operations
+  registry, `runOrRequest`, the eleven rewired actions, the decision actions, the page, and the
+  nav entry and header pill.
+
+  **Still to come (stages 8-9):** the twelve call sites that still say nothing to finance —
+  until they are re-labelled, the only way in is `/sites/new` and `/shelf/new`, so
+  "Request deletion", "Request this count" and "Request reversal" do not exist yet. Then the
+  final doc pass.
+
+  **Two caveats before this goes near the pilot.** The `ApprovalRequest` migration is applied
+  locally only — the pilot reports **1 pending** through `npm run db:migrate:turso`. And
+  `vercel.json`'s `"regions": ["bom1"]` has stopped being a performance tweak: the approve path
+  runs the claim and the work in one transaction with an explicit 20s timeout, which is
+  comfortable at Mumbai latency and unreachable without it.
 
 PROGRESS.md §9 has the summary; REDESIGN-PLAN.md's "Decided 2026-09-05" section has the
 reasoning and the four traps.
