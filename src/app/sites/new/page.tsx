@@ -3,8 +3,16 @@ import PageHeader from "@/components/ui/PageHeader";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Field, Input } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
+import { capabilityMode, currentUser } from "@/lib/permissions";
+import { controlLabel, requestHint } from "@/lib/approvals/labels";
 
-export default function NewSitePage() {
+/** proxy.ts admits a role that may only REQUEST `site:manage` here — that
+ * bypass is the point of the approvals work — and `createSite` decides which of
+ * the two it gets. The button has to say which, or it promises a site that will
+ * not exist when the page redirects. */
+export default async function NewSitePage() {
+  const user = await currentUser();
+  const mode = capabilityMode(user?.role, "site:manage");
   return (
     <div className="max-w-lg space-y-4">
       <PageHeader title="New Site" />
@@ -20,7 +28,12 @@ export default function NewSitePage() {
             <Field label="Notes">
               <Input name="notes" />
             </Field>
-            <Button type="submit">Create Site</Button>
+            <Button type="submit">
+              {controlLabel(mode, "Create Site", "create this site")}
+            </Button>
+            {requestHint(mode) && (
+              <p className="text-xs font-semibold text-ink-subtle">{requestHint(mode)}</p>
+            )}
           </form>
         </CardBody>
       </Card>

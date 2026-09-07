@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { updateItem } from "@/lib/actions/items";
 import { openPackAction } from "@/lib/actions/transactions";
 import { describeMovement, formatQuantity, formatStock } from "@/lib/units";
-import { can, currentUser } from "@/lib/permissions";
+import { can, capabilityMode, currentUser } from "@/lib/permissions";
 import { adjustStock, reverseTransaction } from "@/lib/actions/corrections";
 import { AdjustStockForm, ReverseButton } from "@/components/CorrectionPanel";
 import Link from "next/link";
@@ -50,8 +50,11 @@ export default async function ItemDetailPage({
   const user = await currentUser();
   const canOpenPacks = can(user?.role, "stock:issue");
   const canEdit = can(user?.role, "item:manage");
-  const canAdjust = can(user?.role, "stock:adjust");
-  const canReverse = can(user?.role, "stock:reverse");
+  // Three-way since stage 8: FINANCE may REQUEST both of these, so hiding
+  // them on a bare `can()` left the two capabilities it is allowed to ask for
+  // with nothing on screen to ask with.
+  const adjustMode = capabilityMode(user?.role, "stock:adjust");
+  const reverseMode = capabilityMode(user?.role, "stock:reverse");
 
   const countRows = [
     ...item.packStock.map((g) => ({
@@ -138,11 +141,12 @@ export default async function ItemDetailPage({
         </div>
       </div>
 
-      {canAdjust && (
+      {adjustMode !== "none" && (
         <AdjustStockForm
           rows={countRows}
           baseUnit={item.baseUnit}
           action={adjustStock.bind(null, item.id)}
+          mode={adjustMode}
         />
       )}
 
@@ -233,13 +237,14 @@ export default async function ItemDetailPage({
                     <Td>
                       {t.reversedAt ? (
                         <span className="text-ink-subtle line-through">reversed</span>
-                      ) : canReverse &&
+                      ) : reverseMode !== "none" &&
                         t.type !== "REVERSAL" &&
                         t.type !== "ADJUSTMENT" &&
                         t.appliedPlan ? (
                         <ReverseButton
                           action={reverseTransaction.bind(null, t.id)}
                           label={`this ${t.type} of ${describeMovement(item, t)}`}
+                          mode={reverseMode}
                         />
                       ) : null}
                     </Td>

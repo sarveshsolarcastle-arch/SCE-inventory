@@ -1,6 +1,6 @@
 import { Undo2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { can, currentUser } from "@/lib/permissions";
+import { capabilityMode, currentUser } from "@/lib/permissions";
 import { reverseDispatch } from "@/lib/actions/corrections";
 import { ReverseButton } from "@/components/CorrectionPanel";
 import { describeMovement } from "@/lib/units";
@@ -34,7 +34,7 @@ export default async function DispatchDetailPage({
   if (!dispatch) notFound();
 
   const user = await currentUser();
-  const canReverse = can(user?.role, "stock:reverse");
+  const reverseMode = capabilityMode(user?.role, "stock:reverse");
 
   const issueLines = dispatch.transactions.filter((t) => t.type === "ISSUE");
   const reversalLines = dispatch.transactions.filter((t) => t.type === "REVERSAL");
@@ -59,9 +59,13 @@ export default async function DispatchDetailPage({
           fullyReversed ? (
             <Badge tone="neutral">Reversed</Badge>
           ) : (
-            canReverse &&
+            reverseMode !== "none" &&
             activeLines.length > 0 && (
-              <ReverseButton action={reverseDispatch.bind(null, dispatch.id)} label="this whole dispatch" />
+              <ReverseButton
+                action={reverseDispatch.bind(null, dispatch.id)}
+                label="this whole dispatch"
+                mode={reverseMode}
+              />
             )
           )
         }

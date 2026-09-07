@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { updateSlotBoxType, toggleFrontRow, assignSlotItem } from "@/lib/actions/shelf";
 import DeleteShelfButton from "@/components/DeleteShelfButton";
-import { can, currentUser } from "@/lib/permissions";
+import { capabilityMode, currentUser } from "@/lib/permissions";
 import ShelfGrid from "@/components/ShelfGrid";
 import { describeSlotContents } from "@/lib/units";
 import { notFound } from "next/navigation";
@@ -55,8 +55,12 @@ export default async function ShelfDetailPage({
   const role = user?.role;
   // The three actions in a slot's popover all require shelf:manage, so that is
   // what gates them. This used to read `role === "ADMIN"`, which gave the right
-  // answer only for as long as ADMIN was the sole holder of that capability.
-  const canManage = can(role, "shelf:manage");
+  // answer only for as long as ADMIN was the sole holder of that capability;
+  // then `can()`, which was right about permission and silent about the third
+  // case — a role that may only ASK, and so should see the popover with
+  // different words on its buttons rather than no popover at all.
+  const manageMode = capabilityMode(role, "shelf:manage");
+  const deleteMode = capabilityMode(role, "shelf:delete");
   const assignedBoxes = shelf.slots.filter((slot) => slot.itemId).length;
 
   const slots = shelf.slots.map((slot) => {
@@ -101,9 +105,11 @@ export default async function ShelfDetailPage({
             threshold. Boxes ringed with a ★ are easily-accessible front-row positions; empty
             boxes are greyed out. Quantities are not stored here — a box shows whatever its
             item&apos;s packs currently hold, so the map cannot drift out of step with stock.
-            {canManage
+            {manageMode === "do"
               ? " You can relabel a box's condition here as material is opened or used up."
-              : " Relabelling a box is an admin job."}
+              : manageMode === "request"
+                ? " You can ask an admin to relabel a box as material is opened or used up — open one and the buttons will say so."
+                : " Relabelling a box is an admin job."}
           </>
         }
       />
@@ -122,12 +128,12 @@ export default async function ShelfDetailPage({
             columns={shelf.columns}
             slots={slots}
             items={items}
-            canManage={canManage}
+            mode={manageMode}
           />
         </CardBody>
       </Card>
 
-      {can(role, "shelf:delete") && (
+      {deleteMode !== "none" && (
         <Card>
           <CardBody>
             <DeleteShelfButton
@@ -135,6 +141,7 @@ export default async function ShelfDetailPage({
               shelfName={shelf.name}
               assignedBoxes={assignedBoxes}
               placedPacks={placedPacks}
+              mode={deleteMode}
             />
           </CardBody>
         </Card>

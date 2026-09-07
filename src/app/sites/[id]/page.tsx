@@ -2,7 +2,8 @@ import { Pencil, Clock } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { updateSite } from "@/lib/actions/sites";
 import { materialsAtSite, oldestContributingDate, effectiveFlagged } from "@/lib/stock";
-import { can, currentUser } from "@/lib/permissions";
+import { can, capabilityMode, currentUser } from "@/lib/permissions";
+import { controlLabel, requestHint } from "@/lib/approvals/labels";
 import SiteMaterialPanel, { type HeldRow } from "@/components/SiteMaterialPanel";
 import DeleteSiteButton from "@/components/DeleteSiteButton";
 import { notFound } from "next/navigation";
@@ -86,6 +87,7 @@ export default async function SiteDetailPage({
       orderBy: { createdAt: "asc" },
     }),
   ]);
+  const siteMode = capabilityMode(user?.role, "site:manage");
   const updateWithId = updateSite.bind(null, site.id);
 
   const flaggedByItem = new Map(pickups.map((p) => [p.itemId, p.quantity]));
@@ -120,12 +122,18 @@ export default async function SiteDetailPage({
             non-admin got a form that threw NotPermittedError into the error
             boundary on save. That was survivable while only employees saw it;
             once finance absorbed the employee workspace (2026-09-05) this
-            became a page they use daily, for consumption and transfers. */}
-        {can(user?.role, "site:manage") ? (
+            became a page they use daily, for consumption and transfers.
+
+            Since stage 8 the gate is three-way. A role that may REQUEST
+            site:manage gets the same form — `updateSite` enqueues instead of
+            saving, and sends them back here with `?requested`, which is what
+            the acknowledgement above is for. Only `none` still gets the
+            read-only card. */}
+        {siteMode !== "none" ? (
           <Card>
             <CardHeader>
               <CardTitle tone="info" icon={<Pencil size={13} />}>
-                Edit Site
+                {controlLabel(siteMode, "Edit Site", "change this site")}
               </CardTitle>
             </CardHeader>
             <CardBody>
@@ -139,11 +147,18 @@ export default async function SiteDetailPage({
                 <Field label="Notes">
                   <Input name="notes" defaultValue={site.notes ?? ""} />
                 </Field>
-                <Button type="submit">Save</Button>
+                <Button type="submit">
+                  {controlLabel(siteMode, "Save", "save these changes")}
+                </Button>
+                {requestHint(siteMode) && (
+                  <p className="text-xs font-semibold text-ink-subtle">
+                    {requestHint(siteMode)}
+                  </p>
+                )}
               </form>
 
               <div className="mt-5 border-t border-line pt-4">
-                <DeleteSiteButton siteId={site.id} siteName={site.name} />
+                <DeleteSiteButton siteId={site.id} siteName={site.name} mode={siteMode} />
               </div>
             </CardBody>
           </Card>
