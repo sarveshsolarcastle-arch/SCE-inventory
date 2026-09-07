@@ -44,3 +44,42 @@ export async function pendingApprovalCount(
       : { status: "PENDING", requestedById: viewer.id },
   });
 }
+
+const REQUEST_FIELDS = {
+  id: true,
+  kind: true,
+  args: true,
+  summary: true,
+  reason: true,
+  status: true,
+  createdAt: true,
+  decidedAt: true,
+  decisionNote: true,
+  requestedBy: { select: { id: true, name: true } },
+  decidedBy: { select: { name: true } },
+} as const;
+
+export type QueueRequest = Awaited<ReturnType<typeof pendingForDecision>>[number];
+
+/** Everything an admin has to answer, oldest first — the order they were asked
+ * in, which is the order they should be dealt with. */
+export async function pendingForDecision(limit = 50) {
+  return prisma.approvalRequest.findMany({
+    where: { status: "PENDING" },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+    select: REQUEST_FIELDS,
+  });
+}
+
+/** One person's own requests, newest first, answered ones included: following
+ * a request through to its answer is the whole reason FINANCE holds
+ * `approval:view` at all. */
+export async function requestsRaisedBy(userId: string, limit = 50) {
+  return prisma.approvalRequest.findMany({
+    where: { requestedById: userId },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    select: REQUEST_FIELDS,
+  });
+}

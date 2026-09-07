@@ -470,3 +470,25 @@ export function operationFor<K extends OperationKind>(
 ): Operation<ArgsFor<K>, ResultFor<K>> {
   return OPERATIONS[kind];
 }
+
+/** The same entry seen by a caller that only learns the kind at RUN time —
+ * the approve path and the queue page, which read it out of a database row and
+ * so cannot name a type parameter for it.
+ *
+ * Arguments are `unknown` on the way in, and the safety story is one rule:
+ * every one of them must have come out of THIS SAME entry's `parse`. That is
+ * why `parse` is the first thing both callers do with the stored JSON, and why
+ * nothing may hand-build an args object to pass here. Widening happens once,
+ * in this function, rather than as a cast scattered through the callers. */
+export type ErasedOperation = {
+  parse(raw: unknown): unknown;
+  summarise(args: unknown): Promise<string>;
+  targetKey(args: unknown): string | null;
+  precheck(args: unknown): Promise<Precheck>;
+  execute(tx: Prisma.TransactionClient, args: unknown, actorId: string): Promise<unknown>;
+  revalidate(args: unknown, result: unknown): void;
+};
+
+export function erasedOperationFor(kind: OperationKind): ErasedOperation {
+  return OPERATIONS[kind];
+}

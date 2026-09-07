@@ -2374,7 +2374,8 @@ reachable only through an approval.
 > | 4b | `summary.ts`, `precheck.ts`, `status.ts` + tests; `ops/*` extracted | ✅ |
 > | 4c | `registry.ts`, `runOrRequest.ts`, `queue.ts` | ✅ **nothing calls them yet** |
 > | 5 | the eleven actions rewired through `runOrRequest` | ✅ **no UI path reaches the request arm yet** |
-> | 6-9 | `/approvals`, shell, re-labelling, docs | ❌ |
+> | 6 | decide actions, `/approvals`, `proxy.ts` bypass | ✅ **end-to-end, verified live** |
+> | 7-9 | shell pill + nav, re-labelling, docs | ❌ |
 >
 > **Tests: 86 → 136.** `permissions.ts` had never had a test because it imports `@/lib/auth`
 > and `@/lib/prisma` at module scope and the `@/` alias does not resolve under
@@ -2442,6 +2443,22 @@ reachable only through an approval.
 > `shelfSlotId` refs. Zero `ApprovalRequest` rows written. **The request arm is still
 > unexecuted** — no UI reaches it until stage 8 and there is nowhere to land until stage 6.
 > Full note in PROGRESS.md.
+>
+> **Stage 6, 2026-09-07 — the feature works end to end.** `decide.ts`, `actions/approvals.ts`,
+> `/approvals`, `ApprovalDecision.tsx`, and the `proxy.ts` bypass (landed *with* the page, as
+> stage 5 insisted). Finance raises a request through a real form, an admin reads a live
+> pre-check, approves, and the operation runs attributed to the requester. All five statuses
+> were produced through the UI: the pre-check **flipped green → red** when a dispatch landed on
+> the site after the deletion was asked for, approving it anyway wrote **FAILED with the
+> operation's own sentence and left the site standing**, and a second tab approving an
+> already-answered request got *"Another admin answered this first"* with **exactly one** site
+> created.
+>
+> **Verification caught two defects a green build could not**, and they were the same bug twice:
+> the refusal message was destroyed before it could be read — first by the component's own
+> `router.refresh()`, then, after that was fixed, by `markFailed`'s `revalidatePath`, which makes
+> Next re-render the page with the action's response and unmount the component regardless. The
+> first fix alone would have passed review and still lost the message. Full note in PROGRESS.md.
 
 
 

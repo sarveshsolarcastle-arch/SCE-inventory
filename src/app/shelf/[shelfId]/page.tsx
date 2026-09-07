@@ -8,13 +8,21 @@ import { notFound } from "next/navigation";
 import PageHeader from "@/components/ui/PageHeader";
 import { Card, CardBody } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
+import Alert from "@/components/ui/Alert";
 
 export default async function ShelfDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ shelfId: string }>;
+  /** `?requested=<id>` — the three slot actions send a requester back to this
+   * same shelf rather than to the queue. Bouncing someone out of the shelf they
+   * are working on, mid-edit, for a two-second relabel would be disorienting;
+   * returning here also closes the popover on remount. */
+  searchParams: Promise<{ requested?: string }>;
 }) {
   const { shelfId } = await params;
+  const { requested } = await searchParams;
 
   const [shelf, user, items, placedPacks] = await Promise.all([
     prisma.shelf.findUnique({
@@ -99,6 +107,14 @@ export default async function ShelfDetailPage({
           </>
         }
       />
+
+      {requested && (
+        <Alert tone="info">
+          Sent to the admins for approval. Nothing has changed on this shelf yet — it will
+          be carried out, recorded against you, once one of them approves it.
+        </Alert>
+      )}
+
       <Card>
         <CardBody>
           <ShelfGrid
