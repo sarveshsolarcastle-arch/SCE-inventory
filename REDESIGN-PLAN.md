@@ -2373,7 +2373,8 @@ reachable only through an approval.
 > | 4a | `kinds.ts`, `args.ts` + tests | ✅ |
 > | 4b | `summary.ts`, `precheck.ts`, `status.ts` + tests; `ops/*` extracted | ✅ |
 > | 4c | `registry.ts`, `runOrRequest.ts`, `queue.ts` | ✅ **nothing calls them yet** |
-> | 5-9 | gating, `/approvals`, shell, re-labelling, docs | ❌ |
+> | 5 | the eleven actions rewired through `runOrRequest` | ✅ **no UI path reaches the request arm yet** |
+> | 6-9 | `/approvals`, shell, re-labelling, docs | ❌ |
 >
 > **Tests: 86 → 136.** `permissions.ts` had never had a test because it imports `@/lib/auth`
 > and `@/lib/prisma` at module scope and the `@/` alias does not resolve under
@@ -2424,6 +2425,23 @@ reachable only through an approval.
 > tones, the operations' own sentences), and the enqueue transaction's statements against the
 > real schema. **`runOrRequest` itself is unexecuted** — it reads the session, so stage 5 is
 > where it first runs. Full note in PROGRESS.md.
+>
+> **Stage 5, 2026-09-07.** The eleven actions now go through `runOrRequest`;
+> `requireCapability` is gone from the three action files and **that is not a relaxation**, the
+> gate moved inside `runOrRequest` unchanged. The three result types gained the
+> `{ ok: false, requested: true, … }` arm, which is why `DeleteSiteButton`, `DeleteShelfButton`
+> and `CorrectionPanel` are **correct untouched**. The registry's `redirectTo` was removed
+> (one consumer each; the literal `redirect()` beside the form is clearer) and the actions no
+> longer revalidate — `op.revalidate` runs inside `runOrRequest`, so the two paths cannot
+> invalidate different pages. **`proxy.ts` is still unchanged and the blocker has moved**: the
+> create form's action no longer throws, but it now redirects to `/approvals`, which does not
+> exist until stage 6 — opening the form early swaps a broken submit for a 404. The
+> **regression gate ran in full**: all twelve admin flows behaved exactly as before, redirects
+> included, including the batch reversal's happy path that stage 4b could not exercise, and a
+> Shelf A delete leaving stock, transactions and open packs untouched with zero dangling
+> `shelfSlotId` refs. Zero `ApprovalRequest` rows written. **The request arm is still
+> unexecuted** — no UI reaches it until stage 8 and there is nowhere to land until stage 6.
+> Full note in PROGRESS.md.
 
 
 

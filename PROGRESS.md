@@ -897,7 +897,8 @@ reverse, or adjust; there is no `/approvals` page and no way to raise a request.
 | 4a | [kinds.ts](src/lib/approvals/kinds.ts), [args.ts](src/lib/approvals/args.ts) + tests | ✅ |
 | 4b | `summary`/`precheck`/`status` + tests; `ops/*` extracted, actions delegate | ✅ |
 | 4c | [registry.ts](src/lib/approvals/registry.ts), [runOrRequest.ts](src/lib/approvals/runOrRequest.ts), [queue.ts](src/lib/approvals/queue.ts) | ✅ |
-| 5-9 | gating, `/approvals`, shell pill, re-labelling twelve call sites, docs | ❌ |
+| 5 | the eleven actions rewired through `runOrRequest` | ✅ |
+| 6-9 | `/approvals` + decide actions, shell pill, re-labelling twelve call sites, docs | ❌ |
 
 **Tests 86 → 136.** The most valuable of those are the seven invariants in
 `capabilities.test.ts`, which is possible at all only because the tables moved out of
@@ -993,6 +994,94 @@ afterwards; `dev.db` holds no `ApprovalRequest` rows.
 reads the session, so it cannot be driven from a script — stage 5 gives it its first caller, and
 that is when the request path gets exercised in a browser as finance. `npm test` 136/136
 (unchanged — nothing added here is pure), `tsc` clean, `npm run build` passes.
+
+#### Stage 5 — as built, 2026-09-07
+
+The eleven write actions now go through `runOrRequest`. `requireCapability` is gone from all
+three action files, and **its absence is not a relaxation**: `runOrRequest` checks `can()`
+exactly as before and throws the same `NotPermittedError`. What changed is only what happens to
+a role that may *ask* — instead of the refusal it gets an `ApprovalRequest` row and a sentence.
+The files shrank to what their headers always claimed they were: the auth boundary and the
+transport shape.
+
+**No UI path reaches the request arm yet, so for every role that exists today the app is
+unchanged.** Finance still sees no delete, no reverse and no count button — that is stage 8's
+re-labelling — and `proxy.ts` still bounces it from `/sites/new`. What a finance user *can* now
+do is replay one of these POSTs directly, which raises a request rather than throwing. That is
+the feature, and it is deliberately the only way in until stage 6.
+
+**Result-returning actions gained a third arm**
+([outcome.ts](src/lib/approvals/outcome.ts), pure, 4 tests, 136 → **140**):
+
+```ts
+{ ok: false; requested: true; requestId: string; message: string }
+```
+
+`ok: false` is the honest answer — the delete did not happen — and it is also what makes
+`DeleteSiteButton`, `DeleteShelfButton` and `CorrectionPanel` behave **correctly without being
+touched**: they already do `if (!result.ok) setError(result.message)`, so they show the sentence
+and stay put. Dressing a request up as `ok: true` would have sent `DeleteSiteButton` to `/sites`
+announcing a deletion that had not occurred. `deleteSite` and `deleteShelf` take an optional
+second `reason` argument, because they are called from an onClick rather than a form; the three
+corrections already collect a mandatory reason, which becomes the approval reason for free.
+
+**Two things removed rather than added.** The registry's `redirectTo` is gone — it turned out to
+have exactly one consumer each, the action that owns it, because `/approvals` deliberately
+ignores it; two places describing one navigation, reached through an optional call, cost more
+than the literal `redirect()` now sitting beside the form. And the actions no longer revalidate:
+`op.revalidate` runs inside `runOrRequest` on the executed path, so the direct and approved paths
+cannot invalidate different sets of pages.
+
+**`proxy.ts` is still unchanged, and the reason has moved.** It was blocked because the create
+form's action would throw on submit; now it enqueues and redirects to `/approvals`, which does
+not exist until stage 6. Opening the form early would replace one broken path with another — a
+form whose submit lands on a 404. The TODO now says so. Landing it with the page is stage 6.
+
+**The regression gate — all twelve flows as ADMIN, in the browser, against a local copy.** This
+is the check stage 5 exists for: eleven live write actions were rewired, and admin behaviour has
+to be byte-for-byte what it was.
+
+| Flow | Result |
+|---|---|
+| Create a site | created, redirected to `/sites/<id>` |
+| Edit it | renamed, redirected back |
+| Delete an empty one | deleted, redirected to `/sites`, gone from the list |
+| Delete one with history | **refused, identical sentence** — *"…still has 15 stock movements, 1 dispatch, 1 defective-item record, 1 collection flag attached"*; site still there |
+| Create a shelf | two-step wizard, created, redirected to `/shelf/<id>` |
+| Relabel a box | Fresh → Opened, popover behaviour unchanged |
+| Assign an item | box adopted the item, no redirect |
+| Toggle front-row | ★ appeared, `isFrontRow: true` |
+| Delete a shelf | deleted, redirected to `/shelf` |
+| Reverse a transaction | stock 231 → 291, ISSUE marked reversed, REVERSAL row **by Admin** |
+| Reverse a dispatch | see below |
+| Record a stock count | 291 → 288, `ADJUSTMENT` of 3 pcs, delta applied |
+
+Two worth recording:
+
+- **The batch reversal's happy path was finally exercised.** Stage 4b's note said `dev.db` no
+  longer held a cleanly reversible dispatch and told whoever came next to create one; that was
+  done — a fresh 20 pcs dispatch to Site Alpha — and reversing it restored stock exactly
+  (288 → 268 → 288) and marked the line and the dispatch Reversed. The **refusal** path was
+  checked on the old dispatch in the same session and still produces the operation's own
+  sentence, *"expected 90 left, found 85"*, writing nothing.
+- **Shelf A, with 5 assigned boxes and 5 placed packs, was deleted** to exercise the explicit
+  unplacing: `openPacks` 15, transactions 55 and total stock 3215 all **unchanged**, with
+  **zero dangling `shelfSlotId` references** — the check that catches the unplacing being
+  dropped and is invisible from the UI.
+
+**Zero `ApprovalRequest` rows were written throughout**, which is the negative check that
+matters: an admin holds the capability, so every one of those flows took the execute path.
+
+**Then as finance, to confirm nothing leaked:** `/users`, `/backups` and `/sites/new` all still
+bounce to `/dashboard`; the item page offers no stock count and no Reverse; the site page shows
+the read-only *"Only an admin can rename or remove a site"* panel. Console clean on every page
+touched, no server errors. `npm test` 140/140, `tsc` clean, `npm run build` passes. The local
+database was restored from a pre-verification copy afterwards, so `dev.db` still holds Shelf A
+and its placement for stage 6's pre-check work.
+
+**Still unexecuted:** the request arm of `runOrRequest`. Nothing renders a control that reaches
+it until stage 8, and there is nowhere to land afterwards until stage 6. It is the first thing
+stage 6 must verify, not something to assume from a green build.
 
 ### Resolved by the redesign — all of it has now landed
 
