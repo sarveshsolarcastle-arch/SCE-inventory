@@ -19,8 +19,8 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/permissions";
-import { revalidatePath } from "next/cache";
 import * as ops from "@/lib/approvals/ops/corrections";
+import { revalidateCorrections } from "@/lib/approvals/revalidate";
 import {
   parseReverseDispatchArgs,
   parseReverseTransactionArgs,
@@ -28,16 +28,6 @@ import {
 } from "@/lib/approvals/args";
 
 export type CorrectionResult = { ok: true } | { ok: false; message: string };
-
-function revalidateAll() {
-  revalidatePath("/items", "layout");
-  revalidatePath("/dashboard");
-  revalidatePath("/shelf");
-  revalidatePath("/recycle");
-  revalidatePath("/defective");
-  revalidatePath("/sites", "layout");
-  revalidatePath("/dispatches", "layout");
-}
 
 /** Undoes a movement recorded in error by restoring the exact prior state.
  *
@@ -60,7 +50,7 @@ export async function reverseTransaction(
     return { ok: false, message: error instanceof Error ? error.message : "Reversal failed" };
   }
 
-  revalidateAll();
+  revalidateCorrections();
   return { ok: true };
 }
 
@@ -83,7 +73,7 @@ export async function reverseDispatch(
     };
   }
 
-  revalidateAll();
+  revalidateCorrections();
   return { ok: true };
 }
 
@@ -158,6 +148,6 @@ export async function adjustStock(
     return { ok: false, message: error instanceof Error ? error.message : "Adjustment failed" };
   }
 
-  revalidateAll();
+  revalidateCorrections();
   return { ok: true };
 }

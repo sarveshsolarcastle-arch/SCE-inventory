@@ -2372,7 +2372,7 @@ reachable only through an approval.
 > | 3 | `capabilities.ts` + tests, `permissions.ts` re-exports | ✅ |
 > | 4a | `kinds.ts`, `args.ts` + tests | ✅ |
 > | 4b | `summary.ts`, `precheck.ts`, `status.ts` + tests; `ops/*` extracted | ✅ |
-> | 4c | `registry.ts`, `runOrRequest.ts`, `queue.ts` | ❌ |
+> | 4c | `registry.ts`, `runOrRequest.ts`, `queue.ts` | ✅ **nothing calls them yet** |
 > | 5-9 | gating, `/approvals`, shell, re-labelling, docs | ❌ |
 >
 > **Tests: 86 → 136.** `permissions.ts` had never had a test because it imports `@/lib/auth`
@@ -2408,6 +2408,22 @@ reachable only through an approval.
 >
 > **The migration is applied locally only.** The pilot reports it as 1 pending through
 > `npm run db:migrate:turso`. Apply it when the feature is ready to deploy, not before.
+>
+> **Stage 4c, 2026-09-07.** The choke point exists — `registry.ts`, `runOrRequest.ts`,
+> `queue.ts` — and **still nothing calls it**; stage 5 rewires the actions. Three deliberate
+> departures from the sketch below: `Operation` carries **no `capability` field** (it already
+> exists as `CAPABILITY_FOR_KIND` in the pure `kinds.ts`, and a second copy would be a second
+> thing to keep right, with a wrong entry showing no symptom until someone could do work they
+> should have had to ask for — the registry's completeness is likewise a mapped type, so a
+> missing entry fails the build); `targetKey` keys **creates on their name** rather than
+> returning null, because two people asking for the same new site is the duplicate worth
+> collapsing; and the revalidation path lists moved to a shared `revalidate.ts` the action files
+> import, so the direct and approved paths cannot drift. `runOrRequest` sets an explicit
+> **20s** transaction timeout — see the blocker below; `vercel.json` is now load-bearing for
+> correctness. Every entry's summary and pre-check was exercised against a local copy (all four
+> tones, the operations' own sentences), and the enqueue transaction's statements against the
+> real schema. **`runOrRequest` itself is unexecuted** — it reads the session, so stage 5 is
+> where it first runs. Full note in PROGRESS.md.
 
 
 

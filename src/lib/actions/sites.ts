@@ -11,16 +11,9 @@
 import { prisma } from "@/lib/prisma";
 import { NotPermittedError, requireCapability } from "@/lib/permissions";
 import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
 import * as ops from "@/lib/approvals/ops/sites";
+import { revalidateSites } from "@/lib/approvals/revalidate";
 import { parseSiteCreateArgs, parseSiteUpdateArgs } from "@/lib/approvals/args";
-
-function revalidateSites(siteId?: string) {
-  revalidatePath("/sites");
-  if (siteId) revalidatePath(`/sites/${siteId}`);
-  revalidatePath("/at-sites");
-  revalidatePath("/dashboard");
-}
 
 export async function createSite(formData: FormData) {
   "use server";
