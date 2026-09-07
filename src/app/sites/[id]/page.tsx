@@ -13,13 +13,19 @@ import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
 import { Field, Input } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
+import Alert from "@/components/ui/Alert";
 
 export default async function SiteDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  /** `?requested=<id>` — updateSite sends a requester back here rather than to
+   * the queue, so they stay on the site they were editing. */
+  searchParams: Promise<{ requested?: string }>;
 }) {
   const { id } = await params;
+  const { requested } = await searchParams;
 
   const site = await prisma.site.findUnique({ where: { id } });
   if (!site) notFound();
@@ -100,6 +106,13 @@ export default async function SiteDetailPage({
   return (
     <div className="space-y-6">
       <PageHeader title={site.name} />
+
+      {requested && (
+        <Alert tone="info">
+          Sent to the admins for approval. Nothing has changed here yet — it will be
+          carried out, recorded against you, once one of them approves it.
+        </Alert>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2">
         {/* The whole card is gated, form included. It used to render the edit

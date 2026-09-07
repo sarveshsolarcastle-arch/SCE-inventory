@@ -898,7 +898,8 @@ reverse, or adjust; there is no `/approvals` page and no way to raise a request.
 | 4b | `summary`/`precheck`/`status` + tests; `ops/*` extracted, actions delegate | ✅ |
 | 4c | [registry.ts](src/lib/approvals/registry.ts), [runOrRequest.ts](src/lib/approvals/runOrRequest.ts), [queue.ts](src/lib/approvals/queue.ts) | ✅ |
 | 5 | the eleven actions rewired through `runOrRequest` | ✅ |
-| 6-9 | `/approvals` + decide actions, shell pill, re-labelling twelve call sites, docs | ❌ |
+| 6 | decide actions, `/approvals`, `ApprovalDecision`, the `proxy.ts` bypass | ✅ |
+| 7-9 | shell pill + nav, re-labelling twelve call sites, docs | ❌ |
 
 **Tests 86 → 136.** The most valuable of those are the seven invariants in
 `capabilities.test.ts`, which is possible at all only because the tables moved out of
@@ -1082,6 +1083,74 @@ and its placement for stage 6's pre-check work.
 **Still unexecuted:** the request arm of `runOrRequest`. Nothing renders a control that reaches
 it until stage 8, and there is nowhere to land afterwards until stage 6. It is the first thing
 stage 6 must verify, not something to assume from a green build.
+
+#### Stage 6 — as built, 2026-09-07
+
+**The feature works end to end.** A finance user raises a request through a real form, an admin
+sees it with a live pre-check, approves it, and the operation runs — recorded against the person
+who asked. Every one of the five statuses was produced through the UI and confirmed in the
+database.
+
+New: [decide.ts](src/lib/approvals/decide.ts) (the claim, the work, the FAILED bookkeeping),
+[actions/approvals.ts](src/lib/actions/approvals.ts) (the thin guarded wrappers),
+[/approvals](src/app/approvals/page.tsx) and
+[ApprovalDecision.tsx](src/components/ApprovalDecision.tsx). `proxy.ts` gained
+`["/approvals", "approval:view"]` and the `canRequest` bypass — landing **with** the page, as
+stage 5's TODO insisted.
+
+**Two defects this verification caught, both invisible from a green build — and both the same
+bug wearing different clothes: the refusal message was being destroyed before anyone could read
+it.**
+
+1. `router.refresh()` on the failure path unmounted the very card that was about to display the
+   message. Fixed: on failure the component keeps its place, shows the sentence, and offers
+   *"Show me the queue as it is now"*.
+2. That was not enough, because the real culprit was **server-side**: `markFailed` called
+   `revalidatePath("/approvals")`, and a server action that revalidates makes Next re-render the
+   page with the action's own response — removing the now-FAILED row from the pending list and
+   unmounting the component regardless of what the client did. `markFailed` no longer
+   revalidates, with the reasoning written where the next person will change it back. Nothing is
+   hidden by that: the transaction rolled back, so no domain data changed, and `/approvals` is
+   dynamic — it re-queries on the next navigation.
+
+   The first fix alone would have looked correct in review and still lost the message. It took
+   watching the card vanish twice.
+
+**One deliberate addition to the registry**: `ErasedOperation` / `erasedOperationFor`, for the
+two callers that learn the kind at RUN time from a database row and so cannot name a type
+parameter. Arguments are `unknown` on the way in and the safety story is a single rule — every
+one must have come out of that same entry's `parse` — so the widening happens once, in one
+documented function, rather than as casts scattered through the approve path and the page.
+
+**Verified live, against a local copy — never the pilot.**
+
+| Check | Result |
+|---|---|
+| Finance reaches `/sites/new` and submits | **No site created.** Request row written, redirected to `/approvals?sent=…`, acknowledgement shown, row listed as "Awaiting an admin" with Withdraw |
+| Duplicate collapse | Submitting *"malad depot"* against a pending *"Malad Depot"* produced **one** row, not two — `targetKey`'s lowercasing doing its job |
+| Admin queue | Frozen summary, who asked and when, the reason quoted, live pre-check |
+| **The pre-check earns its keep** | A dispatch was sent to the site *after* the deletion was requested; the pre-check flipped **green → red** on reload with the operation's own sentence: *"This will now fail: … 1 stock movement, 1 dispatch attached"* |
+| Approving it anyway | **FAILED**, decided by Admin, `decisionNote` carrying that sentence — **and the site still there**, proving the claim and the work shared one transaction |
+| The race | Two tabs on one pending request; the second returned *"Another admin answered this first — it is now 'Approved'."* and **exactly one** site was created |
+| Decline with a note | REJECTED, note visible to the requester, nothing created |
+| Withdraw | CANCELLED, no shelf created, button gone |
+| Requester's own view | Every request with status, who answered, and the FAILED note — finance sees **no** admin half |
+| Nothing leaked | `/users` and `/backups` still bounce finance; **employee is bounced from `/approvals` and `/sites/new`** — the bypass did not reach a role with an empty `REQUESTABLE` |
+
+All five statuses reached through the UI: APPROVED, FAILED, REJECTED, CANCELLED, PENDING.
+Console clean on every page, no server errors. `npm test` 140/140, `tsc` clean,
+`npm run build` passes. `dev.db` was restored from a pre-verification copy afterwards.
+
+**Two honest caveats about the race test.** It used two tabs of the *same* admin account, since
+one browser profile holds one session — the guard is `WHERE status = 'PENDING'` on the row, which
+knows nothing about identity, so a second admin behaves identically. And it was the
+**stale-page** form of the race, not two genuinely simultaneous writes; that case is what
+SQLite/libsql's serialisation of write transactions covers, and it goes through the same
+`updateMany` count check.
+
+**Not covered, and worth naming:** a replayed `approveRequest` POST from a finance account. It is
+guarded by the same `requireCapability("approval:decide")` used by every other action in the app,
+but that specific replay was not exercised.
 
 ### Resolved by the redesign — all of it has now landed
 
