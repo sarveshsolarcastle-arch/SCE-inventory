@@ -2434,8 +2434,9 @@ reachable only through an approval.
 > broken-form bug fixed on the site detail page in Part 1, reintroduced through the front door.
 > It is a TODO in that file.
 >
-> **The migration is applied locally only.** *(Two pending as of 2026-09-08, once Phase 12
-> landed — this note records the state when Phase 11 was written.)* The pilot reports it through
+> **The migration is applied locally only.** *(No longer true: it was applied to the pilot at
+> some point before 2026-09-08, confirmed by a live status check that day. This note records
+> the state when Phase 11 was written.)* The pilot reports it through
 > `npm run db:migrate:turso`. Apply it when the feature is ready to deploy, not before.
 >
 > **Stage 4c, 2026-09-07.** The choke point exists — `registry.ts`, `runOrRequest.ts`,
