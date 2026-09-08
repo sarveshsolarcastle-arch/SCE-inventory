@@ -236,19 +236,22 @@ was pulled back is a false record. The Total row is suppressed when lines use di
 because 150 m of wire plus 40 screws is not 190 of anything. And the challan number cannot be
 typed or edited.
 
-> ⚠️ **The pilot still needs two steps, in this order.** `dev.db` was wiped and verified on
-> 2026-09-08 at the client's request; **the pilot was not touched.** A backup was taken first
-> either way (`backups/PRE-WIPE-inventory-2026-09-08.sql`, 454 rows).
+> ✅ **Both databases were migrated and wiped on 2026-09-08**, at the client's request —
+> everything except `User` rows. All 6 accounts survived, including the three real
+> `@solarcastle.in` logins. The pilot now holds 0 rows in every operational table, with the
+> challan counter at 0 so the first real challan is `SCE/DC/0001`. Verified by re-reading the
+> live database afterwards.
 >
-> ```bash
-> npm run db:migrate:turso -- --apply
-> npx tsx scripts/reset-data.ts --yes-wipe sce-inventory
-> ```
+> Restore points, if any of it is wanted back:
+> `backups/PRE-WIPE-inventory-2026-09-08.sql` (454 rows) and
+> `backups/pre-migration-2026-09-08T11-17-38-088Z.sql`. Beyond stock figures, that included
+> seven real Goa sites and the ten-item catalogue.
 >
-> **The order matters.** The reset ends by resetting the challan counter, so it needs the
-> `Sequence` table — and production has neither `Sequence` nor `Dispatch.challanNo` until the
-> migration runs. Wiping first throws on the counter and rolls back: nothing is destroyed, but
-> nothing is reset either.
+> ⚠️ **If you ever repeat this sequence: deploy before migrating.** The migration makes
+> `Dispatch.challanNo` NOT NULL with no default, so any build predating the challan commit
+> fails on every batch dispatch in the gap between migrating and deploying. It was clear here
+> only because Vercel had already auto-deployed. And migrate before wiping — the reset rewinds
+> the challan counter and needs the `Sequence` table to exist.
 >
 > **`src/lib/company.ts` now carries the client's real name, address, phone, email and website**
 > (filled in 2026-09-08, after being a stub with blank strings). Values still route through
