@@ -198,8 +198,8 @@ can answer; the first to do so clears it for everyone). Three independent parts:
   twelve-flow regression walkthrough was run three times over the course of the work.
 
   **Two caveats before this goes near the pilot.** The `ApprovalRequest` migration is applied
-  locally only — the pilot reports it through `npm run db:migrate:turso`, and since Phase 12
-  landed on 2026-09-08 there are **two** pending, not one. And
+  locally only when this was written; it **has since been applied to the pilot** (verified
+  2026-09-08 — only Phase 12's `delivery_challan` is pending there now). And
   `vercel.json`'s `"regions": ["bom1"]` has stopped being a performance tweak: the approve path
   runs the claim and the work in one transaction with an explicit 20s timeout, which is
   comfortable at Mumbai latency and unreachable without it.

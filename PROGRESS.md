@@ -2,9 +2,10 @@
 
 Last updated: 2026-09-08 (**Phase 8 Part A — the hosted pilot — is live**; **Phase 11 — role
 consolidation and admin approvals — is BUILT, all three parts**; **Phase 12 — the Material
-Delivery Challan — is BUILT** — see §9. TWO migrations are now applied locally only; the pilot
-reports both pending. The client's requested data reset is written but **not run** — see the
-Phase 12 note.)
+Delivery Challan — is BUILT** — see §9. Phase 11's migration IS now on the pilot; **Phase 12's
+`delivery_challan` is the one still pending there** — verified against the live database
+2026-09-08. The client's requested data reset is written but **not run** — see the Phase 12
+note.)
 
 > **§1-§8 describe the code as it stands today.** The six-phase functional redesign and
 > Phase 7 (UI overhaul) are **complete**. **Phase 8 Part A (the hosted pilot) is deployed**:
@@ -1496,7 +1497,9 @@ Written for whoever continues this next. Read in this order: **§1-§9 above**, 
 **Phases 1-12 are built** — the six functional phases, the UI overhaul, the hosted pilot,
 automated backups, the Mumbai region fix, the role consolidation and admin approval queue
 (2026-09-07), and the delivery challan (2026-09-08). What remains is **deploying Phases 11 and
-12** (both migrations are applied locally only — the pilot reports two pending), **Part B**
+12** — Phase 11's migration is now applied to the pilot and only Phase 12's `delivery_challan`
+is pending there (checked against the live database 2026-09-08; earlier notes in this file
+saying "two pending" predate that check) — **Part B**
 (offline production, not started), and — still the largest outstanding risk — **DB-layer test
 coverage**. There is also an **unexecuted full data reset** the client asked for; see "What to
 do next" before running anything destructive.
