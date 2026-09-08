@@ -236,13 +236,19 @@ was pulled back is a false record. The Total row is suppressed when lines use di
 because 150 m of wire plus 40 screws is not 190 of anything. And the challan number cannot be
 typed or edited.
 
-> ⚠️ **Two production steps are outstanding.** The Phase 12 migration is applied to `dev.db`
-> only — the pilot now reports **two** pending. And the client's requested full data reset
-> (everything except `User` rows, local *and* live) is written as `scripts/reset-data.ts` but
-> **has not been run**. It prints its target URL and refuses unless `--yes-wipe <fragment>`
-> matches; run bare it correctly refused to touch production. Take a backup first. The
-> migration backfills `challanNo` by dispatch date, so it is safe on populated data and does
-> **not** depend on the reset happening first.
+> ⚠️ **The pilot still needs two steps, in this order.** `dev.db` was wiped and verified on
+> 2026-09-08 at the client's request; **the pilot was not touched.** A backup was taken first
+> either way (`backups/PRE-WIPE-inventory-2026-09-08.sql`, 454 rows).
+>
+> ```bash
+> npm run db:migrate:turso -- --apply
+> npx tsx scripts/reset-data.ts --yes-wipe sce-inventory
+> ```
+>
+> **The order matters.** The reset ends by resetting the challan counter, so it needs the
+> `Sequence` table — and production has neither `Sequence` nor `Dispatch.challanNo` until the
+> migration runs. Wiping first throws on the counter and rolls back: nothing is destroyed, but
+> nothing is reset either.
 >
 > **`src/lib/company.ts` now carries the client's real name, address, phone, email and website**
 > (filled in 2026-09-08, after being a stub with blank strings). Values still route through

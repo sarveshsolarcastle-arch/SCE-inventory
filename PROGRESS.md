@@ -1452,14 +1452,31 @@ print media, so this was identified from computed styles plus the measurement th
 challan already renders ~2150px against ~1060px of usable A4 height. See REDESIGN-PLAN.md's
 Phase 12 follow-up, item 4.
 
-**⚠️ Not done: the client asked for a full data reset** (local **and** the live Turso pilot,
-keeping only `User` rows) and it has **not been run**. `scripts/reset-data.ts` is written and
-its guard is verified — it prints the target URL and refuses unless `--yes-wipe <fragment>`
-matches it. Run with no arguments it correctly refused to touch production, which is the whole
-point: `prisma.config.ts` loads `.env` only, and `.env` points at the live pilot. **Take a
-backup first.** The Phase 12 migration is applied to `dev.db` only; the pilot still needs
-`npm run db:migrate:turso`. The migration backfills `challanNo` by dispatch date, so it is safe
-on a populated database and does **not** depend on the reset happening first.
+**The data reset — local DONE 2026-09-08, production NOT done.** The client asked for a full
+wipe of both databases keeping only `User` rows. `scripts/reset-data.ts` refuses unless
+`--yes-wipe <fragment>` matches the URL it prints, because `prisma.config.ts` loads `.env` only
+and `.env` points at the live pilot.
+
+- ✅ **`dev.db`** — wiped and verified: every operational table empty, 3 accounts kept, challan
+  counter reset to 0, sign-out/sign-in re-tested against the surviving accounts, and all 14
+  authenticated pages re-rendered clean on an empty database.
+- ❌ **The pilot** — untouched. Backup taken first all the same:
+  `backups/PRE-WIPE-inventory-2026-09-08.sql`, 454 rows.
+
+**⚠️ THE ORDER IS NOT OPTIONAL, and it is the reverse of what the original plan assumed.** The
+reset transaction ends by resetting the challan counter, so it needs the `Sequence` table to
+exist. Production has neither `Sequence` nor `Dispatch.challanNo` — verified directly against
+the live schema on 2026-09-08 — because the Phase 12 migration is still pending there. Running
+the wipe first would throw on the counter upsert; the transaction rolls back, so **nothing would
+be destroyed**, but it would not work either. Migrate, then wipe:
+
+```
+npm run db:migrate:turso -- --apply
+npx tsx scripts/reset-data.ts --yes-wipe sce-inventory
+```
+
+The migration itself is safe in either order — production holds zero `Dispatch` rows, so its
+`challanNo` backfill is a no-op. It is the *reset* that has the dependency.
 
 **`src/lib/company.ts` is a stub.** `COMPANY.addressLines`, `phone`, `email` and `gstin` are
 empty strings and print as nothing (blank fields are omitted, never rendered as empty labels).
@@ -1608,17 +1625,13 @@ Everything downstream assumes these. Breaking one corrupts stock silently rather
   pilot**, even with `.env.local` sitting right there. Confirmed 2026-09-08: running
   `npx tsx scripts/reset-data.ts` with no arguments printed the production URL as its target.
   Prefix every one of them — `DATABASE_URL="file:./dev.db" npx prisma migrate deploy`.
-- **The local `dev.db` contains test data created while verifying Phases 1-6 and Phase 11**,
-  not real inventory: `WIRE-2.5` **2700 m** across sealed rolls and returned offcuts,
-  `SCR-M4` 231, `CBL-200` 217, `INV-5K` 10; 4 sites, 4 shelves, 3 `ADJUSTMENT` rows and 4
-  `REVERSAL` rows; two test deliveries (one direct to Kandivali, one a claim replacement), a
-  settled defective claim, and consumed/transferred material at Kandivali and Borivali.
-  **Reseed or clear before real stock goes in.**
-- ⚠️ **`dev.db` no longer holds a cleanly reversible dispatch.** Part 3's verification cut the
-  90 m open pack to 85 m, so the one remaining dispatch now fails its obstacle check — which is
-  correct behaviour, and was useful evidence, but it means the **batch reversal happy path
-  cannot be exercised against this database**. Create a fresh dispatch first if you need to
-  test it.
+- ✅ **`dev.db` WAS WIPED on 2026-09-08**, at the client's request — see the Phase 12 note.
+  Every operational table is empty; the three seeded accounts survive, and the challan counter
+  is back to 0 so the first real challan is `SCE/DC/0001`. Everything the three bullets below
+  used to describe is gone. Pre-wipe copy: `backups/dev.db.pre-wipe-20260908-163312.bak`.
+  Run `npx tsx prisma/seed.ts` if you want the item/site fixtures back for testing.
+- ~~`dev.db` no longer holds a cleanly reversible dispatch.~~ **Moot since the 2026-09-08 wipe** —
+  there are no dispatches at all now. Any reversal test starts by creating one.
 - ⚠️ **Another session wrote to this database mid-work on 2026-08-20** — two `STOCK_IN` rows
   on `CBL-200` (+17, +13) arrived through the old Stock In form while Phase 4/5 were being
   built. Harmless here since it is all test data, but worth knowing that `dev.db` had
@@ -1630,13 +1643,9 @@ Everything downstream assumes these. Breaking one corrupts stock silently rather
   stuck at `null` because `seed.ts`'s upsert never updates an existing row's fields; it is
   now `"packet"`, matching the fixture's own intent. See REDESIGN-PLAN.md's "Phase 4 — as
   built" for the reasoning.
-- **`dev.db` moved on again during Phase 12 verification (2026-09-08).** Kandivali Site now
-  carries the full challan identity (customer "Greenfield Developers Pvt Ltd", a Mumbai address,
-  project `SCE-2026-KND-07`), and a third dispatch — `SCE/DC/0003`, three lines with per-line
-  remarks and both signatory names — was recorded against it, opening one sealed 400 m roll.
-  The two pre-existing dispatches were backfilled as `SCE/DC/0001` (fully reversed, so it
-  renders the refusal panel rather than a sheet) and `SCE/DC/0002`. Between them those three
-  cover every branch of the challan page, which is worth keeping.
+- ~~`dev.db` moved on again during Phase 12 verification.~~ **Also erased by the wipe.** Those
+  five challans covered every branch of the challan page; if you need that coverage again, the
+  pre-wipe backup above still has them.
 - Backups of `dev.db` are in `backups/` (gitignored). It is the only copy.
 
 ### What to do next

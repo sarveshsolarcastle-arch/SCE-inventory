@@ -19,6 +19,7 @@ import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
 import { resolveDatabaseUrl } from "../src/lib/databaseUrl.ts";
+import { CHALLAN_SEQUENCE_KEY } from "../src/lib/challan.ts";
 
 const url = resolveDatabaseUrl();
 
@@ -81,6 +82,21 @@ async function main() {
       const result = await (tx[model] as { deleteMany: () => Promise<{ count: number }> }).deleteMany();
       deleted[model] = result.count;
     }
+
+    // The challan counter goes back to zero WITH the dispatches, not without
+    // them. Leaving it where it was would start the client's first real challan
+    // at SCE/DC/0006 with no 1-5 behind it — a series with a hole at the front
+    // is exactly what `challanNo` being unique-and-required exists to prevent.
+    //
+    // Safe here and ONLY here: this runs in the same transaction that deletes
+    // every Dispatch, so there is no row left for a reissued number to collide
+    // with. Never reset this counter on its own — if any challan has been
+    // printed on paper, rewinding hands two documents one identity.
+    await tx.sequence.upsert({
+      where: { key: CHALLAN_SEQUENCE_KEY },
+      update: { value: 0 },
+      create: { key: CHALLAN_SEQUENCE_KEY, value: 0 },
+    });
   });
 
   for (const [model, count] of Object.entries(deleted).sort()) {
