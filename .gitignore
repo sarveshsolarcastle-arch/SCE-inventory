@@ -60,3 +60,11 @@ next-env.d.ts
 # dropped in during the Phase 7 UI overhaul. Nothing in the app references them,
 # and they are expensive to remove from history once committed.
 /design-md
+
+# Client working files — kept locally, deliberately not in history.
+# "Current Stock (1).xlsx" is the client's real stock data; the challan format
+# PDF is a supplied reference, not a source file. Both are inputs to the work,
+# not part of it.
+/Current Stock*.xlsx
+/delivery-challan-format.pdf
+/example print.pdf
