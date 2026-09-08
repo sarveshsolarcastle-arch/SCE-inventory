@@ -63,10 +63,18 @@ export default async function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen">
+      {/* data-print="hide" is the app's one print convention: the @media print
+          block in globals.css drops everything carrying it, so a printed page
+          is the page's own content and nothing else. Added for the delivery
+          challan, which has to come off the printer as a document rather than
+          as a screenshot of the app. */}
       <SidebarNav groups={groups} user={user} className="hidden lg:flex" />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 shrink-0 items-center gap-3 border-b border-line bg-surface px-4 lg:px-8">
+        <header
+          data-print="hide"
+          className="flex h-16 shrink-0 items-center gap-3 border-b border-line bg-surface px-4 lg:px-8"
+        >
           <MobileNav groups={groups} user={user} />
           {pending > 0 && (
             <Link

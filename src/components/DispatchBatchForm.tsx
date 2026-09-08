@@ -54,6 +54,9 @@ type DispatchRowState = {
   sealedCount: string;
   loose: string;
   pieces: Piece[];
+  /** The Remarks column on the printed challan. Not part of `isBlank`: a
+   * remark with no item and no quantity is not a line to dispatch. */
+  remark: string;
   /** Reset to false on every edit — a stale approval must not survive a
    * change to what it was approving. */
   acknowledgedOpen: boolean;
@@ -72,6 +75,7 @@ function makeBlankRow(): DispatchRowState {
     sealedCount: "",
     loose: "",
     pieces: [],
+    remark: "",
     acknowledgedOpen: false,
   };
 }
@@ -160,6 +164,10 @@ export default function DispatchBatchForm({
   const [siteId, setSiteId] = useState("");
   const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
+  // Printed on the challan's signature blocks. Blank is fine and common — the
+  // challan then prints ruled lines to fill in when the van is loaded.
+  const [deliveredBy, setDeliveredBy] = useState("");
+  const [receivedBy, setReceivedBy] = useState("");
   const [pasteText, setPasteText] = useState("");
   const [rows, setRows] = useState<DispatchRowState[]>(() =>
     Array.from({ length: 15 }, makeBlankRow)
@@ -315,6 +323,7 @@ export default function DispatchBatchForm({
         pieces: request.pieces,
         loose: request.loose,
         approvedOpens: plan ? summariseOpens(plan) : [],
+        remark: r.remark,
       };
     });
 
@@ -323,6 +332,8 @@ export default function DispatchBatchForm({
         siteId,
         reference,
         note,
+        deliveredBy,
+        receivedBy,
         lines,
       });
       if (result.ok) {
@@ -350,11 +361,28 @@ export default function DispatchBatchForm({
             ))}
           </Select>
         </Field>
-        <Field label="Reference / challan no. (optional)">
+        {/* Our own challan number is assigned on save and is not editable —
+            this is the OTHER party's document number, if their paperwork has
+            one. Relabelled so the two are not mistaken for each other. */}
+        <Field label="Their reference / order no. (optional)">
           <Input value={reference} onChange={(e) => setReference(e.target.value)} />
         </Field>
         <Field label="Note (optional)">
           <Input value={note} onChange={(e) => setNote(e.target.value)} />
+        </Field>
+        <Field label="Delivered by (optional)">
+          <Input
+            value={deliveredBy}
+            onChange={(e) => setDeliveredBy(e.target.value)}
+            placeholder="Driver or person carrying it"
+          />
+        </Field>
+        <Field label="Received by (optional)">
+          <Input
+            value={receivedBy}
+            onChange={(e) => setReceivedBy(e.target.value)}
+            placeholder="Person at site who signs"
+          />
         </Field>
       </div>
 
@@ -604,6 +632,21 @@ function DispatchRowCard({
               placeholder={`quantity (${item.baseUnit})`}
             />
           )}
+
+          {/* The challan's Remarks column for this line. Only offered once an
+              item is chosen, since there is nothing to remark on before that. */}
+          <Input
+            value={row.remark}
+            onChange={(e) =>
+              // acknowledgedOpen is carried through explicitly: updateRow clears
+              // it on every patch, because an edit invalidates a stale approval.
+              // A remark changes nothing about the packs being opened, so
+              // letting it clear the acknowledgement would silently re-block a
+              // row the user had already approved.
+              onUpdate({ remark: e.target.value, acknowledgedOpen: row.acknowledgedOpen })
+            }
+            placeholder="Remarks for the challan (optional)"
+          />
 
           <PlanStatus item={item} plan={plan} total={total} acknowledged={row.acknowledgedOpen} onAcknowledge={onAcknowledge} />
         </>

@@ -227,10 +227,26 @@ model DefectiveItem {
   @@index([deliveryId])
 }
 
+/// A site IS a project here — dispatches, pickups, transfers and defects all
+/// hang off one. The three fields below were added for the delivery challan,
+/// which has to name the party the material is for and where it is going, not
+/// just the internal label the store uses for the place.
 model Site {
   id             String          @id @default(cuid())
   name           String
+  /// The SHORT label the site list and every site dropdown render. Kept
+  /// distinct from `address` on purpose: a postal address in a <select> is
+  /// unreadable, and shortening the address for the dropdown would mean the
+  /// challan could never print the full one.
   location       String?
+  /// Customer / party the project belongs to. The challan's "Delivery Challan
+  /// For" block; falls back to `name` when unset.
+  customerName   String?
+  /// Full postal delivery address, multi-line.
+  address        String?
+  /// The client's own reference for the project, printed as Project ID. Free
+  /// text rather than generated — it is THEIR numbering, not ours.
+  projectCode    String?
   notes          String?
   createdAt      DateTime        @default(now())
   transactions   Transaction[]
@@ -279,8 +295,22 @@ model SitePickup {
 /// of a wall of loose rows.
 model Dispatch {
   id           String        @id @default(cuid())
-  /// Dispatch / challan number, if the paper trail has one.
+  /// OUR challan number, and the reason it is an Int rather than a string:
+  /// a delivery challan is an official record, so the series has to be unique
+  /// and gap-free. It is assigned by `Sequence` inside the same transaction
+  /// that writes this row (see src/lib/challan.ts), never typed by a person.
+  /// Required — a dispatch without a number cannot be printed, and letting one
+  /// exist would mean every print site had to handle the null.
+  challanNo    Int           @unique
+  /// The OTHER party's document number, if their paperwork has one. A
+  /// different fact from `challanNo` and still optional, which is why the two
+  /// did not merge: this one is theirs and may be blank or repeated.
   reference    String?
+  /// Who physically carried the material, and who signed for it at the site.
+  /// Optional: when a challan is printed before the driver is known, these
+  /// print as ruled lines to fill in by hand.
+  deliveredBy  String?
+  receivedBy   String?
   site         Site          @relation(fields: [siteId], references: [id])
   siteId       String
   dispatchedAt DateTime      @default(now())
@@ -291,6 +321,17 @@ model Dispatch {
 
   @@index([dispatchedAt])
   @@index([siteId])
+}
+
+/// A named counter, incremented with one atomic UPDATE inside the caller's
+/// transaction. Exists because SQLite (via Prisma) can only autoincrement the
+/// `@id` column, and the obvious alternative — `max(challanNo) + 1` — is a
+/// read-then-write that hands two dispatches saved at the same moment the same
+/// number. The row for key "challan" is created by the migration and by
+/// prisma/seed.ts, so it is present on any database the app can start against.
+model Sequence {
+  key   String @id
+  value Int    @default(0)
 }
 
 /// One challan/consignment received from a supplier. `siteId` is the whole

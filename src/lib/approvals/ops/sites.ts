@@ -49,7 +49,14 @@ export async function createSite(
   args: SiteCreateArgs
 ): Promise<{ id: string; name: string }> {
   const site = await tx.site.create({
-    data: { name: args.name, location: args.location, notes: args.notes },
+    data: {
+      name: args.name,
+      location: args.location,
+      customerName: args.customerName,
+      address: args.address,
+      projectCode: args.projectCode,
+      notes: args.notes,
+    },
   });
   return { id: site.id, name: site.name };
 }
@@ -60,7 +67,14 @@ export async function updateSite(
 ): Promise<{ id: string; name: string }> {
   const site = await tx.site.update({
     where: { id: args.siteId },
-    data: { name: args.name, location: args.location, notes: args.notes },
+    data: {
+      name: args.name,
+      location: args.location,
+      customerName: args.customerName,
+      address: args.address,
+      projectCode: args.projectCode,
+      notes: args.notes,
+    },
   });
   return { id: site.id, name: site.name };
 }

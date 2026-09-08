@@ -10,6 +10,7 @@ import {
   type ApprovedOpens,
 } from "@/lib/packs";
 import { piecesTotal, type Piece } from "@/lib/units";
+import { nextChallanNo } from "@/lib/challan";
 import { serialiseAppliedPlan } from "@/lib/corrections";
 import { reconcileSitePickups } from "@/lib/sitePickups";
 import type { AllocationRequest } from "@/lib/allocation";
@@ -37,12 +38,19 @@ export type DispatchLineInput = {
   loose: number;
   /** Opens this row's reviewed plan needed, approved by whoever reviewed it. */
   approvedOpens: ApprovedOpens;
+  /** This line's Remarks column on the printed challan. Stored in the ISSUE
+   * movement's `note`, which is where a per-line comment already lived. */
+  remark?: string | null;
 };
 
 export type DispatchInput = {
   siteId: string;
   reference?: string | null;
   note?: string | null;
+  /** Printed on the challan's signature blocks. Optional: left blank they
+   * print as ruled lines for the driver and the receiver to sign. */
+  deliveredBy?: string | null;
+  receivedBy?: string | null;
   lines: DispatchLineInput[];
 };
 
@@ -122,12 +130,18 @@ export async function recordDispatch(input: DispatchInput): Promise<DispatchResu
 
   const reference = input.reference?.trim() || null;
   const note = input.note?.trim() || null;
+  const deliveredBy = input.deliveredBy?.trim() || null;
+  const receivedBy = input.receivedBy?.trim() || null;
   let dispatchId = "";
 
   try {
     await prisma.$transaction(async (tx) => {
+      // Inside the transaction, so a batch that fails on row 9 rolls the number
+      // back with it rather than leaving a hole in the challan series.
+      const challanNo = await nextChallanNo(tx);
+
       const dispatch = await tx.dispatch.create({
-        data: { siteId: input.siteId, reference, note, userId },
+        data: { challanNo, siteId: input.siteId, reference, note, deliveredBy, receivedBy, userId },
       });
       dispatchId = dispatch.id;
 
@@ -147,7 +161,9 @@ export async function recordDispatch(input: DispatchInput): Promise<DispatchResu
             siteId: input.siteId,
             dispatchId: dispatch.id,
             userId,
-            note,
+            // A line's own remark wins; with none, the batch note is copied
+            // down as it always has been.
+            note: line.remark?.trim() || note,
             packSize: request.sealedPacks[0]?.packSize ?? null,
             packCount: request.sealedPacks.reduce((s, p) => s + p.count, 0) || null,
             pieces: request.pieces.length ? JSON.stringify(request.pieces) : null,

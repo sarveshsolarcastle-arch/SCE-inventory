@@ -1,7 +1,8 @@
 # Inventory Management System
 
 Tracks components and materials in the company store, what has been issued to installation
-sites, and what needs reordering. Built from the brief in
+sites, and what needs reordering — and prints a signed **Material Delivery Challan** for each
+dispatch. Built from the brief in
 [inventory_management.md.txt](inventory_management.md.txt).
 
 Single Next.js 16 app (App Router, server actions — no separate backend), Prisma 7 over
@@ -22,6 +23,13 @@ Then open http://localhost:3000.
 > `.env.local` pinning `DATABASE_URL="file:./dev.db"` takes precedence and is what you want
 > locally. Nothing in the app tells you which one you are on, so check before recording
 > anything.
+>
+> ⚠️ **`.env.local` does not protect the Prisma CLI.** `prisma.config.ts` does
+> `import "dotenv/config"`, and dotenv loads `.env` alone — it has no notion of Next's
+> `.env.local` precedence. So `prisma migrate`, `prisma studio`, `prisma generate` and any
+> plain `npx tsx scripts/*.ts` all resolve `DATABASE_URL` to the **live pilot**. Prefix them:
+> `DATABASE_URL="file:./dev.db" npx prisma migrate deploy`. Treat an unprefixed Prisma command
+> as pointed at production.
 
 Seed one account per role plus item/site fixtures (idempotent):
 
@@ -103,7 +111,15 @@ It reads `.env` (the deployment database), not `.env.local`.
   earlier "approval workflows are out of scope" call, and records why account management and
   backup restore must stay outside that queue — the two conclusions in that section most likely
   to be re-derived wrongly later. **All three parts are built** as of 2026-09-07; the migration
-  is applied locally only.
+  is applied locally only. Its "Decided 2026-09-08" section carries **the delivery challan** —
+  why it extends Dispatch rather than standing alone, why the challan number needed a counter
+  table, and the three rules (no reversed lines, no mixed-unit total, no typeable number) that
+  a later reader will otherwise be tempted to soften.
+- **[WORKFLOW.md](WORKFLOW.md)** — the operating manual for the three-person team: who does
+  what, in what order, on which screen, and what must be true before the next person starts.
+  Read it alongside the capability tables — it is explicit that the Finance A / Finance B
+  split is **an agreement between people, not a rule the software enforces**, which is the
+  kind of thing that otherwise gets assumed the wrong way round.
 - [.env.example](.env.example) — every environment variable, and what breaks without it.
 - [inventory_management.md.txt](inventory_management.md.txt) — the original problem statement.
 - [storeroom-heavy-stock-plan.md](storeroom-heavy-stock-plan.md) — physical storage plan for
@@ -112,8 +128,8 @@ It reads `.env` (the deployment database), not `.env.local`.
 ## Status
 
 All seven phases — the six-phase functional redesign and the Phase 7 UI overhaul — are built
-and verified in the browser; `npx tsc --noEmit` and `npm run build` pass, and `npm test` runs
-153 unit tests.
+and verified in the browser; `npx tsc --noEmit` passes, `npm run lint` is clean, and `npm test`
+runs 168 unit tests.
 
 **Phase 8 — hosting — is in progress; re-planned 2026-08-25 into two parts.** Already built:
 account management (`/users` for an admin, `/account` for everyone), a `DATABASE_URL` that
@@ -139,15 +155,19 @@ alternatives, and the two decisions still open.
 
 **Not production-ready yet.** Before real stock goes in:
 
-- **The database layer has no test coverage.** The 153 tests cover the pure modules
-  (allocation, corrections, matching, paste parsing, site balances, adjustment deltas,
+- **The write-through actions still have no test coverage.** The 168 tests cover the pure
+  modules (allocation, corrections, matching, paste parsing, site balances, adjustment deltas,
   capability tables, approval argument parsing/summaries/outcomes/labels, nav active-link
-  matching, database-URL resolution). Everything that writes to the database —
-  `packs.ts`, `recordDispatch`, `recordDelivery`, the site lifecycle — has none. This is the
-  largest outstanding risk, and **Part A puts real stock through exactly that code with no
-  parallel record to catch a mistake.** It is not a theoretical risk: recording a stock count
-  was broken from the day it was built until 2026-09-05, and every phase-level verification
-  list said "passed".
+  matching, database-URL resolution, challan number formatting) and — **added 2026-09-08** —
+  `packs.ts` itself, exercised against a real freshly-migrated SQLite database rather than a
+  mock. That closes the harder half: `commitAllocation`'s synthetic `new:<i>` pack-id
+  resolution was the subtlest code in the project and was singled out by name as untested.
+  **Still untested:** `recordDispatch`, `recordDelivery` and the site lifecycle — all call
+  `requireCapability`, which reads the NextAuth session, so reaching them needs auth mocking
+  that does not exist yet. This remains the largest outstanding risk, and **Part A puts real
+  stock through exactly that code with no parallel record to catch a mistake.** It is not
+  theoretical: recording a stock count was broken from the day it was built until 2026-09-05,
+  and every phase-level verification list said "passed".
 - **Part A is deployed**, and the database now has a nightly automated backup with an
   admin-only restore page (see PROGRESS.md's Phase 9). Still open: the live restore drill —
   restoring against the real database at least once to prove the button works, not just the
@@ -178,12 +198,59 @@ can answer; the first to do so clears it for everyone). Three independent parts:
   twelve-flow regression walkthrough was run three times over the course of the work.
 
   **Two caveats before this goes near the pilot.** The `ApprovalRequest` migration is applied
-  locally only — the pilot reports **1 pending** through `npm run db:migrate:turso`. And
+  locally only — the pilot reports it through `npm run db:migrate:turso`, and since Phase 12
+  landed on 2026-09-08 there are **two** pending, not one. And
   `vercel.json`'s `"regions": ["bom1"]` has stopped being a performance tweak: the approve path
   runs the claim and the work in one transaction with an explicit 20s timeout, which is
   comfortable at Mumbai latency and unreachable without it.
 
 PROGRESS.md §9 has the summary; REDESIGN-PLAN.md's "Decided 2026-09-05" section has the
 reasoning and the four traps.
+
+**Phase 12 — the Material Delivery Challan — built 2026-09-08.** A printable A4 delivery note
+for a dispatch, at `/dispatches/[id]/challan`: company block, party and shipping blocks, a
+`Sr No. / Item / Description / Specification / Qty / Unit / Remarks` table, and Received By /
+Delivered By signature blocks. Built as an **extension of Dispatch to Site**, not a separate
+feature — `Dispatch` was already a header row with its lines hanging off it as `ISSUE`
+transactions. Restyled the same day, once real data existed to check it against — navy banding
+matching the client's own template, the client's logo and real company details, and a
+row-density pass (a two-column split of what used to be a stacked cell, tighter padding
+throughout) to fit roughly 30 lines on one A4 sheet instead of spilling onto a second, near-empty
+one. See REDESIGN-PLAN.md's "Follow-up, same day" note under Phase 12.
+
+- `Site` gained `customerName`, `address` and `projectCode`. `location` was deliberately not
+  repurposed: it renders inside every site `<select>`, where a postal address is unreadable.
+- `Dispatch` gained a unique auto-generated `challanNo` (`SCE/DC/0042`), plus `deliveredBy` and
+  `receivedBy`. The existing free-text `reference` is now labelled **"Their reference"** — it is
+  the other party's document number and was never suitable as ours.
+- Numbers come from a `Sequence` counter incremented atomically inside the dispatch's own
+  transaction, so a batch that fails on row 9 does not burn a number. `max()+1` was rejected as
+  a read-then-write race; Prisma on SQLite can only autoincrement the `@id` column.
+- First `@media print` block in the app. Anything marked `data-print="hide"` is dropped, and the
+  light palette is forced regardless of `[data-theme]` — the dark toggle is a data attribute, so
+  a dark challan would otherwise print as a black page.
+
+**Three behaviours that look like bugs and are not.** Reversed lines never print, and a fully
+reversed dispatch shows a refusal instead of a sheet — a signed challan listing material that
+was pulled back is a false record. The Total row is suppressed when lines use different units,
+because 150 m of wire plus 40 screws is not 190 of anything. And the challan number cannot be
+typed or edited.
+
+> ⚠️ **Two production steps are outstanding.** The Phase 12 migration is applied to `dev.db`
+> only — the pilot now reports **two** pending. And the client's requested full data reset
+> (everything except `User` rows, local *and* live) is written as `scripts/reset-data.ts` but
+> **has not been run**. It prints its target URL and refuses unless `--yes-wipe <fragment>`
+> matches; run bare it correctly refused to touch production. Take a backup first. The
+> migration backfills `challanNo` by dispatch date, so it is safe on populated data and does
+> **not** depend on the reset happening first.
+>
+> **`src/lib/company.ts` now carries the client's real name, address, phone, email and website**
+> (filled in 2026-09-08, after being a stub with blank strings). Values still route through
+> `companyContactLines()`, which drops any field left blank rather than printing an empty label —
+> `gstin` is still empty for exactly that reason. The logo is a static file at
+> [public/logo.png](public/logo.png), rendered with a plain `<img>` rather than `next/image` (one
+> caller, fixed file, no reason to add an optimization pass to the one path that has to survive
+> `window.print()`). Letterhead was offered and declined — "print regular A4" — so the sheet
+> stays self-contained.
 
 See PROGRESS.md §7 for the full list and §9 for the Phase 8 status and server checklist.
