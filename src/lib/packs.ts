@@ -6,12 +6,12 @@ import {
   type AllocationRequest,
   type ItemRules,
   type PackSnapshot,
-} from "@/lib/allocation";
+} from "./allocation.ts";
 import {
   addSealedDelta,
   emptyAppliedPlan,
   type AppliedPlan,
-} from "@/lib/corrections";
+} from "./corrections.ts";
 
 /* -------------------------------------------------------------------------
  * The database side of the pack model. Everything here takes a transaction
@@ -159,19 +159,27 @@ export async function openPack(
 
 export type ApprovedOpens = { packSize: number; count: number }[];
 
+// Explicit field assignment rather than a `constructor(readonly x)` parameter
+// property: Node's `--experimental-strip-types` (which runs this project's
+// tests, see package.json) strips types but does not transform TS syntax, and
+// a parameter property is a transform, not a type — it fails to parse there.
 export class StaleApprovalError extends Error {
-  constructor(readonly required: ApprovedOpens) {
+  readonly required: ApprovedOpens;
+  constructor(required: ApprovedOpens) {
     super(
       "Stock changed while you were reviewing — this now needs more packs opened than you approved."
     );
     this.name = "StaleApprovalError";
+    this.required = required;
   }
 }
 
 export class AllocationFailedError extends Error {
-  constructor(readonly plan: AllocationPlan, message: string) {
+  readonly plan: AllocationPlan;
+  constructor(plan: AllocationPlan, message: string) {
     super(message);
     this.name = "AllocationFailedError";
+    this.plan = plan;
   }
 }
 

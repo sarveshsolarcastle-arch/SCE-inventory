@@ -12,13 +12,12 @@ import {
   AllocationFailedError,
   StaleApprovalError,
   commitAllocation,
-  readSnapshot,
   recalcItemStock,
   restock,
   openPack as openSealedPack,
   type ApprovedOpens,
 } from "@/lib/packs";
-import { planAllocation, type AllocationRequest } from "@/lib/allocation";
+import type { AllocationRequest } from "@/lib/allocation";
 import { piecesTotal, type Piece } from "@/lib/units";
 import { serialiseAppliedPlan } from "@/lib/corrections";
 import { itemQuantityAtSite } from "@/lib/stock";
