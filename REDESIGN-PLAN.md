@@ -17,6 +17,15 @@
 > a bare `can()` now offer finance a control saying it will ask. **Part 2 is COMPLETE, stages
 > 0-9.**
 >
+> **Phase 12 (the Material Delivery Challan, decided and built 2026-09-08) is BUILT.** A
+> printable A4 delivery note built as an extension of Dispatch to Site rather than a separate
+> feature — `Dispatch` was already a header with `ISSUE` lines hanging off it. Adds project
+> identity to `Site`, a unique auto-generated `challanNo`, and the app's first `@media print`
+> block. See "Decided 2026-09-08" in the cross-phase notes for the three rules that must not be
+> softened. **Two production steps are outstanding and neither has been run:** the migration is
+> applied to `dev.db` only, and the client's requested full data reset (`scripts/reset-data.ts`)
+> is written but deliberately unexecuted.
+>
 > ⛔ **The one conclusion to carry out of this file: `user:manage` and `backup:manage` are
 > requestable by NOBODY, and that is not an unfinished corner of the feature.** An approval flow
 > that can mint an admin is not an approval flow, and an approved restore drops the table holding
@@ -2060,9 +2069,15 @@ spent.
 
 ## Still outstanding regardless
 
-**DB-layer test coverage.** Unchanged as the largest risk, and Part A now runs **real stock**
-through it. The 153 tests are all pure and will pass unchanged after the adapter swap **while
-proving nothing about it**. The cutover recount bounds the damage; it does not prevent it.
+**DB-layer test coverage.** Still the largest risk, and Part A now runs **real stock** through
+it. At the time this was written, all 168 tests were pure and would pass unchanged after the
+adapter swap **while proving nothing about it**. **Updated 2026-09-08**: `packs.ts` — the
+DB-writing half of the allocator, and the subtlest code in the project — now has 12 tests of
+its own (168 total) run against a real freshly-migrated SQLite file (see
+[testDb.ts](src/lib/testDb.ts)), not merely pure logic. `recordDispatch`, `recordDelivery` and
+the site lifecycle actions still have none — they read the NextAuth session before doing
+anything, which the harness does not yet fake. The cutover recount bounds the damage; it does
+not prevent it.
 
 # Cross-phase notes
 
@@ -2419,7 +2434,8 @@ reachable only through an approval.
 > broken-form bug fixed on the site detail page in Part 1, reintroduced through the front door.
 > It is a TODO in that file.
 >
-> **The migration is applied locally only.** The pilot reports it as 1 pending through
+> **The migration is applied locally only.** *(Two pending as of 2026-09-08, once Phase 12
+> landed — this note records the state when Phase 11 was written.)* The pilot reports it through
 > `npm run db:migrate:turso`. Apply it when the feature is ready to deploy, not before.
 >
 > **Stage 4c, 2026-09-07.** The choke point exists — `registry.ts`, `runOrRequest.ts`,
@@ -2840,6 +2856,159 @@ Beyond the per-part checks in the plan file, three that matter most:
 3. **The race.** The same pending request open in two admin tabs; approve in both. The second
    returns "another admin answered this first", and the operation ran exactly once.
 
+## Decided 2026-09-08: the Material Delivery Challan ✅ BUILT
+
+The client asked for a standard, printable **Material Delivery Challan** — an official company
+record of material sent to a project site, on A4, signed by whoever receives it. The trail it
+has to give: *what material was sent → to which project → on what date → in what quantity →
+who received it.*
+
+**This is an extension of Dispatch to Site, not a second system.** That was the client's own
+framing and it is also the right one: `Dispatch` was already a header row with its lines
+hanging off it as `ISSUE` transactions carrying `dispatchId` — exactly a challan's shape. Four
+of the five facts above were already in the ledger. What was missing was the paper, plus the
+handful of fields a printed document needs that an internal ledger never did.
+
+Reference format supplied by the client: `delivery-challan-format.pdf` in the repo root —
+**gitignored, so it is not in the repository**; ask the client if you need a copy.
+
+### What the client decided, where the format and the brief disagreed
+
+The supplied PDF is a generic GST-style challan. The written brief asked for something slightly
+different. Where they conflicted, the user chose:
+
+| Question | Decision |
+|---|---|
+| Where project/customer/address data lives | **Fields on `Site`.** A site already *is* a project here — dispatches, pickups, transfers and defects all hang off one. A separate `Project` model would have meant rethinking every dispatch and site query for a one-to-one relationship. |
+| The challan number | **Auto-generated, sequential, unique.** Not the existing free-text `reference`. |
+| Letterhead | **Ignored — "print regular A4".** The sheet is self-contained and prints its own company block. Reserving blank space for pre-printed letterhead was offered and declined. |
+| Table columns | **Sr No. / Item Name / Description / Specification / Qty / Unit / Remarks.** (Description and Specification were one stacked cell as first built; split into two real columns in the same-day follow-up below, which roughly halved row height.) The format's HSN/SAC column was dropped: `Item` has no HSN, filling one in for every item is real work, and it is only worth it if these challans are used for GST movement. Revisit if that changes. |
+| Delivered-by / received-by | **Optional fields on the dispatch form**, printing as ruled lines when blank. |
+
+### The three rules that must not be softened
+
+**1. Reversed lines never print.** A signed challan listing material that was pulled back out of
+the ledger is a *false record* — the single thing this document exists to prevent. A dispatch
+whose every line is reversed renders a refusal panel instead of a sheet, and no Print control is
+offered for it on the dispatch list, the detail page, or the site activity feed. The temptation
+later will be to print it struck through; do not.
+
+**2. The Total row is suppressed across mixed units.** 150 m of wire plus 40 screws is not 190
+of anything. The total renders only when every line shares a `baseUnit`, and the sheet says why
+when it does not. The format PDF has an unconditional Total because its example is nine rows of
+the same kind of thing; this app's dispatches routinely are not.
+
+**3. `Dispatch.reference` was NOT reused as the challan number, and the two must not be merged.**
+`reference` is the *other party's* document number — optional, non-unique, theirs. It is now
+labelled "Their reference" throughout. Ours is `challanNo`: generated, unique, not typeable. A
+challan number that can be blank or duplicated is not an official record.
+
+### Why `Sequence` exists rather than something simpler
+
+`challanNo` is `Int @unique` and required. Two obvious alternatives were rejected:
+
+- **`@default(autoincrement())`** — Prisma on SQLite only autoincrements the `@id` column.
+- **`max(challanNo) + 1`** — a read-then-write. Two dispatches saved in the same moment both
+  read the same maximum and one fails the unique constraint (or worse, both succeed on a
+  database without it). Under the batch dispatch flow, where a save can take several seconds,
+  this is not a theoretical window.
+
+So a named counter table, incremented with one atomic `UPDATE … SET value = value + 1` inside
+**the caller's transaction** — the same ownership rule as `approvals/ops/*`, for the same
+reason. Allocating outside the transaction would burn a number whenever a batch failed on row
+9, leaving a gap in a series whose whole value is that it has none.
+
+### Deliberately not in scope
+
+- **HSN/SAC codes and any GST treatment.** No tax fields, no value column, no e-way bill. This
+  is a delivery note, not an invoice.
+- **A PDF library.** The sheet is server-rendered HTML with an `@media print` block — the app's
+  first. Adding `jspdf`/`puppeteer` would put a second rendering path in front of the same data.
+- **Emailing or storing a copy of the printed sheet.** The `Dispatch` row *is* the record; the
+  paper is a rendering of it. Storing a snapshot would create a second truth that can disagree.
+- **A challan-specific report screen.** "Deliveries project-wise" is the dispatch list filtered
+  by site, which already exists at `/sites/[id]`.
+
+### The trap for whoever touches this next
+
+Site writes go through `runOrRequest`, not directly. The three new `Site` fields therefore had
+to be threaded through `kinds.ts` → `args.ts` → `ops/sites.ts`, and **`summary.ts`'s
+`site.update` line had to change**. It read *"Rename X to Y"*. A site update now also rewrites
+the customer, the postal address and the project ID — the details that get **printed on a legal
+document** — and a frozen summary naming only the name would understate what an admin is
+approving. That is the exact failure the summary was frozen server-side to prevent.
+
+### Follow-up, same day: matching the client's template, the real logo, and page density
+
+Once the sheet was built, the client compared it against two references and asked for closer
+visual agreement — not a rethink of what prints, only how it looks. Three rounds:
+
+**1. Visual style, not table columns.** Against `delivery-challan-format.pdf`, the client was
+explicit: keep `Description / Specification` and `Remarks` as they are — that part is "doing
+great" — and match everything *around* the items table instead. That landed as:
+
+- Navy banding (`#1e3a5c`, a fixed hex, not a theme token) on the title bar, the table header
+  row, and a pair of divider bars bracketing the signature blocks — copying the template's own
+  banding rather than this app's palette. It has to survive `[data-theme="dark"]` and the
+  print overrides unchanged, which is why it is not a CSS variable: see the `.challan-navy-bar` /
+  `.challan-total-row` comment in `globals.css`.
+- A logo box, initially a dashed placeholder, later swapped for the client's actual file.
+- Blank ruled lines for Phone/Email/GSTIN on both the Party and Shipping blocks, and a "Delivery
+  time" line — fields the template carries that `Site` has no column for. Printed as blanks
+  rather than added to the schema, the same pattern as the signature block's Date/Signature:
+  **a schema change is warranted only once someone is actually filling these in by hand and it's
+  worth capturing.**
+- A "Comment" line added to Delivered By to match Received By — it existed on one side only.
+
+**2. Real company details.** `COMPANY` in `company.ts` gained a `website` field and its actual
+values: name "Solar Castle Energy Pvt Ltd", the Goa postal address, phone, email, and website —
+previously all blank placeholders. The client's uploaded `Logo.png` was moved into `public/`
+(Next.js only serves static files from there) and is rendered with a plain `<img>`, deliberately
+not `next/image` — there is exactly one caller, the file never changes size, and `next/image`'s
+optimization pass buys nothing on the one path that has to survive `window.print()` unchanged.
+
+**3. Page density — fitting ~30 lines on one A4 sheet.** A dispatch of only 13 lines was already
+spilling onto a second page, almost empty. Diagnosed from a browser print-to-PDF sample
+(`example print.pdf`, outside the repo): most of the height was two-line item rows and generous
+padding throughout the header blocks, not the line count itself. Fixed by:
+
+- Splitting the item table's stacked "Description / Specification" cell (the movement text over
+  the sku/category line) into two real columns, each one line tall. This is the single biggest
+  win — it roughly halves a row's height without dropping any information.
+- Table text down to `text-xs`, cell padding from `py-1` to `py-0.5` throughout.
+- Every header block (company/logo, Party/Shipping, Challan No., the signature footer) had its
+  padding, gaps and font sizes tightened the same way — none of it individually dramatic, all of
+  it additive.
+- `@page` margin from 12mm to 8mm in `globals.css`.
+
+**Not fixable from this file.** The "localhost:3000/…" and timestamp text the client saw on a
+printed page is Chrome's own print header/footer — injected by the browser at print time from
+outside the page entirely. No `@page` or `@media print` rule reaches it; the only control is the
+"Headers and footers" checkbox under "More settings" in the browser's print dialog. Anyone
+re-litigating page-density complaints should check that box is off before assuming the layout is
+still the problem.
+
+**4. Clipping at the page break — found on re-verification, 2026-09-08.** The density work above
+reduced *how many* pages a challan takes; it did not address what happens *at* a break, and a
+long enough dispatch will always cross one. Two ancestors of the items table are clipping
+contexts: the sheet carries `overflow-hidden` (so the navy bars sit inside its rounded edge) and
+the table sits in an `overflow-x-auto` wrapper (so a wide table scrolls rather than bursting the
+card). Both are correct on screen. But **a clipping context containing a page break is truncated
+at that break by every major print engine** — the symptom is page 2 onward coming out blank or
+cut off, which reads as "the app dropped my rows" rather than as a CSS problem.
+
+Fixed in the print block with `.challan-sheet, .challan-sheet * { overflow: visible !important }`
+— broad on purpose, because nothing inside a *printed* document should ever scroll or clip, and
+narrower selectors would need revisiting every time the sheet's markup changes. Screen rendering
+is untouched: verified that `.challan-sheet` still computes `overflow: hidden` and the table
+wrapper still `overflow-x: auto` outside print.
+
+⚠️ **This one needs the user's own Ctrl+P to close out.** The available tooling cannot emulate
+print media, so the clipping was identified from the computed styles plus the measurement that a
+13-line challan already renders ~2150px against ~1060px of usable A4 height — i.e. it is the
+*second page of an ordinary dispatch*, not a 30-row edge case. The fix is the standard remedy
+and is safe regardless, but it has not been seen on paper.
+
 ## Parked — raised, not yet decided
 
 **1. `Transaction` is becoming a wide table.** Across these phases it gains `packSize`,
@@ -2863,7 +3032,10 @@ Smaller points, noted in passing and still undecided:
   reorder view in packs would be more actionable.
 - `Transaction.userId` is who *recorded* it, not who *took* the material. The brief's
   problem #3 is about accountability for material going to sites, so those may want to be
-  separate fields.
+  separate fields. **Partly addressed 2026-09-08:** the challan added `Dispatch.deliveredBy`
+  and `Dispatch.receivedBy`, which name the two people the paper trail actually cares about.
+  They are free text on the batch, not user accounts and not per line, so this stays open —
+  but the pressing case for it is now covered.
 
 ## Out of scope (flagged, not built)
 
@@ -2886,8 +3058,9 @@ Smaller points, noted in passing and still undecided:
 - ~~Approval workflows (employee requests → finance approves).~~ **Reversed 2026-09-05** — see
   "FINANCE absorbs EMPLOYEE, and asks an admin for the rest" above. Note the direction is also
   inverted from what this line assumed: it is **finance requesting, admin approving**. Decided in
-  full, and the queue itself (Part 2) has worked end to end since 2026-09-07 — what remains is
-  the twelve call sites that still offer finance no button. Parts 1 and 3 of the same decision —
+  full, and **all of it is built**: the queue itself (Part 2) has worked end to end since
+  2026-09-07, and stage 8 the same day re-labelled the twelve call sites, so the request arm is
+  reachable from the UI rather than only from the server. Parts 1 and 3 of the same decision —
   the role merge, and the adjustment delta, both of which stand alone — landed 2026-09-05.
 - Per-slot counts of *sealed* packs — sealed packs of a size are fungible, so "how many are
   in this particular box" has no operational answer worth storing.

@@ -1,8 +1,10 @@
 # Inventory Management System — Progress Handover
 
-Last updated: 2026-09-07 (**Phase 8 Part A — the hosted pilot — is live**; **Phase 11 — role
-consolidation and admin approvals — is BUILT, all three parts** — see §9. The migration it
-needs is applied locally only; the pilot still reports it pending)
+Last updated: 2026-09-08 (**Phase 8 Part A — the hosted pilot — is live**; **Phase 11 — role
+consolidation and admin approvals — is BUILT, all three parts**; **Phase 12 — the Material
+Delivery Challan — is BUILT** — see §9. TWO migrations are now applied locally only; the pilot
+reports both pending. The client's requested data reset is written but **not run** — see the
+Phase 12 note.)
 
 > **§1-§8 describe the code as it stands today.** The six-phase functional redesign and
 > Phase 7 (UI overhaul) are **complete**. **Phase 8 Part A (the hosted pilot) is deployed**:
@@ -47,7 +49,7 @@ All core flows below were manually tested in a running dev server and confirmed 
 | Placement suggestions (usage-frequency based) | ✅ Done |
 | Mobile-responsive layout | ✅ Done |
 | Production build | ✅ Passes |
-| Automated tests | ⚠️ 153 unit tests (`npm test`): allocator, corrections, matching, paste parsing, site balances/FIFO age/pickup clamp, adjustment deltas, site-deletion blockers, capability/requestable tables, approval argument parsing/summaries/outcomes/labels, nav active-link matching, database-URL resolution; **no coverage of the DB layer or UI** |
+| Automated tests | ⚠️ 168 unit tests (`npm test`): allocator, corrections, matching, paste parsing, site balances/FIFO age/pickup clamp, adjustment deltas, site-deletion blockers, capability/requestable tables, approval argument parsing/summaries/outcomes/labels, nav active-link matching, database-URL resolution, challan number formatting, **and (2026-09-08) `packs.ts` against a real migrated SQLite database** — `recalcItemStock`, `addOpenPack`'s scrap-at-threshold, `openPack`'s sole-entry-point guard, `commitAllocation` (best-fit, the synthetic `new:<i>` pack-id resolution, stale-approval rollback, the hard out-of-stock error, whole-roll bypass, discrete pooling), `restock`, and `applyInverse` restoring exact prior pack state. See [testDb.ts](src/lib/testDb.ts) and [packs.test.ts](src/lib/packs.test.ts). **`recordDispatch`, `recordDelivery` and the site-lifecycle actions still have no coverage** — those call `requireCapability`, which reads the session, so testing them needs an auth-mocking strategy this pass did not build; **still no coverage of the UI** |
 | Roles: ADMIN / FINANCE, capability-gated | ✅ Done (Phase 2); **consolidated 2026-09-05** (Phase 11 Part 1) — FINANCE absorbed the retired EMPLOYEE role and is now the combined operational role. EMPLOYEE still exists and still works, but is no longer assigned. The admin approval queue (Part 2) is **BUILT and reachable since 2026-09-07**: finance raises a request from a real control, any admin answers it, and the operation runs recorded against whoever asked. **`user:manage` and `backup:manage` are requestable by nobody, and must stay that way** — see §5 for why |
 | Corrections: reversal and stocktake adjustment | ✅ Done (Phase 3) |
 | Bulk dispatch to site, from Excel paste | ✅ Done (Phase 4) |
@@ -58,6 +60,7 @@ All core flows below were manually tested in a running dev server and confirmed 
 | Deployment | ✅ **Part A live** (Phase 8) — deployed at sce-inventory.vercel.app, on Turso. Still open: seeded passwords unchanged. Part B (offline production) not started |
 | Shelf deletion | ✅ **Done** (2026-09-04) — `deleteShelf` under its own `shelf:delete` capability rather than `shelf:manage`. Warns with counts on an occupied shelf instead of blocking, because a shelf holds placement and no history; open packs in it are unplaced, never deleted, and no stock moves. Performing it stayed ADMIN-only when Phase 11 gave FINANCE `shelf:manage` the next day — which is what the separate capability was for — and `shelf.delete` is now an approvable kind FINANCE may request. ✅ **That request has a UI since stage 8 (2026-09-07)**: the delete card gates on `capabilityMode()`, so finance gets a secondary "Ask an admin to delete this shelf" that collects a reason. See REDESIGN-PLAN.md's "Decided 2026-09-04" section |
 | Database backups | ✅ **Automated, live** (Phase 9) — nightly GitHub Actions job dumps the database to the repo's `backups` branch (30-day retention), and an admin-only `/backups` page restores from any of them, or from an uploaded file, with no terminal required. Secrets set, deployed to Production. Still open: the live restore drill (see Phase 9 notes). Part B still needs a second drive |
+| Delivery challan (printable A4, per dispatch) | ✅ **Done** (Phase 12, 2026-09-08) — `/dispatches/[id]/challan`, built as an extension of Dispatch to Site rather than a separate feature. `Site` gained `customerName`/`address`/`projectCode`; `Dispatch` gained a unique auto-generated `challanNo` plus `deliveredBy`/`receivedBy`; the app's first `@media print` block hides anything marked `data-print="hide"` and forces the light palette. Three rules that are deliberate, not bugs: reversed lines never print (a fully reversed dispatch shows a refusal panel), the Total row is suppressed across mixed units, and the challan number cannot be typed. Still open: `src/lib/company.ts` is a stub awaiting the client's address/GSTIN, and the migration is local-only |
 | Slow writes on the live deployment | ✅ **Root-caused and fixed** (Phase 10, 2026-09-04) — **not** a Turso or read-after-write problem. The Vercel function ran in `iad1` (Washington DC) while the database sits in `aws-ap-south-1` (Mumbai), so every SQL statement cost a ~230 ms round trip and a write path issuing 10-25 of them sequentially took 2-5 s. Fixed by [vercel.json](vercel.json) pinning the region to `bom1`; **deployed and verified — `x-vercel-id` reads `bom1::bom1::` and warm `/login` fell from ~270 ms to 76 ms.** The proposed Supabase migration is **closed — paused by the user 2026-09-04**; Part A stays on Turso |
 
 ## 3. Tech Stack
@@ -102,9 +105,10 @@ A `.claude/launch.json` is present so Claude Code's browser preview tool can sta
 - **PackStock** — sealed packs grouped by size (`@@unique([itemId, packSize])`). Two sealed 400 m rolls are interchangeable, so they are counted, not tracked individually. A 400 m and a 600 m roll of the same wire are two sizes of **one** item.
 - **OpenPack** — an opened pack, tracked individually with its own `remaining`, because a 30 m and a 50 m offcut are *not* interchangeable. `state` is `OPEN` or `SCRAP`; optionally points at the shelf slot it physically sits in.
 - **DefectiveItem** — goods that exist but are not stock, held for a supplier claim. `source` `DELIVERY` | `RETURN`, `status` `QUARANTINED` | `CLAIMED` | `REPLACED`.
-- **Site** — id, name, location, notes
+- **Site** — id, name, `location`, notes, plus the challan's project identity added 2026-09-08: `customerName`, `address` (full postal, multi-line), `projectCode`. **A site IS a project here** — dispatches, pickups, transfers and defects all hang off one. `location` stays a SHORT label because it renders inside every site `<select>`; `address` is the one that gets printed, which is why the two did not merge.
 - **Transaction** — type (`STOCK_IN` | `ISSUE` | `RETURN` | `OPEN_PACK` | `SCRAP` | `ADJUSTMENT` | `REVERSAL` | `CONSUME` | `TRANSFER`), quantity **always in the item's baseUnit**, item, optional site, user, note, timestamp, plus display-only `packSize`/`packCount`/`pieces`, a `defectiveQty` on returns, `appliedPlan`/`reason`/`reversedAt` for corrections, `dispatchId`/`deliveryId` grouping, and `fromSiteId` (TRANSFER origin; `siteId` is then the destination).
-- **Dispatch** — groups the ISSUE rows of one batch dispatch to a site.
+- **Dispatch** — groups the ISSUE rows of one batch dispatch to a site. Carries `challanNo` (`Int @unique`, **required**, allocated by `Sequence` — never typed), `reference` (the OTHER party's document number, optional and non-unique — do not conflate the two), and `deliveredBy`/`receivedBy` for the challan's signature blocks.
+- **Sequence** — a named counter, one row per series (`"challan"`). Incremented with a single atomic `UPDATE … SET value = value + 1` inside the caller's transaction. Exists because Prisma on SQLite can only autoincrement the `@id` column, and `max(challanNo) + 1` is a read-then-write that hands two simultaneous dispatches the same number.
 - **Delivery** — one challan received: supplier, reference, and `siteId` (null = into the store; set = delivered direct to that site).
 - **SitePickup** — material at a site flagged as awaiting collection. `@@unique([siteId, itemId])`. Its `quantity` is clamped by `reconcileSitePickups` after every movement, because at-site balances are derived rather than stored.
 - **Shelf** — id, name, rows, columns (a physical 2-sided shelf unit)
@@ -293,7 +297,7 @@ Every server action calls `requireCapability(...)` for itself: `proxy.ts` route-
   [REDESIGN-PLAN.md's "Reopened 2026-09-04" section](REDESIGN-PLAN.md).
 - **Part A is deployed; Part B is not started.** *(This bullet read "Not deployed yet" until 2026-09-05, which had been wrong since 2026-08-25.)* The plan is **two parts**: a temporary hosted pilot on Turso + Vercel carrying **real stock data** — **live at sce-inventory.vercel.app**, with nightly backups (Phase 9) and the function pinned to Mumbai (Phase 10) — then permanent **offline** production on a drive carried between 2-3 office PCs, which has not been started. **SQLite stays throughout** — `provider = "sqlite"` never changes, and Turso is SQLite-compatible, so every existing migration remains valid and only the Prisma adapter is swapped. **No data crosses the cutover**: stock is physically recounted into an Excel sheet and re-entered as an opening delivery. The full plan, including what was reversed and why, is in [REDESIGN-PLAN.md's Phase 8 section](REDESIGN-PLAN.md) — read it before changing any of it. (This bullet previously recorded "a real server behind real HTTPS, SQLite therefore stays, no code changes". That conclusion happens to survive; its premise does not.)
 - **Change the seeded passwords** — all three accounts (`admin`/`finance`/`employee`), not just admin. There is now a self-service flow at `/account` and an admin reset at `/users`, so this no longer needs a code change — but the seeded passwords are still in place.
-- **⚠️ Test coverage stops at the pure modules, and the reason for deferring the rest has expired.** The 153 tests cover [allocation.ts](src/lib/allocation.ts), [corrections.ts](src/lib/corrections.ts), [matching.ts](src/lib/matching.ts), [dispatchPaste.ts](src/lib/dispatchPaste.ts), [siteBalance.ts](src/lib/siteBalance.ts), [adjustment.ts](src/lib/adjustment.ts), [siteBlockers.ts](src/lib/siteBlockers.ts), [capabilities.ts](src/lib/capabilities.ts), the approvals parsers/summaries, and [activeHref.ts](src/components/nav/activeHref.ts). **Everything that writes to the database has none**: [packs.ts](src/lib/packs.ts), `recordDispatch`, `recordDelivery`, and the whole site lifecycle. The subtlest code in the project is in there — `commitAllocation` resolves the planner's synthetic `new:<i>` pack ids onto rows it creates inside the same transaction. This was deferred on the grounds that "the app is not in real use until the remaining phases land"; **they have all landed**, and the untested surface grew with each one. This is now the single most valuable outstanding item.
+- **⚠️ Test coverage stops at the pure modules and `packs.ts`; the write-through actions still have none.** The 168 tests cover [allocation.ts](src/lib/allocation.ts), [corrections.ts](src/lib/corrections.ts), [matching.ts](src/lib/matching.ts), [dispatchPaste.ts](src/lib/dispatchPaste.ts), [siteBalance.ts](src/lib/siteBalance.ts), [adjustment.ts](src/lib/adjustment.ts), [siteBlockers.ts](src/lib/siteBlockers.ts), [capabilities.ts](src/lib/capabilities.ts), the approvals parsers/summaries, [challan.ts](src/lib/challan.ts), [activeHref.ts](src/components/nav/activeHref.ts), and — **added 2026-09-08** — [packs.ts](src/lib/packs.ts) itself, against a real freshly-migrated SQLite database via [testDb.ts](src/lib/testDb.ts): `recalcItemStock`, `addOpenPack`, `openPack`, `restock`, `applyInverse`, and above all `commitAllocation`'s synthetic `new:<i>` pack-id resolution — the subtlest code in the project, and the one PROGRESS.md had singled out by name as untested. Two things had to change in `packs.ts` to make this possible at all, both behaviour-preserving: its two error classes (`StaleApprovalError`, `AllocationFailedError`) used a `constructor(readonly x: T)` parameter property, which is a TypeScript **transform**, not just a type, and `node --experimental-strip-types` (this project's whole test-running strategy) cannot parse it — converted to plain field assignment; and its `@/lib/*` imports became relative (`./allocation.ts`, `./corrections.ts`), the same fix already applied to `capabilities.ts` for the same reason, documented at the time as "the `@/` alias does not resolve under `--experimental-strip-types`". **Still untested**: `recordDispatch`, `recordDelivery`, and the whole site lifecycle (`consumeAtSite`, `transferBetweenSites`, `markForPickup`) — all three call `requireCapability`, which reads the NextAuth session, so reaching them needs an auth-mocking strategy this pass did not build. That is now the single most valuable outstanding item; `packs.ts` was the harder, subtler half of it and is done.
 - ✅ **Corrections exist** (Phase 3): a movement can be reversed — restoring the exact prior pack state, and refusing when the packs have moved on since — and a physical count can be recorded as an `ADJUSTMENT` with a mandatory reason. Both are `ADMIN`-only. A whole dispatch can be reversed atomically (Phase 4).
 - ✅ **Existing items reviewed after the Phase 1 migration** (2026-08-20, during Phase 4). `CBL-200` and `SCR-M4` were the two that predated the pack model; both checked — see §9's Phase 4 note and §10's "State of the working copy". Any *new* item added later still needs `measure`, `packUnit` and `scrapThreshold` set correctly at creation, same as always.
 - ✅ **The app refuses to start against a phantom database** (Phase 8). [prisma.ts](src/lib/prisma.ts) used to read `process.env.DATABASE_URL ?? "file:./dev.db"`, so a production server with the variable unset started *successfully* against an empty file in its working directory — no error raised, an inventory that merely looks empty, and every write landing somewhere the next deploy deletes. [databaseUrl.ts](src/lib/databaseUrl.ts) now throws in production while keeping the dev default, covered by 7 tests. The previous guard was a checklist item in this document, which is the weakest enforcement available for a failure nobody can see happening.
@@ -956,6 +960,8 @@ All twelve flows passed as admin. Two worth recording:
 the rewired actions, or it opens a create form whose action still throws on submit, which is
 the broken-form bug fixed in Part 1 reintroduced through the front door. And the migration is
 applied locally only; the pilot reports it as 1 pending through `npm run db:migrate:turso`.
+*(As of 2026-09-08 that count is **two** — Phase 12's `delivery_challan` joined it. This line
+records the state at the time of writing.)*
 
 #### Stage 4c — as built, 2026-09-07
 
@@ -1376,16 +1382,124 @@ Three things came up in the build that the plan had wrong:
 2. **Assigning an item to an Opened/Recyclable box adopts its unplaced packs.** Nothing else ever set `OpenPack.shelfSlotId`, so those boxes would have stayed permanently empty.
 3. **Empty boxes say what kind of stock is missing** ("no sealed packs", "nothing open here") rather than "empty", which read as though the item had no stock when it merely had none of that condition.
 
+### Phase 12 — the Material Delivery Challan — as built, 2026-09-08
+
+The client asked for an official paper record of material sent to a project site: *what went →
+to which project → on what date → in what quantity → who received it.* Four of those five were
+already in the ledger, so this was built as an **extension of Dispatch to Site**, not a second
+system. `Dispatch` was already a header row with `ISSUE` transactions hanging off `dispatchId`
+— exactly a challan's header/lines shape. What was missing was the paper.
+
+**What landed.** Migration `20260908090000_delivery_challan`:
+
+- `Site` gained `customerName`, `address` and `projectCode` — the project identity a challan
+  prints. `location` was deliberately **not** repurposed: it is rendered inside every site
+  `<select>`, and a postal address there is unreadable.
+- `Dispatch` gained `challanNo Int @unique`, `deliveredBy` and `receivedBy`.
+- New `Sequence` model — a named counter, one row (`"challan"`), incremented with a single
+  atomic `UPDATE` inside the caller's transaction. **Why it exists:** SQLite via Prisma can only
+  autoincrement the `@id` column, and `max(challanNo) + 1` is a read-then-write that hands two
+  simultaneous dispatches the same number. `src/lib/challan.ts` holds `formatChallanNo`
+  (pure, tested) and `nextChallanNo(tx)`.
+- New route `/dispatches/[id]/challan` — a server component rendering one A4 sheet. It calls
+  `requireCapability("ledger:view")` **itself**; `proxy.ts` is convenience only.
+- `@media print` in `globals.css`, the app's first. Anything carrying `data-print="hide"` is
+  dropped; the light palette is forced regardless of `[data-theme]`, because the dark toggle is
+  a data attribute and a dark challan prints as a black page.
+
+**Three decisions worth not re-deriving.**
+
+1. **Reversed lines never print.** A signed challan listing material that was pulled back out
+   of the ledger is a false record — the one thing this document exists to prevent. A dispatch
+   whose every line is reversed renders a refusal panel instead of a sheet, and no Print control
+   is offered for it anywhere.
+2. **The Total row is suppressed across mixed units.** 150 m of wire plus 40 screws is not 190
+   of anything. It sums only when every line shares a `baseUnit`, and says why when it does not.
+3. **`Dispatch.reference` was NOT reused as the challan number.** It is the *other party's*
+   document number — optional, non-unique — and is now labelled "Their reference". Ours is
+   generated and cannot be typed.
+
+**Two things this touched that are easy to miss.** `site.create`/`site.update` flow through
+`runOrRequest`, so the three new fields had to be threaded through `kinds.ts` → `args.ts` →
+`ops/sites.ts`, and `summary.ts`'s `site.update` line no longer reads *"Rename X to Y"* — a
+site update now rewrites the address that gets **printed**, and a summary naming only the name
+would understate what an admin is approving. Separately, `updateRow` in `DispatchBatchForm`
+clears `acknowledgedOpen` on every patch; the per-line Remarks field carries it through
+explicitly, because a remark changes nothing about which packs get opened and would otherwise
+silently re-block a row the user had already approved.
+
+**Follow-up, same day: visual match, real logo, page density.** After the client compared the
+built sheet against `delivery-challan-format.pdf` and a printed sample, three more rounds
+landed — navy banding matching the template around the items table (columns themselves
+unchanged, by explicit request), the client's real company details and uploaded logo in
+`company.ts`/`public/logo.png`, and a row-density pass (splitting the stacked
+Description/Specification cell into two one-line columns, tighter padding throughout, `@page`
+margin 12mm → 8mm) to fit roughly 30 lines on one A4 sheet instead of two. Full reasoning in
+REDESIGN-PLAN.md's "Follow-up, same day" note under Phase 12. One thing no CSS in this repo can
+touch: the browser's own print header/footer (URL, timestamp) — that is the print dialog's
+"Headers and footers" toggle, not this page.
+
+**Re-verification, 2026-09-08 — one real bug found and fixed.** The density pass reduced how
+many pages a challan takes; it did not address what happens **at** a page break, and a long
+enough dispatch always crosses one. The sheet's `overflow-hidden` and the table wrapper's
+`overflow-x-auto` are both clipping contexts, and a clipping context containing a page break is
+**truncated at that break by every major print engine** — page 2 onward comes out blank or cut
+off, which reads as "the app lost my rows". Reset in the print block only
+(`.challan-sheet, .challan-sheet * { overflow: visible !important }`); screen rendering verified
+unchanged. ⚠️ **Needs the user's own Ctrl+P to close out** — the tooling here cannot emulate
+print media, so this was identified from computed styles plus the measurement that a 13-line
+challan already renders ~2150px against ~1060px of usable A4 height. See REDESIGN-PLAN.md's
+Phase 12 follow-up, item 4.
+
+**⚠️ Not done: the client asked for a full data reset** (local **and** the live Turso pilot,
+keeping only `User` rows) and it has **not been run**. `scripts/reset-data.ts` is written and
+its guard is verified — it prints the target URL and refuses unless `--yes-wipe <fragment>`
+matches it. Run with no arguments it correctly refused to touch production, which is the whole
+point: `prisma.config.ts` loads `.env` only, and `.env` points at the live pilot. **Take a
+backup first.** The Phase 12 migration is applied to `dev.db` only; the pilot still needs
+`npm run db:migrate:turso`. The migration backfills `challanNo` by dispatch date, so it is safe
+on a populated database and does **not** depend on the reset happening first.
+
+**`src/lib/company.ts` is a stub.** `COMPANY.addressLines`, `phone`, `email` and `gstin` are
+empty strings and print as nothing (blank fields are omitted, never rendered as empty labels).
+The client has to supply them. Letterhead was explicitly dropped — "print regular A4" — so the
+sheet is self-contained.
+
+**Alongside it, `npm run lint` was brought to clean** (it had stood at 1 error, 2 warnings).
+The two warnings were dead imports in `actions/transactions.ts` — `readSnapshot` and
+`planAllocation`, left over from before that file delegated planning to `commitAllocation`.
+
+The error was `react-hooks/set-state-in-effect` in `ThemeToggle.tsx`, and it was pointing at
+something real rather than being noise. The theme is **not React state**: it lives in
+`localStorage`, is applied to `<html data-theme>` by `ThemeScript` before React runs, and can
+change in another tab. The old code mirrored that store into `useState` and used a mount effect
+to catch up with whatever the inline script had already decided — so every mount rendered twice,
+and a change made in another tab was silently ignored. It is now `useSyncExternalStore`, which
+is the shape this always wanted. Two details worth not re-deriving:
+
+- `getServerSnapshot` returns `"light"`, and React uses it for **hydration** as well as the
+  server render before re-rendering with the real value. That is why reading `localStorage` in
+  `getSnapshot` cannot cause a hydration mismatch — verified in the browser on a dark-stored
+  reload, which is the case that would have shown it.
+- `toggle` writes the `data-theme` attribute directly **as well as** in the effect. Without
+  that, the page repaints once in the old theme before the effect runs.
+
+The `useLayoutEffect` that writes the attribute stays: updating the DOM from React state is what
+effects are for, and it still re-applies after Strict Mode's dev remount clears what
+`ThemeScript` set.
+
 ## 10. Handover — Picking Up Phase 11 and What Remains
 
 Written for whoever continues this next. Read in this order: **§1-§9 above**, then
 **[REDESIGN-PLAN.md](REDESIGN-PLAN.md)**, then the source files named below.
 
-**Phases 1-11 are built** — the six functional phases, the UI overhaul, the hosted pilot,
-automated backups, the Mumbai region fix, and, as of 2026-09-07, the role consolidation and
-the admin approval queue. What remains is **deploying Phase 11** (its migration is applied
-locally only — the pilot reports one pending), **Part B** (offline production, not started),
-and — still the largest outstanding risk — **DB-layer test coverage**. See "What to do next".
+**Phases 1-12 are built** — the six functional phases, the UI overhaul, the hosted pilot,
+automated backups, the Mumbai region fix, the role consolidation and admin approval queue
+(2026-09-07), and the delivery challan (2026-09-08). What remains is **deploying Phases 11 and
+12** (both migrations are applied locally only — the pilot reports two pending), **Part B**
+(offline production, not started), and — still the largest outstanding risk — **DB-layer test
+coverage**. There is also an **unexecuted full data reset** the client asked for; see "What to
+do next" before running anything destructive.
 
 **If you are touching the approval queue, read [§5's box on the two exclusions](#the-two-exclusions)
 first.** `user:manage` and `backup:manage` are requestable by nobody, both for reasons that are
@@ -1484,6 +1598,13 @@ Everything downstream assumes these. Breaking one corrupts stock silently rather
   there before browser-testing anything that writes**, and never verify a write path against a
   `libsql://` URL. This stops mattering at the Part B cutover, when production becomes a file
   on a carried drive.
+- ⚠️ **`.env.local` does NOT protect the Prisma CLI, and this is the half people miss.**
+  `prisma.config.ts` does `import "dotenv/config"`, and dotenv loads `.env` alone — it has no
+  notion of Next's `.env.local` precedence. So `prisma migrate`, `prisma generate`,
+  `prisma studio` and any bare `npx tsx scripts/*.ts` resolve `DATABASE_URL` to the **live
+  pilot**, even with `.env.local` sitting right there. Confirmed 2026-09-08: running
+  `npx tsx scripts/reset-data.ts` with no arguments printed the production URL as its target.
+  Prefix every one of them — `DATABASE_URL="file:./dev.db" npx prisma migrate deploy`.
 - **The local `dev.db` contains test data created while verifying Phases 1-6 and Phase 11**,
   not real inventory: `WIRE-2.5` **2700 m** across sealed rolls and returned offcuts,
   `SCR-M4` 231, `CBL-200` 217, `INV-5K` 10; 4 sites, 4 shelves, 3 `ADJUSTMENT` rows and 4
@@ -1506,19 +1627,37 @@ Everything downstream assumes these. Breaking one corrupts stock silently rather
   stuck at `null` because `seed.ts`'s upsert never updates an existing row's fields; it is
   now `"packet"`, matching the fixture's own intent. See REDESIGN-PLAN.md's "Phase 4 — as
   built" for the reasoning.
+- **`dev.db` moved on again during Phase 12 verification (2026-09-08).** Kandivali Site now
+  carries the full challan identity (customer "Greenfield Developers Pvt Ltd", a Mumbai address,
+  project `SCE-2026-KND-07`), and a third dispatch — `SCE/DC/0003`, three lines with per-line
+  remarks and both signatory names — was recorded against it, opening one sealed 400 m roll.
+  The two pre-existing dispatches were backfilled as `SCE/DC/0001` (fully reversed, so it
+  renders the refusal panel rather than a sheet) and `SCE/DC/0002`. Between them those three
+  cover every branch of the challan page, which is worth keeping.
 - Backups of `dev.db` are in `backups/` (gitignored). It is the only copy.
 
 ### What to do next
 
 **Phases 1-7 are built. Phase 8 Part A is deployed and live**; Part B (offline production)
-has not started. Phases 9 (backups) and 10 (the Mumbai region fix) are done. **Phase 11 is
-built in full** as of 2026-09-07 — and is the one built phase **not yet on the pilot**.
+has not started. Phases 9 (backups) and 10 (the Mumbai region fix) are done. **Phases 11 and 12
+are built in full** — 11 as of 2026-09-07, 12 (the delivery challan) as of 2026-09-08 — and
+they are the two built phases **not yet on the pilot**.
 
-**The first thing a fresh agent should do about Phase 11 is deploy it, not extend it.** Its
-migration (`ApprovalRequest`) is applied to the local database only; `npm run db:migrate:turso`
-reports it pending against the pilot. The code is live-ready and was verified end to end
-against a local copy, never against the pilot — deliberately, because the pilot carries the
-client's real stock.
+**The first thing a fresh agent should do is deploy those two, not extend them.** There are now
+**two** pending migrations — `ApprovalRequest` (Phase 11) and `delivery_challan` (Phase 12) —
+both applied to the local database only; `npm run db:migrate:turso` reports them against the
+pilot. Both are live-ready and were verified end to end against a local copy, never against the
+pilot — deliberately, because the pilot carries the client's real stock.
+
+⚠️ **And there is an unexecuted destructive request sitting in the repo.** On 2026-09-08 the
+client asked for a **full data reset of both databases**, local and live, keeping only `User`
+rows — *"all values are garbage anyways"*. `scripts/reset-data.ts` implements it and its guard
+is verified, but **it has not been run against either database.** Do not run it as routine
+setup. Confirm with the client that they still want it, take `npm run db:backup` first, and run
+it on `dev.db` before Turso. It refuses unless `--yes-wipe <fragment>` matches the URL it
+prints, which is the whole reason it is safe to leave lying around. Note the ordering is *not*
+load-bearing: the Phase 12 migration backfills `challanNo` by dispatch date, so it applies
+cleanly to a populated database and does not need the reset to happen first.
 
 **Phase 11** (§9) — the employee role folds into finance, and finance gets an approval queue
 for the admin-only housekeeping. Decided in full with the user on 2026-09-05, **all three parts
@@ -1576,17 +1715,24 @@ written once at cutover, not kept alongside. The cutover recount bounds the dama
 starts from a physical count, so pilot errors cannot propagate) but does not prevent it.
 Mid-pilot spot counts on two or three high-movement items are the only check in place.
 
-**Before this goes into real use, cover the DB layer with tests.** This is still the single
-most valuable outstanding item, and the justification for deferring it has run out. The
-argument was always "the app is not in real use until the remaining phases land" — the
-functional ones have landed. Meanwhile the untested surface has grown considerably:
-`packs.ts` (including `commitAllocation`'s synthetic `new:<i>` pack-id resolution, still the
-subtlest code in the project), `recordDispatch`, `recordDelivery`, and the whole of Phase 6.
-The pure modules are well covered at 153 tests; **everything that actually writes to the
-database has none**. On 2026-09-05 that gap cashed in: `adjustStock` had been refusing every
-stock count since Phase 3 built it, and no test, no build and no phase verification caught it —
-the bug lived in the six lines between a `"use server"` boundary and a Prisma call, which is
-precisely the band nothing covers.
+**Before this goes into real use, finish covering the DB layer with tests.** This was the
+single most valuable outstanding item; **`packs.ts` — the harder, subtler half of it — is now
+done (2026-09-08)**, 168 tests total, including `commitAllocation`'s synthetic `new:<i>`
+pack-id resolution, still the subtlest code in the project, now exercised against a real
+migrated SQLite file rather than merely read and trusted. See [testDb.ts](src/lib/testDb.ts)
+and [packs.test.ts](src/lib/packs.test.ts) — the harness spins up a throwaway `file:` database
+per test file via `prisma migrate deploy`, never touches `dev.db` or Turso, and is reusable for
+what is still missing: `recordDispatch`, `recordDelivery`, and the whole of Phase 6
+(`consumeAtSite`, `transferBetweenSites`, `markForPickup`). Those three are a harder problem
+than `packs.ts` was — each starts with `requireCapability`, which calls `auth()` and reads a
+real NextAuth session, so reaching the write path needs either a session-mocking seam none of
+these files currently have, or restructuring them the way `permissions.ts`/`capabilities.ts`
+were split, so the auth-free body can be imported and driven directly. Neither exists yet.
+On 2026-09-05, before any of this landed, the gap cashed in for real: `adjustStock` had been
+refusing every stock count since Phase 3 built it, and no test, no build and no phase
+verification caught it — the bug lived in the six lines between a `"use server"` boundary and
+a Prisma call, precisely the band this session's tests still cannot reach for the other three
+action files.
 
 The other pre-live items, in rough order of cost-to-skip:
 
@@ -1601,7 +1747,12 @@ The other pre-live items, in rough order of cost-to-skip:
 
 ## 11. Related Documents
 
-- **[REDESIGN-PLAN.md](REDESIGN-PLAN.md)** — the phase plan (1-7 built, **8 in progress**, **11 partly built — Parts 1 and 3 done, Part 2's foundation only**), with verification steps and, importantly, the alternatives that were rejected and why. **The main document for continuing work.** Its Phase 8 section records two things you will otherwise re-derive wrongly: why the SQLite file cannot live on Google Drive, and why the "SQLite stays" hosting decision was reversed. Its "Decided 2026-09-05" section carries Phase 11 in full — including why `user:manage` and `backup:manage` must never become approvable, and why the approval path cannot call an exported core from a `"use server"` file.
+- **[WORKFLOW.md](WORKFLOW.md)** — the operating manual: the deal-to-installation sequence for
+  Admin / Finance A / Finance B, and §13's list of what the workflow depends on that the app
+  does **not** model. Note its central caveat — the A/B split is a human agreement, not an
+  enforced permission boundary; the system has two roles, not three.
+- **[REDESIGN-PLAN.md](REDESIGN-PLAN.md)** — the phase plan (1-7 built, **8 in progress**, **11 partly built — Parts 1 and 3 done, Part 2's foundation only**), with verification steps and, importantly, the alternatives that were rejected and why. **The main document for continuing work.** Its Phase 8 section records two things you will otherwise re-derive wrongly: why the SQLite file cannot live on Google Drive, and why the "SQLite stays" hosting decision was reversed. Its "Decided 2026-09-05" section carries Phase 11 in full — including why `user:manage` and `backup:manage` must never become approvable, and why the approval path cannot call an exported core from a `"use server"` file. Its **"Decided 2026-09-08"** section carries Phase 12, the delivery challan — why it extends Dispatch rather than standing alone, why the number needed a counter table rather than `max()+1`, what was dropped from the client's supplied format and why (HSN/SAC, letterhead), and the three rules a later reader will be tempted to soften. Its **"Follow-up, same day"** sub-section under Phase 12 carries the three styling rounds after that — the navy template match, the real logo and company details, and the page-density rework — plus why the browser's own print header/footer is out of this codebase's reach.
+- **`delivery-challan-format.pdf`** (repo root, **gitignored — not in the repository**, so this is deliberately not a link) — the challan layout supplied by the client, and the reference for Phase 12. A generic GST-style challan. It is an input to the work rather than part of it, and sits alongside the client's `Current Stock (1).xlsx`, ignored for the same reason. Ask the client for a copy if you need it. The built sheet follows it except where the written brief disagreed — see the decision table in REDESIGN-PLAN.md. The client's actual logo file lives at [public/logo.png](public/logo.png) (moved there from the repo root, where it arrived as `Logo.png`).
 - [.env.example](.env.example) — every environment variable the app reads, with the consequence of getting each one wrong.
 - `C:\Users\Kavita\.claude\plans\c-users-kavita-downloads-ui-examples-i-ethereal-swan.md` — the Phase 7/8 working checklist. **Outside the repo**, so it is not a durable record; REDESIGN-PLAN.md's phase sections are.
 - `C:\Users\Kavita\.claude\plans\hazy-weaving-spring.md` — the Phase 11 implementation plan: file-by-file changes, the staged sequence, and the end-to-end verification script. **Outside the repo**, same caveat — REDESIGN-PLAN.md's "Decided 2026-09-05" section holds every decision and its reasoning, and is what to trust if the two disagree or the file is missing.

@@ -1,4 +1,4 @@
-import { Undo2 } from "lucide-react";
+import { Printer, Undo2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { capabilityMode, currentUser } from "@/lib/permissions";
 import { reverseDispatch } from "@/lib/actions/corrections";
@@ -11,6 +11,8 @@ import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
 import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
 import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
+import { buttonClasses } from "@/components/ui/Button";
+import { formatChallanNo } from "@/lib/challan";
 
 export default async function DispatchDetailPage({
   params,
@@ -44,7 +46,7 @@ export default async function DispatchDetailPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`Dispatch ${dispatch.reference || `#${dispatch.id.slice(0, 8)}`}`}
+        title={`Dispatch ${formatChallanNo(dispatch.challanNo)}`}
         subtitle={
           <>
             To{" "}
@@ -52,22 +54,35 @@ export default async function DispatchDetailPage({
               {dispatch.site.name}
             </Link>{" "}
             on {dispatch.dispatchedAt.toLocaleDateString()} by {dispatch.user.name}
+            {dispatch.reference && ` · their ref. ${dispatch.reference}`}
             {dispatch.note && ` — ${dispatch.note}`}
           </>
         }
         actions={
-          fullyReversed ? (
-            <Badge tone="neutral">Reversed</Badge>
-          ) : (
-            reverseMode !== "none" &&
-            activeLines.length > 0 && (
-              <ReverseButton
-                action={reverseDispatch.bind(null, dispatch.id)}
-                label="this whole dispatch"
-                mode={reverseMode}
-              />
-            )
-          )
+          <div className="flex items-center gap-2">
+            {/* Only offered when there is something to deliver — the challan
+                page refuses a fully reversed dispatch anyway, and a Print
+                button that leads to a refusal is a worse answer than no
+                button. */}
+            {activeLines.length > 0 && (
+              <Link href={`/dispatches/${dispatch.id}/challan`} className={buttonClasses("secondary")}>
+                <Printer size={14} aria-hidden />
+                Print challan
+              </Link>
+            )}
+            {fullyReversed ? (
+              <Badge tone="neutral">Reversed</Badge>
+            ) : (
+              reverseMode !== "none" &&
+              activeLines.length > 0 && (
+                <ReverseButton
+                  action={reverseDispatch.bind(null, dispatch.id)}
+                  label="this whole dispatch"
+                  mode={reverseMode}
+                />
+              )
+            )}
+          </div>
         }
       />
 
@@ -78,6 +93,7 @@ export default async function DispatchDetailPage({
               <tr>
                 <Th>Item</Th>
                 <Th>Quantity</Th>
+                <Th>Remarks</Th>
                 <Th>Status</Th>
               </tr>
             </THead>
@@ -90,6 +106,7 @@ export default async function DispatchDetailPage({
                     </Link>
                   </Td>
                   <Td className="text-ink-subtle">{describeMovement(t.item, t)}</Td>
+                  <Td className="text-ink-subtle">{t.note || "—"}</Td>
                   <Td>
                     {t.reversedAt ? (
                       <Badge tone="neutral">Reversed</Badge>

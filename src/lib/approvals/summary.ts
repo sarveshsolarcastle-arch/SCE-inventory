@@ -50,7 +50,11 @@ export function describeKind(
     case "site.create":
       return `Create the site "${String(args.name ?? "")}"`;
     case "site.update":
-      return `Rename ${site()} to "${String(args.name ?? "")}"`;
+      // Deliberately no longer "Rename … to …". Since the challan work a site
+      // update also rewrites the customer, the postal address and the project
+      // ID — the details that get PRINTED on a delivery challan — and a summary
+      // that mentioned only the name would understate what is being approved.
+      return `Update ${site()} — name ("${String(args.name ?? "")}"), customer, address and project details`;
     case "site.delete":
       return `Delete ${site()}`;
     case "shelf.create":

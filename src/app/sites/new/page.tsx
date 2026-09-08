@@ -1,7 +1,7 @@
 import { createSite } from "@/lib/actions/sites";
 import PageHeader from "@/components/ui/PageHeader";
 import { Card, CardBody } from "@/components/ui/Card";
-import { Field, Input } from "@/components/ui/Field";
+import { Field, Input, Textarea } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
 import { capabilityMode, currentUser } from "@/lib/permissions";
 import { controlLabel, requestHint } from "@/lib/approvals/labels";
@@ -22,8 +22,19 @@ export default async function NewSitePage() {
             <Field label="Name">
               <Input name="name" required />
             </Field>
-            <Field label="Location">
+            <Field label="Location (short label)">
               <Input name="location" />
+            </Field>
+            {/* The delivery challan prints these three. All optional — a site
+                can be created now and given its paperwork details later. */}
+            <Field label="Customer / party name">
+              <Input name="customerName" />
+            </Field>
+            <Field label="Delivery address">
+              <Textarea name="address" rows={3} />
+            </Field>
+            <Field label="Project ID / reference">
+              <Input name="projectCode" />
             </Field>
             <Field label="Notes">
               <Input name="notes" />

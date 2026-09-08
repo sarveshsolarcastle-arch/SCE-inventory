@@ -4,6 +4,7 @@ import { updateSite } from "@/lib/actions/sites";
 import { materialsAtSite, oldestContributingDate, effectiveFlagged } from "@/lib/stock";
 import { can, capabilityMode, currentUser } from "@/lib/permissions";
 import { controlLabel, requestHint } from "@/lib/approvals/labels";
+import { formatChallanNo } from "@/lib/challan";
 import SiteMaterialPanel, { type HeldRow } from "@/components/SiteMaterialPanel";
 import DeleteSiteButton from "@/components/DeleteSiteButton";
 import { notFound } from "next/navigation";
@@ -11,7 +12,7 @@ import Link from "next/link";
 import PageHeader from "@/components/ui/PageHeader";
 import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
 import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
-import { Field, Input } from "@/components/ui/Field";
+import { Field, Input, Textarea } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import Alert from "@/components/ui/Alert";
@@ -46,7 +47,13 @@ export default async function SiteDetailPage({
   // single-row Issue/Return (dispatchId null) still shows individually.
   type SiteTransaction = (typeof activityRows)[number];
   type ActivityEntry =
-    | { kind: "dispatch"; id: string; reference: string | null; lines: SiteTransaction[] }
+    | {
+        kind: "dispatch";
+        id: string;
+        challanNo: number | null;
+        reference: string | null;
+        lines: SiteTransaction[];
+      }
     | { kind: "single"; tx: SiteTransaction };
 
   const activity: ActivityEntry[] = [];
@@ -61,6 +68,7 @@ export default async function SiteDetailPage({
         activity.push({
           kind: "dispatch",
           id: t.dispatchId,
+          challanNo: t.dispatch?.challanNo ?? null,
           reference: t.dispatch?.reference ?? null,
           lines: [t],
         });
@@ -107,7 +115,16 @@ export default async function SiteDetailPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader title={site.name} />
+      <PageHeader
+        title={site.name}
+        subtitle={
+          // The project identity, so someone about to dispatch can see at a
+          // glance whether this site is ready to print a challan.
+          [site.customerName, site.projectCode && `Project ${site.projectCode}`, site.location]
+            .filter(Boolean)
+            .join(" · ") || undefined
+        }
+      />
 
       {requested && (
         <Alert tone="info">
@@ -141,8 +158,20 @@ export default async function SiteDetailPage({
                 <Field label="Name">
                   <Input name="name" defaultValue={site.name} required />
                 </Field>
-                <Field label="Location">
+                <Field label="Location (short label)">
                   <Input name="location" defaultValue={site.location ?? ""} />
+                </Field>
+                {/* The three below are what a delivery challan prints. They are
+                    kept separate from `location`, which has to stay short
+                    enough to read inside a <select>. */}
+                <Field label="Customer / party name">
+                  <Input name="customerName" defaultValue={site.customerName ?? ""} />
+                </Field>
+                <Field label="Delivery address">
+                  <Textarea name="address" rows={3} defaultValue={site.address ?? ""} />
+                </Field>
+                <Field label="Project ID / reference">
+                  <Input name="projectCode" defaultValue={site.projectCode ?? ""} />
                 </Field>
                 <Field label="Notes">
                   <Input name="notes" defaultValue={site.notes ?? ""} />
@@ -171,6 +200,9 @@ export default async function SiteDetailPage({
             </CardHeader>
             <CardBody className="space-y-1 text-sm font-semibold text-ink-subtle">
               <p>{site.location || "No location recorded"}</p>
+              {site.customerName && <p>{site.customerName}</p>}
+              {site.address && <p className="whitespace-pre-line">{site.address}</p>}
+              {site.projectCode && <p>Project {site.projectCode}</p>}
               {site.notes && <p>{site.notes}</p>}
               <p className="pt-2">Only an admin can rename or remove a site.</p>
             </CardBody>
@@ -238,10 +270,24 @@ export default async function SiteDetailPage({
                     <Td>DISPATCH</Td>
                     <Td>
                       <Link href={`/dispatches/${entry.id}`} className="font-semibold text-ink hover:text-accent">
-                        {entry.reference || "Dispatch"} — {issued.length} item
+                        {entry.challanNo == null
+                          ? entry.reference || "Dispatch"
+                          : formatChallanNo(entry.challanNo)}{" "}
+                        — {issued.length} item
                         {issued.length === 1 ? "" : "s"}
                         {allReversed && " (reversed)"}
                       </Link>
+                      {!allReversed && (
+                        <>
+                          {" · "}
+                          <Link
+                            href={`/dispatches/${entry.id}/challan`}
+                            className="text-xs font-semibold text-accent hover:text-accent-hover"
+                          >
+                            Challan
+                          </Link>
+                        </>
+                      )}
                     </Td>
                     <Td className="font-mono">{total}</Td>
                     <Td className="text-ink-subtle">{issued[0].user.name}</Td>

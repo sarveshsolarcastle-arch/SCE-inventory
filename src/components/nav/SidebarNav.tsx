@@ -40,7 +40,12 @@ export default function SidebarNav({
   const active = activeHref(pathname, allHrefs);
 
   return (
-    <div className={`w-64 shrink-0 flex-col gap-6 bg-sidebar px-4 py-5 text-sidebar-ink ${className}`}>
+    <div
+      // Navigation is not part of any printed document — see the @media print
+      // block in globals.css.
+      data-print="hide"
+      className={`w-64 shrink-0 flex-col gap-6 bg-sidebar px-4 py-5 text-sidebar-ink ${className}`}
+    >
       <Link href="/dashboard" onClick={onNavigate} className="flex items-center gap-2.5 px-2">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-accent">
           <svg

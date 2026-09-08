@@ -78,6 +78,9 @@ test("a site needs a name; location and notes are optional", () => {
   assert.deepEqual(parseSiteCreateArgs({ name: "North Yard" }), {
     name: "North Yard",
     location: null,
+    customerName: null,
+    address: null,
+    projectCode: null,
     notes: null,
   });
   assert.throws(() => parseSiteCreateArgs({ name: "   " }), InvalidArgsError);
@@ -88,8 +91,22 @@ test("a cleared field and a round-tripped null mean the same thing", () => {
   // "" comes from a form the user emptied; null comes back from JSON. If these
   // diverged, editing a site to clear its notes would behave differently
   // depending on whether an admin approved it or finance did it directly.
-  const fromForm = parseSiteCreateArgs({ name: "A", location: "", notes: "" });
-  const fromJson = parseSiteCreateArgs({ name: "A", location: null, notes: null });
+  const fromForm = parseSiteCreateArgs({
+    name: "A",
+    location: "",
+    customerName: "",
+    address: "",
+    projectCode: "",
+    notes: "",
+  });
+  const fromJson = parseSiteCreateArgs({
+    name: "A",
+    location: null,
+    customerName: null,
+    address: null,
+    projectCode: null,
+    notes: null,
+  });
   assert.deepEqual(fromForm, fromJson);
 });
 

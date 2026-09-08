@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
 import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
+import { formatChallanNo } from "@/lib/challan";
 
 export default async function DispatchesPage() {
   const dispatches = await prisma.dispatch.findMany({
@@ -35,12 +36,14 @@ export default async function DispatchesPage() {
           <Table>
             <THead>
               <tr>
+                <Th>Challan No.</Th>
                 <Th>Date</Th>
-                <Th>Reference</Th>
+                <Th>Their ref.</Th>
                 <Th>Site</Th>
                 <Th>Lines</Th>
                 <Th>Status</Th>
                 <Th>By</Th>
+                <Th>Challan</Th>
               </tr>
             </THead>
             <tbody>
@@ -49,12 +52,16 @@ export default async function DispatchesPage() {
                 const reversed = active.length === 0 && d.transactions.length > 0;
                 return (
                   <Tr key={d.id}>
-                    <Td className="text-ink-subtle">{d.dispatchedAt.toLocaleDateString()}</Td>
+                    {/* The challan number is now the identity of the row — it
+                        is what someone holding the paper copy searches by. The
+                        other party's reference keeps its own column. */}
                     <Td>
                       <Link href={`/dispatches/${d.id}`} className="font-bold text-ink hover:text-accent">
-                        {d.reference || "(no reference)"}
+                        {formatChallanNo(d.challanNo)}
                       </Link>
                     </Td>
+                    <Td className="text-ink-subtle">{d.dispatchedAt.toLocaleDateString()}</Td>
+                    <Td className="text-ink-subtle">{d.reference || "—"}</Td>
                     <Td className="text-ink-subtle">{d.site.name}</Td>
                     <Td className="text-ink-subtle">{d.transactions.length}</Td>
                     <Td>
@@ -65,6 +72,16 @@ export default async function DispatchesPage() {
                       )}
                     </Td>
                     <Td className="text-ink-subtle">{d.user.name}</Td>
+                    <Td>
+                      {active.length > 0 && (
+                        <Link
+                          href={`/dispatches/${d.id}/challan`}
+                          className="text-xs font-semibold text-accent hover:text-accent-hover"
+                        >
+                          Print
+                        </Link>
+                      )}
+                    </Td>
                   </Tr>
                 );
               })}

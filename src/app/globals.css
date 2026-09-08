@@ -136,3 +136,117 @@ body {
   background: var(--surface-sunken);
   color: var(--ink);
 }
+
+/*
+ * The navy banding on the printed challan (title bar, table header, total row,
+ * signature-block dividers) is the one place this app prints a fixed brand
+ * color rather than a theme token — it is copying a specific paper template,
+ * not the app's own palette, so it must look the same regardless of
+ * [data-theme] and must survive the print overrides below unchanged.
+ */
+.challan-navy-bar {
+  background: #1e3a5c;
+  color: white;
+}
+.challan-total-row td {
+  background: #dbe4f0 !important;
+  color: #1e3a5c;
+}
+
+/*
+ * PRINT. Added for the delivery challan (/dispatches/[id]/challan), but written
+ * as a general rule rather than a challan-only one: anything carrying
+ * data-print="hide" is app chrome and never reaches paper.
+ *
+ * The dark theme is a data attribute, not a media query, so a user with dark
+ * mode on would otherwise print a black page and empty most of a toner
+ * cartridge per challan. The token overrides below force the light palette
+ * regardless of [data-theme], which is why they repeat the :root values instead
+ * of relying on them.
+ */
+@media print {
+  [data-print="hide"] {
+    display: none !important;
+  }
+
+  /* The light palette, unconditionally. Narrower than [data-theme="dark"]'s
+     own selector, so it is scoped to the print context alone. */
+  :root,
+  :root[data-theme="dark"] {
+    --surface: white;
+    --surface-sunken: white;
+    --surface-raised: white;
+    --ink: black;
+    --ink-muted: #333;
+    --ink-subtle: #666;
+    --line: #999;
+    --line-strong: #666;
+  }
+
+  html,
+  body {
+    background: white;
+    color: black;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* AppShell centres and pads `main` for the screen; on paper the @page margin
+     is the margin, and anything else eats into the printable width. */
+  main {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* 8mm rather than the earlier 12mm: every mm here is a row the ~30-line
+     dispatch table doesn't get. This is the only margin CSS can touch — the
+     browser's own print header/footer (URL, date, page number) lives in the
+     "Headers and footers" toggle of the print dialog, outside the page's
+     reach; the user turns that off there, not here. */
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
+  /* A dispatch can run to 30+ lines. Let the table break across pages, but
+     never mid-row, and repeat the header on each page so page 2 is still
+     readable as a challan rather than a list of loose numbers. */
+  table {
+    break-inside: auto;
+  }
+  thead {
+    display: table-header-group;
+  }
+  tr {
+    break-inside: avoid;
+  }
+
+  /* A signature block split across a page boundary is not signable. */
+  .challan-signatures {
+    break-inside: avoid;
+  }
+
+  /* On screen the sheet is a bordered card floating on the app background; on
+     paper the page edge is the border. */
+  .challan-sheet {
+    max-width: none;
+    border: 0;
+    padding: 0;
+  }
+
+  /* THE ONE THAT BITES ON A LONG DISPATCH. The sheet carries `overflow-hidden`
+     (so the navy bars sit inside its rounded edge) and the table sits in an
+     `overflow-x-auto` wrapper (so a wide table scrolls rather than bursting the
+     card). Both are right on screen and both are clipping contexts, and a
+     clipping context that contains a page break is truncated at the break by
+     every major print engine — page 2 onward comes out blank or cut off.
+     Nothing inside a printed challan should ever scroll or clip, so the whole
+     subtree is reset. Measured 2026-09-08: a 13-line challan already renders
+     ~2150px against ~1060px of usable A4 height, so this is not a 30-row edge
+     case — it is the second page of an ordinary dispatch. */
+  .challan-sheet,
+  .challan-sheet * {
+    overflow: visible !important;
+  }
+}

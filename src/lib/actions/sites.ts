@@ -30,6 +30,9 @@ export async function createSite(formData: FormData) {
   const args = parseSiteCreateArgs({
     name: formData.get("name"),
     location: formData.get("location"),
+    customerName: formData.get("customerName"),
+    address: formData.get("address"),
+    projectCode: formData.get("projectCode"),
     notes: formData.get("notes"),
   });
 
@@ -52,6 +55,9 @@ export async function updateSite(siteId: string, formData: FormData) {
     siteId,
     name: formData.get("name"),
     location: formData.get("location"),
+    customerName: formData.get("customerName"),
+    address: formData.get("address"),
+    projectCode: formData.get("projectCode"),
     notes: formData.get("notes"),
   });
 

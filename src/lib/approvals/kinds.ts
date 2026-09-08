@@ -68,6 +68,10 @@ export type BoxType = "FRESH" | "OPENED" | "RECYCLABLE";
 export type SiteCreateArgs = {
   name: string;
   location: string | null;
+  /** The three below are the challan's project identity — see the Site model. */
+  customerName: string | null;
+  address: string | null;
+  projectCode: string | null;
   notes: string | null;
 };
 export type SiteUpdateArgs = SiteCreateArgs & { siteId: string };
