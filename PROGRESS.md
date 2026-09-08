@@ -2,10 +2,10 @@
 
 Last updated: 2026-09-08 (**Phase 8 Part A — the hosted pilot — is live**; **Phase 11 — role
 consolidation and admin approvals — is BUILT, all three parts**; **Phase 12 — the Material
-Delivery Challan — is BUILT** — see §9. Phase 11's migration IS now on the pilot; **Phase 12's
-`delivery_challan` is the one still pending there** — verified against the live database
-2026-09-08. The client's requested data reset is written but **not run** — see the Phase 12
-note.)
+Delivery Challan — is BUILT and DEPLOYED** — see §9. **All 12 migrations are applied to the
+pilot**, and **both databases were wiped to empty on 2026-09-08** at the client's request,
+keeping only `User` rows. There is no longer anything pending: the pilot runs the current code
+against the current schema, with no stock in it. See the Phase 12 note for restore points.)
 
 > **§1-§8 describe the code as it stands today.** The six-phase functional redesign and
 > Phase 7 (UI overhaul) are **complete**. **Phase 8 Part A (the hosted pilot) is deployed**:
@@ -1452,31 +1452,37 @@ print media, so this was identified from computed styles plus the measurement th
 challan already renders ~2150px against ~1060px of usable A4 height. See REDESIGN-PLAN.md's
 Phase 12 follow-up, item 4.
 
-**The data reset — local DONE 2026-09-08, production NOT done.** The client asked for a full
-wipe of both databases keeping only `User` rows. `scripts/reset-data.ts` refuses unless
-`--yes-wipe <fragment>` matches the URL it prints, because `prisma.config.ts` loads `.env` only
-and `.env` points at the live pilot.
+**✅ The data reset — BOTH DATABASES DONE, 2026-09-08.** The client asked for a full wipe of
+local and live, keeping only `User` rows. Both are done and independently verified.
 
-- ✅ **`dev.db`** — wiped and verified: every operational table empty, 3 accounts kept, challan
-  counter reset to 0, sign-out/sign-in re-tested against the surviving accounts, and all 14
-  authenticated pages re-rendered clean on an empty database.
-- ❌ **The pilot** — untouched. Backup taken first all the same:
-  `backups/PRE-WIPE-inventory-2026-09-08.sql`, 454 rows.
+- **`dev.db`** — 269 rows cleared. 3 accounts kept, counter 0, sign-out/sign-in re-tested, and
+  all 14 authenticated pages re-rendered clean on empty data.
+- **The pilot** — 437 rows cleared (18 transaction, 372 shelfSlot, 11 shelf, 10 item, 7 site,
+  6 delivery, 4 openPack, 7 packStock, 1 defectiveItem, 1 sitePickup). Re-read afterwards from
+  the live database: every operational table 0, `Sequence.challan = 0`, `Dispatch.challanNo`
+  and all three `Site` challan columns present.
+- **All 6 accounts survived**, including the three real ones —
+  `sanchita.p@solarcastle.in`, `durgesh.solarcastle@gmail.com`, `sales.solarcastle@gmail.com`.
 
-**⚠️ THE ORDER IS NOT OPTIONAL, and it is the reverse of what the original plan assumed.** The
-reset transaction ends by resetting the challan counter, so it needs the `Sequence` table to
-exist. Production has neither `Sequence` nor `Dispatch.challanNo` — verified directly against
-the live schema on 2026-09-08 — because the Phase 12 migration is still pending there. Running
-the wipe first would throw on the counter upsert; the transaction rolls back, so **nothing would
-be destroyed**, but it would not work either. Migrate, then wipe:
+**Backups, if any of it is ever wanted back:** `backups/PRE-WIPE-inventory-2026-09-08.sql`
+(454 rows) and the migration script's own `backups/pre-migration-2026-09-08T11-17-38-088Z.sql`.
+`dev.db.pre-wipe-20260908-163312.bak` for the local one. What went, beyond stock figures: seven
+real Goa sites (Deme'llo/Vasco, Jayesh Nike/Borim, Rahul/Margao, mahesh/Porvorim, mapusa) and
+the ten-item catalogue. Flagged to the client before running; they confirmed.
 
-```
-npm run db:migrate:turso -- --apply
-npx tsx scripts/reset-data.ts --yes-wipe sce-inventory
-```
+**The order mattered, and it was the reverse of what the plan assumed.** The reset ends by
+rewinding the challan counter, so it needs `Sequence` to exist — migrate first, then wipe.
+Getting it backwards is safe (throws on the counter, rolls back, destroys nothing) but does
+nothing. Both steps were run by the user; the auto-mode classifier blocks writes to the pilot
+from this session, which is the right default for the client's live database.
 
-The migration itself is safe in either order — production holds zero `Dispatch` rows, so its
-`challanNo` backfill is a no-op. It is the *reset* that has the dependency.
+⚠️ **A hazard this created for about half an hour, worth knowing if the sequence is ever
+repeated.** Applying the migration makes `Dispatch.challanNo` NOT NULL with no default. Any
+deployed build predating the challan commit calls `dispatch.create` without it, so **every
+batch dispatch on the live app would fail** in the window between migrating and deploying.
+Checked and clear here — Vercel had already auto-deployed the pushed commits, confirmed by
+`.challan-navy-bar` and the `@media print` block being present in the live CSS bundle. **Deploy
+before migrating, not after.**
 
 **`src/lib/company.ts` is a stub.** `COMPANY.addressLines`, `phone`, `email` and `gstin` are
 empty strings and print as nothing (blank fields are omitted, never rendered as empty labels).
@@ -1514,9 +1520,9 @@ Written for whoever continues this next. Read in this order: **§1-§9 above**, 
 **Phases 1-12 are built** — the six functional phases, the UI overhaul, the hosted pilot,
 automated backups, the Mumbai region fix, the role consolidation and admin approval queue
 (2026-09-07), and the delivery challan (2026-09-08). What remains is **deploying Phases 11 and
-12** — Phase 11's migration is now applied to the pilot and only Phase 12's `delivery_challan`
-is pending there (checked against the live database 2026-09-08; earlier notes in this file
-saying "two pending" predate that check) — **Part B**
+12 — both are now deployed and their migrations applied to the pilot** (2026-09-08; earlier
+notes in this file saying one or two are "pending" predate that and are left as a record of
+when they were written). What remains is **Part B**
 (offline production, not started), and — still the largest outstanding risk — **DB-layer test
 coverage**. There is also an **unexecuted full data reset** the client asked for; see "What to
 do next" before running anything destructive.
@@ -1656,20 +1662,17 @@ are built in full** — 11 as of 2026-09-07, 12 (the delivery challan) as of 202
 they are the two built phases **not yet on the pilot**.
 
 **The first thing a fresh agent should do is deploy those two, not extend them.** There are now
-**two** pending migrations — `ApprovalRequest` (Phase 11) and `delivery_challan` (Phase 12) —
-both applied to the local database only; `npm run db:migrate:turso` reports them against the
-pilot. Both are live-ready and were verified end to end against a local copy, never against the
-pilot — deliberately, because the pilot carries the client's real stock.
+**nothing pending.** Both Phase 11's `ApprovalRequest` and Phase 12's `delivery_challan` were
+applied to the pilot on 2026-09-08, and the deployed build matches them.
 
-⚠️ **And there is an unexecuted destructive request sitting in the repo.** On 2026-09-08 the
-client asked for a **full data reset of both databases**, local and live, keeping only `User`
-rows — *"all values are garbage anyways"*. `scripts/reset-data.ts` implements it and its guard
-is verified, but **it has not been run against either database.** Do not run it as routine
-setup. Confirm with the client that they still want it, take `npm run db:backup` first, and run
-it on `dev.db` before Turso. It refuses unless `--yes-wipe <fragment>` matches the URL it
-prints, which is the whole reason it is safe to leave lying around. Note the ordering is *not*
-load-bearing: the Phase 12 migration backfills `challanNo` by dispatch date, so it applies
-cleanly to a populated database and does not need the reset to happen first.
+⚠️ **`scripts/reset-data.ts` erases every operational table, and it HAS been run — once, on
+2026-09-08, on both databases, at the client's explicit request.** It is not part of setup and
+must never be run as a routine step: it is a destructive tool that happens to live in the repo.
+If you ever need it again, confirm with the client first, take `npm run db:backup`, and run it
+on `dev.db` before the pilot. It refuses unless `--yes-wipe <fragment>` matches the URL it
+prints — which is the only reason it is safe to leave lying around, and it earned that on the
+day, refusing a mangled paste that would otherwise have hit the live database with an
+unintended argument.
 
 **Phase 11** (§9) — the employee role folds into finance, and finance gets an approval queue
 for the admin-only housekeeping. Decided in full with the user on 2026-09-05, **all three parts
