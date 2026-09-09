@@ -32,6 +32,15 @@ CREATE TABLE "Transfer" (
 -- ('xfer_' || id) rather than a random blob, so the UPDATE below can find its
 -- way back to the right Transfer without an ambiguous join on fromSiteId /
 -- toSiteId / createdAt, any of which two distinct transfers could share.
+--
+-- The NOT NULL guards below matter even though the app always sets both
+-- columns on a TRANSFER row: Transaction.fromSiteId/siteId are schema-level
+-- OPTIONAL, and Transfer.fromSiteId/toSiteId are NOT NULL, so one malformed
+-- legacy row (hand-inserted, or written by code this migration cannot see)
+-- would abort the entire migration on a NOT NULL violation. A row this
+-- backfill cannot build a real document for is left with transferId NULL —
+-- exactly its current, already-valid state — rather than blocking every
+-- other row's backfill.
 INSERT INTO "Transfer" ("id", "challanNo", "fromSiteId", "toSiteId", "transferredAt", "userId")
 SELECT
   'xfer_' || "id",
@@ -41,7 +50,7 @@ SELECT
   "createdAt",
   "userId"
 FROM "Transaction"
-WHERE "type" = 'TRANSFER';
+WHERE "type" = 'TRANSFER' AND "fromSiteId" IS NOT NULL AND "siteId" IS NOT NULL;
 
 -- RedefineTables
 PRAGMA defer_foreign_keys=ON;
@@ -93,8 +102,11 @@ PRAGMA defer_foreign_keys=OFF;
 
 -- Link each backfilled TRANSFER row to the Transfer just created for it —
 -- same deterministic id, so this is an unambiguous point lookup rather than a
--- join on fields that are not guaranteed unique.
-UPDATE "Transaction" SET "transferId" = 'xfer_' || "id" WHERE "type" = 'TRANSFER';
+-- join on fields that are not guaranteed unique. Same NOT NULL guards as the
+-- INSERT above: a row that got no Transfer row must not be pointed at a
+-- 'xfer_<id>' that was never created, which would fail the transferId FK.
+UPDATE "Transaction" SET "transferId" = 'xfer_' || "id"
+WHERE "type" = 'TRANSFER' AND "fromSiteId" IS NOT NULL AND "siteId" IS NOT NULL;
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Transfer_challanNo_key" ON "Transfer"("challanNo");

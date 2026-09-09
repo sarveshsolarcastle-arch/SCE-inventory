@@ -51,6 +51,18 @@ export type ChallanSheetProps = {
    * material statement overrides it — that document is a dated snapshot, not
    * a record of a delivery, and titling it as one would misrepresent it. */
   title?: string;
+  /** Heading over the party block. Defaults to "Delivery Challan For" — the
+   * material statement overrides this too, for the same reason as `title`:
+   * changing the banner alone still left this section calling itself a
+   * delivery challan. */
+  partyHeading?: string;
+  /** Whether to print the Received By / Delivered By signature blocks.
+   * Defaults to true. The material statement sets it false: a live snapshot
+   * has no delivery to sign for, and printing ruled Date/Signature lines next
+   * to those headings on a document titled anything else invites exactly the
+   * confusion the title/partyHeading overrides exist to avoid — a customer
+   * signing it as though it were a delivery record. */
+  showSignatures?: boolean;
   challanNo: string;
   date: Date;
   party: { name: string; address: string | null; projectCode: string | null };
@@ -69,6 +81,8 @@ export type ChallanSheetProps = {
 
 export default function ChallanSheet({
   title = "Delivery Challan",
+  partyHeading = "Delivery Challan For",
+  showSignatures = true,
   challanNo,
   date,
   party,
@@ -123,7 +137,7 @@ export default function ChallanSheet({
 
       <div className="mb-2 grid gap-4 px-4 pt-2 sm:grid-cols-2">
         <section className="space-y-0.5">
-          <h2 className="text-xs font-bold tracking-wide uppercase">Delivery Challan For</h2>
+          <h2 className="text-xs font-bold tracking-wide uppercase">{partyHeading}</h2>
           <FilledOrBlank label="Party Name" value={party.name} />
           <FilledOrBlank label="Address" value={party.address} />
           <FilledOrBlank label="Project ID" value={party.projectCode} />
@@ -223,30 +237,34 @@ export default function ChallanSheet({
         {note && <p className="mt-1 text-xs font-semibold text-ink-muted">Note: {note}</p>}
       </div>
 
-      {/* The navy dividers below have no content of their own — they exist
-          only to bracket the signature blocks on paper, matching the ruled
-          bars on the source template. */}
-      <div className="challan-navy-bar h-2" />
-      <div className="challan-signatures grid gap-8 px-4 py-2 sm:grid-cols-2">
-        <section className="space-y-1">
-          <h2 className="text-xs font-bold tracking-wide uppercase">Received By</h2>
-          <FilledOrBlank label="Name" value={receivedBy} />
-          <Blank label="Comment" />
-          {/* Date and Signature are ALWAYS blank: they are the acts of
-              receiving, which happen after this sheet is printed. */}
-          <Blank label="Date" />
-          <Blank label="Signature" />
-        </section>
+      {showSignatures && (
+        <>
+          {/* The navy dividers below have no content of their own — they
+              exist only to bracket the signature blocks on paper, matching
+              the ruled bars on the source template. */}
+          <div className="challan-navy-bar h-2" />
+          <div className="challan-signatures grid gap-8 px-4 py-2 sm:grid-cols-2">
+            <section className="space-y-1">
+              <h2 className="text-xs font-bold tracking-wide uppercase">Received By</h2>
+              <FilledOrBlank label="Name" value={receivedBy} />
+              <Blank label="Comment" />
+              {/* Date and Signature are ALWAYS blank: they are the acts of
+                  receiving, which happen after this sheet is printed. */}
+              <Blank label="Date" />
+              <Blank label="Signature" />
+            </section>
 
-        <section className="space-y-1">
-          <h2 className="text-xs font-bold tracking-wide uppercase">Delivered By</h2>
-          <FilledOrBlank label="Name" value={deliveredBy} />
-          <Blank label="Comment" />
-          <Blank label="Date" />
-          <Blank label="Signature" />
-        </section>
-      </div>
-      <div className="challan-navy-bar h-2" />
+            <section className="space-y-1">
+              <h2 className="text-xs font-bold tracking-wide uppercase">Delivered By</h2>
+              <FilledOrBlank label="Name" value={deliveredBy} />
+              <Blank label="Comment" />
+              <Blank label="Date" />
+              <Blank label="Signature" />
+            </section>
+          </div>
+          <div className="challan-navy-bar h-2" />
+        </>
+      )}
     </article>
   );
 }

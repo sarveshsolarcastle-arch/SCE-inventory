@@ -20,6 +20,12 @@ export type SiteBlockerCounts = {
   transactions: number;
   dispatches: number;
   deliveries: number;
+  /** Batch Transfer documents touching this site, either end. Its lines are
+   * ALSO counted under `transactions` — same overlap dispatches/deliveries
+   * already have with their own ISSUE/STOCK_IN lines — so the message can
+   * name "N transfer challans" specifically rather than leaving them
+   * invisible inside a generic "N stock movements". */
+  transfers: number;
   defectiveItems: number;
   pickups: number;
 };
@@ -35,6 +41,7 @@ const BLOCKERS: {
   { key: "transactions", one: "stock movement", many: "stock movements" },
   { key: "dispatches", one: "dispatch", many: "dispatches" },
   { key: "deliveries", one: "delivery", many: "deliveries" },
+  { key: "transfers", one: "transfer challan", many: "transfer challans" },
   { key: "defectiveItems", one: "defective-item record", many: "defective-item records" },
   { key: "pickups", one: "collection flag", many: "collection flags" },
 ];
