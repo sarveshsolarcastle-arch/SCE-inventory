@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatChallanNo, formatSiteChallanNo, siteChallanOf } from "./challan.ts";
+import {
+  formatChallanNo,
+  formatSiteChallanNo,
+  formatTransferChallanNo,
+  siteChallanOf,
+} from "./challan.ts";
 
 test("pads to four digits", () => {
   assert.equal(formatChallanNo(1), "SCE/DC/0001");
@@ -23,6 +28,20 @@ test("site challan format is told apart from the dispatch one", () => {
   assert.equal(formatSiteChallanNo(1), "SCE/SDC/0001");
   assert.equal(formatSiteChallanNo(42), "SCE/SDC/0042");
   assert.notEqual(formatSiteChallanNo(42), formatChallanNo(42));
+});
+
+test("transfer challan format is told apart from the other two", () => {
+  assert.equal(formatTransferChallanNo(1), "SCE/TC/0001");
+  assert.equal(formatTransferChallanNo(42), "SCE/TC/0042");
+  assert.notEqual(formatTransferChallanNo(42), formatChallanNo(42));
+  assert.notEqual(formatTransferChallanNo(42), formatSiteChallanNo(42));
+});
+
+test("the three challan formats are mutually distinct for the same n", () => {
+  for (let n = 1; n <= 500; n++) {
+    const formats = [formatChallanNo(n), formatSiteChallanNo(n), formatTransferChallanNo(n)];
+    assert.equal(new Set(formats).size, 3, `n=${n} produced a collision: ${formats}`);
+  }
 });
 
 test("siteChallanOf refuses a store delivery", () => {

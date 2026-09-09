@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/permissions";
 import { describeMovement } from "@/lib/units";
-import { formatChallanNo, formatSiteChallanNo } from "@/lib/challan";
+import { formatChallanNo, formatSiteChallanNo, formatTransferChallanNo } from "@/lib/challan";
 import { parsePage, pageArgs, clampPage } from "@/lib/pagination";
 import PageHeader from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -93,7 +93,15 @@ export default async function LedgerPage({
     where,
     orderBy: { createdAt: "desc" },
     ...pageArgs(page),
-    include: { item: true, user: true, site: true, fromSite: true, dispatch: true, delivery: true },
+    include: {
+      item: true,
+      user: true,
+      site: true,
+      fromSite: true,
+      dispatch: true,
+      delivery: true,
+      transfer: true,
+    },
   });
 
   const otherParams = { type, q, item, site, from, to };
@@ -197,6 +205,14 @@ export default async function LedgerPage({
                         · {t.delivery.challanNo != null
                           ? formatSiteChallanNo(t.delivery.challanNo)
                           : "delivery"}
+                      </Link>
+                    )}
+                    {t.transfer && (
+                      <Link
+                        href={`/transfers/${t.transfer.id}`}
+                        className="ml-1.5 text-xs font-semibold text-ink-subtle hover:text-accent"
+                      >
+                        · {formatTransferChallanNo(t.transfer.challanNo)}
                       </Link>
                     )}
                   </Td>

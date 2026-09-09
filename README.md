@@ -276,6 +276,23 @@ typed or edited.
 > ledger, so purging anything would have silently emptied every site's holding past the cutoff.
 > See PROGRESS.md §7 for the full writeup, including the `?page=99999` clamp bug it turned up.
 >
+> ✅ **Transfer challans, a site material statement, and a shared "remaining" figure — built
+> 2026-09-09.** A site-to-site transfer used to write a bare `TRANSFER` row with no document
+> behind it — the only ledger row type with no challan link. A new `Transfer` model (mirrors
+> `Dispatch`, its own `SCE/TC/…` series) groups a whole batch under one challan, via
+> `transferBatch` in `siteLifecycle.ts` — all-or-nothing inside one transaction, so a line
+> exceeding stock refuses the whole batch rather than partially committing. New pages
+> `/transfers`, `/transfers/[id]`, `/transfers/[id]/challan`. Separately, `/sites/[id]/challan`
+> prints a Material Statement — everything a site currently holds, on one sheet, numbered by
+> date (`SCE/MS/<yyyy-mm-dd>`) rather than a Sequence counter, since it is a reprintable live
+> balance, not a distinct consignment. And a real UX bug in `SiteMaterialPanel`: consume and
+> transfer inputs used to cap independently at the same raw quantity, so typing the full amount
+> into one left the other still offering it. One derived `remaining` figure now governs both.
+> **The transfer backfill migration was tested against a scratch database seeded with three
+> out-of-order rows before being trusted** — this repo shipped the "every row numbers to 1" bug
+> once already (commit `78a5454`, caught only because `dev.db` held a single row at the time).
+> See PROGRESS.md §7 for the full writeup.
+>
 > **`src/lib/company.ts` now carries the client's real name, address, phone, email and website**
 > (filled in 2026-09-08, after being a stub with blank strings). Values still route through
 > `companyContactLines()`, which drops any field left blank rather than printing an empty label —

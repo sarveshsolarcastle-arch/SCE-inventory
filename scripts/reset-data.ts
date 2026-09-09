@@ -63,6 +63,7 @@ const ORDER = [
   "transaction",
   "dispatch",
   "delivery",
+  "transfer",
   "openPack",
   "packStock",
   "shelfSlot",

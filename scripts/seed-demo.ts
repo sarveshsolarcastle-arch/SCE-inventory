@@ -179,6 +179,7 @@ async function main() {
     "transaction",
     "dispatch",
     "delivery",
+    "transfer",
     "openPack",
     "packStock",
     "shelfSlot",

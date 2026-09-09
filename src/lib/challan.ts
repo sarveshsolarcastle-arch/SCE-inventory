@@ -20,12 +20,20 @@ export const CHALLAN_SEQUENCE_KEY = "challan";
  * a number even though they format to visibly different strings. */
 export const SITE_CHALLAN_SEQUENCE_KEY = "siteChallan";
 
+/** The batch transfer challan's own series — `SCE/TC/…`, a third document
+ * kind that must not share a counter with the other two. */
+export const TRANSFER_CHALLAN_SEQUENCE_KEY = "transferChallan";
+
 /** Every challan counter that exists. A reset or a fresh seed has to rewind
  * ALL of them together — resetting only `CHALLAN_SEQUENCE_KEY` while a new
  * series sits forgotten leaves it un-rewound, which is invisible until the
  * next reset ships a series nobody remembered to add here. Iterate this
  * rather than naming the keys again at each call site. */
-export const CHALLAN_SEQUENCE_KEYS = [CHALLAN_SEQUENCE_KEY, SITE_CHALLAN_SEQUENCE_KEY] as const;
+export const CHALLAN_SEQUENCE_KEYS = [
+  CHALLAN_SEQUENCE_KEY,
+  SITE_CHALLAN_SEQUENCE_KEY,
+  TRANSFER_CHALLAN_SEQUENCE_KEY,
+] as const;
 
 /** How wide the number is zero-padded before it runs on. Four digits covers
  * 9999 challans; beyond that `formatChallanNo` simply gets longer rather than
@@ -41,6 +49,12 @@ export function formatChallanNo(n: number): string {
  * `formatChallanNo` at a glance so the two documents are never confused. */
 export function formatSiteChallanNo(n: number): string {
   return `SCE/SDC/${String(n).padStart(PAD, "0")}`;
+}
+
+/** "SCE/TC/0042" — the batch transfer challan's own format, a third series
+ * told apart from the other two at a glance. */
+export function formatTransferChallanNo(n: number): string {
+  return `SCE/TC/${String(n).padStart(PAD, "0")}`;
 }
 
 /**

@@ -59,6 +59,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Where It Is",
     links: [
       { href: "/sites", label: "Sites", capability: "ledger:view", icon: "sites" },
+      { href: "/transfers", label: "Transfers", capability: "ledger:view", icon: "transfers" },
       {
         href: "/at-sites",
         label: "Material at Sites",
