@@ -20,6 +20,13 @@ export const CHALLAN_SEQUENCE_KEY = "challan";
  * a number even though they format to visibly different strings. */
 export const SITE_CHALLAN_SEQUENCE_KEY = "siteChallan";
 
+/** Every challan counter that exists. A reset or a fresh seed has to rewind
+ * ALL of them together — resetting only `CHALLAN_SEQUENCE_KEY` while a new
+ * series sits forgotten leaves it un-rewound, which is invisible until the
+ * next reset ships a series nobody remembered to add here. Iterate this
+ * rather than naming the keys again at each call site. */
+export const CHALLAN_SEQUENCE_KEYS = [CHALLAN_SEQUENCE_KEY, SITE_CHALLAN_SEQUENCE_KEY] as const;
+
 /** How wide the number is zero-padded before it runs on. Four digits covers
  * 9999 challans; beyond that `formatChallanNo` simply gets longer rather than
  * wrapping, because a number that repeats is worse than one that is untidy. */
