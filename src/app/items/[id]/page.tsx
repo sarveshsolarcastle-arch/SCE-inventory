@@ -211,6 +211,12 @@ export default async function ItemDetailPage({
             <CardTitle tone="ok" icon={<Clock size={13} />}>
               Transaction History
             </CardTitle>
+            <Link
+              href={`/ledger?item=${item.id}`}
+              className="text-xs font-bold text-accent hover:text-accent-hover"
+            >
+              View all activity →
+            </Link>
           </CardHeader>
           <TableWrap className="max-h-96 overflow-y-auto">
             <Table>

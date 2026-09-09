@@ -16,6 +16,7 @@
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:demo": "tsx scripts/seed-demo.ts --yes-demo dev.db",
     "db:studio": "prisma studio",
     "db:backup": "tsx scripts/backup-database.ts",
     "db:migrate:turso": "tsx scripts/apply-migrations-turso.ts"

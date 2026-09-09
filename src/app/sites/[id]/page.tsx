@@ -224,6 +224,12 @@ export default async function SiteDetailPage({
           <CardTitle tone="ok" icon={<Clock size={13} />}>
             Recent Activity
           </CardTitle>
+          <Link
+            href={`/ledger?site=${id}`}
+            className="text-xs font-bold text-accent hover:text-accent-hover"
+          >
+            View all activity →
+          </Link>
         </CardHeader>
         <TableWrap>
           <Table>

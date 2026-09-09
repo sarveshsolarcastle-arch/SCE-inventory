@@ -264,6 +264,18 @@ typed or edited.
 > only because Vercel had already auto-deployed. And migrate before wiping — the reset rewinds
 > the challan counter and needs the `Sequence` table to exist.
 >
+> ✅ **A `/ledger` page and pagination, built 2026-09-09.** Adjustment reasons and notes were
+> being written to every stock count and rendered nowhere — visible only in the dashboard's
+> ten-row Recent Activity or a single item's 50-row history, and not at all on a site page,
+> since an `ADJUSTMENT` carries no `siteId`. `/ledger` shows every transaction, filterable by
+> type, with reason and note as their own columns; item, site and dashboard pages link into it.
+> `/dispatches` and `/deliveries`, previously unbounded queries, are now paginated 50/page
+> alongside it via `src/lib/pagination.ts`. A companion idea — purging old transactions to save
+> Turso quota — was investigated and dropped: the database is 344 KiB and would take roughly
+> 1,000 years to fill the free tier, while site balances are derived by replaying the **entire**
+> ledger, so purging anything would have silently emptied every site's holding past the cutoff.
+> See PROGRESS.md §7 for the full writeup, including the `?page=99999` clamp bug it turned up.
+>
 > **`src/lib/company.ts` now carries the client's real name, address, phone, email and website**
 > (filled in 2026-09-08, after being a stub with blank strings). Values still route through
 > `companyContactLines()`, which drops any field left blank rather than printing an empty label —

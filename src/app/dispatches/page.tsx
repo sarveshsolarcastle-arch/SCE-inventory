@@ -6,11 +6,25 @@ import { Card } from "@/components/ui/Card";
 import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
 import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
+import Pager from "@/components/ui/Pager";
 import { formatChallanNo } from "@/lib/challan";
+import { parsePage, pageArgs, clampPage } from "@/lib/pagination";
 
-export default async function DispatchesPage() {
+export default async function DispatchesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const { page: rawPage } = await searchParams;
+  const requestedPage = parsePage(rawPage);
+
+  // A requested page past the end must fall back to the actual last page
+  // rather than render an empty table, so total has to be known first.
+  const total = await prisma.dispatch.count();
+  const page = clampPage(requestedPage, total);
   const dispatches = await prisma.dispatch.findMany({
     orderBy: { dispatchedAt: "desc" },
+    ...pageArgs(page),
     include: {
       site: true,
       user: true,
@@ -22,7 +36,7 @@ export default async function DispatchesPage() {
     <div className="space-y-4">
       <PageHeader
         title="Dispatches"
-        subtitle={`${dispatches.length} dispatch${dispatches.length === 1 ? "" : "es"}`}
+        subtitle={`${total} dispatch${total === 1 ? "" : "es"}`}
         actions={
           <Link href="/dispatches/new" className={buttonClasses("primary", "md")}>
             <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M10 4v12M4 10h12" /></svg>
@@ -89,6 +103,7 @@ export default async function DispatchesPage() {
           </Table>
         </TableWrap>
         {dispatches.length === 0 && <EmptyState>No dispatches recorded yet.</EmptyState>}
+        <Pager total={total} page={page} basePath="/dispatches" />
       </Card>
     </div>
   );
