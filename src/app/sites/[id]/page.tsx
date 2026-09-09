@@ -1,4 +1,4 @@
-import { Pencil, Clock } from "lucide-react";
+import { Pencil, Clock, Printer } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { updateSite } from "@/lib/actions/sites";
 import { materialsAtSite, oldestContributingDate, effectiveFlagged } from "@/lib/stock";
@@ -13,7 +13,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
 import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
 import { Field, Input, Textarea } from "@/components/ui/Field";
-import Button from "@/components/ui/Button";
+import Button, { buttonClasses } from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import Alert from "@/components/ui/Alert";
 
@@ -123,6 +123,17 @@ export default async function SiteDetailPage({
           [site.customerName, site.projectCode && `Project ${site.projectCode}`, site.location]
             .filter(Boolean)
             .join(" · ") || undefined
+        }
+        actions={
+          // Only offered when there is something to list — the statement
+          // page itself refuses an empty site anyway, and a Print button
+          // that leads to a refusal is a worse answer than no button.
+          materials.length > 0 ? (
+            <Link href={`/sites/${site.id}/challan`} className={buttonClasses("secondary")}>
+              <Printer size={14} aria-hidden />
+              Print material statement
+            </Link>
+          ) : undefined
         }
       />
 

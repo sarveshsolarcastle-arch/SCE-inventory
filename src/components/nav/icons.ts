@@ -17,6 +17,7 @@ import {
   UserCog,
   DatabaseBackup,
   ScrollText,
+  Route,
   type LucideIcon,
 } from "lucide-react";
 
@@ -29,6 +30,7 @@ export type IconName =
   | "dispatchOut"
   | "dispatches"
   | "issueReturn"
+  | "transfers"
   | "sites"
   | "materialAtSites"
   | "shelf"
@@ -51,6 +53,7 @@ export const ICONS: Record<IconName, LucideIcon> = {
   dispatchOut: ArrowUpFromLine,
   dispatches: Truck,
   issueReturn: ArrowLeftRight,
+  transfers: Route,
   sites: MapPin,
   materialAtSites: Boxes,
   shelf: LayoutGrid,

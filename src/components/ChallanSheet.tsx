@@ -37,9 +37,20 @@ function FilledOrBlank({ label, value }: { label: string; value: string | null |
   );
 }
 
-export type ChallanLine = Transaction & { item: Item };
+/** Only what this sheet actually reads. Narrowed from `Transaction` because
+ * the site material statement's lines are aggregates, not real Transaction
+ * rows — structurally satisfied by the real ones the dispatch and delivery
+ * challan routes already pass, so neither of them changes. */
+export type ChallanLine = Pick<
+  Transaction,
+  "id" | "quantity" | "packSize" | "packCount" | "pieces" | "note"
+> & { item: Item };
 
 export type ChallanSheetProps = {
+  /** Printed in the navy header bar. Defaults to "Delivery Challan"; the site
+   * material statement overrides it — that document is a dated snapshot, not
+   * a record of a delivery, and titling it as one would misrepresent it. */
+  title?: string;
   challanNo: string;
   date: Date;
   party: { name: string; address: string | null; projectCode: string | null };
@@ -57,6 +68,7 @@ export type ChallanSheetProps = {
 };
 
 export default function ChallanSheet({
+  title = "Delivery Challan",
   challanNo,
   date,
   party,
@@ -80,7 +92,7 @@ export default function ChallanSheet({
   return (
     <article className="challan-sheet mx-auto w-full max-w-3xl overflow-hidden border border-ink-subtle bg-surface text-ink">
       <h1 className="challan-navy-bar py-3 text-center text-xl font-bold tracking-wide">
-        Delivery Challan
+        {title}
       </h1>
 
       <div className="grid gap-4 border-b border-ink-subtle p-4 pb-2 sm:grid-cols-[1fr_auto]">

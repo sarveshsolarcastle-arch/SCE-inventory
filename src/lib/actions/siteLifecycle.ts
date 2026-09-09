@@ -5,6 +5,7 @@ import { NotPermittedError, requireCapability } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { itemQuantityAtSite } from "@/lib/stock";
 import { reconcileSitePickups } from "@/lib/sitePickups";
+import { nextChallanNo, TRANSFER_CHALLAN_SEQUENCE_KEY } from "@/lib/challan";
 
 /* -------------------------------------------------------------------------
  * What happens to material after it reaches a site.
@@ -82,14 +83,26 @@ export async function consumeAtSite(
   return { ok: true };
 }
 
-/** Moves material site A → B without it passing through the store.
+export type TransferResult = { ok: true; transferId: string } | { ok: false; message: string };
+
+/** Moves material site A → B without it passing through the store, as a
+ * single batch covering however many items are moving in one trip.
  *
- * A dedicated TRANSFER row, not a RETURN+ISSUE pair: pairing would create an
- * OpenPack on the way in and immediately consume it on the way out, churning
- * pack state for material that never comes within a mile of the shelf. */
-export async function transferBetweenSites(
-  input: { fromSiteId: string; toSiteId: string; itemId: string; quantity: number; note?: string | null }
-): Promise<SiteResult> {
+ * A dedicated Transfer document with TRANSFER Transaction lines under it, not
+ * a RETURN+ISSUE pair: pairing would create an OpenPack on the way in and
+ * immediately consume it on the way out, churning pack state for material
+ * that never comes within a mile of the shelf. One challan number for the
+ * whole batch, exactly as one Dispatch covers many ISSUE lines — see the
+ * Transfer model's comment for why it mirrors Dispatch rather than being a
+ * special case. */
+export async function transferBatch(input: {
+  fromSiteId: string;
+  toSiteId: string;
+  lines: { itemId: string; quantity: number }[];
+  note?: string | null;
+  deliveredBy?: string | null;
+  receivedBy?: string | null;
+}): Promise<TransferResult> {
   let userId: string;
   try {
     ({ id: userId } = await requireCapability("stock:transfer"));
@@ -100,41 +113,64 @@ export async function transferBetweenSites(
     return { ok: false, message: "Not signed in" };
   }
 
-  const { fromSiteId, toSiteId, itemId, quantity } = input;
+  const { fromSiteId, toSiteId } = input;
   if (!fromSiteId || !toSiteId) return { ok: false, message: "Choose both sites" };
   if (fromSiteId === toSiteId) return { ok: false, message: "Choose two different sites" };
-  if (!itemId) return { ok: false, message: "Choose an item" };
-  if (!Number.isInteger(quantity) || quantity <= 0) {
-    return { ok: false, message: "Quantity must be a whole number above zero" };
+
+  const lines = input.lines.filter((l) => l.itemId && l.quantity > 0);
+  if (!lines.length) return { ok: false, message: "Enter a quantity to transfer" };
+  for (const line of lines) {
+    if (!Number.isInteger(line.quantity) || line.quantity <= 0) {
+      return { ok: false, message: "Quantities must be whole numbers above zero" };
+    }
   }
+
+  const note = input.note?.trim() || null;
+  const deliveredBy = input.deliveredBy?.trim() || null;
+  const receivedBy = input.receivedBy?.trim() || null;
+  let transferId = "";
 
   try {
     await prisma.$transaction(async (tx) => {
-      const item = await tx.item.findUniqueOrThrow({ where: { id: itemId } });
-      // Guarded against what the ORIGIN actually holds, using the same
-      // balance function the return guard uses.
-      const held = await itemQuantityAtSite(tx, itemId, fromSiteId);
-      if (quantity > held) {
-        throw new Error(
-          `Cannot transfer ${quantity} ${item.baseUnit} — the origin site holds only ${held} ${item.baseUnit}`
-        );
-      }
-
-      await tx.transaction.create({
-        data: {
-          type: "TRANSFER",
-          quantity,
-          itemId,
-          siteId: toSiteId, // destination
-          fromSiteId, // origin
-          userId,
-          note: input.note?.trim() || null,
-        },
+      // Inside the transaction, so a batch that fails on line 3 rolls the
+      // number back with it rather than leaving a hole in the challan series.
+      const challanNo = await nextChallanNo(tx, TRANSFER_CHALLAN_SEQUENCE_KEY);
+      const transfer = await tx.transfer.create({
+        data: { challanNo, fromSiteId, toSiteId, note, deliveredBy, receivedBy, userId },
       });
+      transferId = transfer.id;
 
-      // Both ends moved, so both ends' flags may be stale.
-      await reconcileSitePickups(tx, fromSiteId, itemId);
-      await reconcileSitePickups(tx, toSiteId, itemId);
+      // Sequential, on purpose: a line reads what the line before it in this
+      // same batch just left behind, so two lines for the same item cannot
+      // both be told the pre-batch balance covers them.
+      for (const line of lines) {
+        const item = await tx.item.findUniqueOrThrow({ where: { id: line.itemId } });
+        // Guarded against what the ORIGIN actually holds, using the same
+        // balance function the return guard uses.
+        const held = await itemQuantityAtSite(tx, line.itemId, fromSiteId);
+        if (line.quantity > held) {
+          throw new Error(
+            `Cannot transfer ${line.quantity} ${item.baseUnit} of ${item.name} — the origin site holds only ${held} ${item.baseUnit}`
+          );
+        }
+
+        await tx.transaction.create({
+          data: {
+            type: "TRANSFER",
+            quantity: line.quantity,
+            itemId: line.itemId,
+            siteId: toSiteId, // destination
+            fromSiteId, // origin
+            transferId: transfer.id,
+            userId,
+            note,
+          },
+        });
+
+        // Both ends moved, so both ends' flags may be stale.
+        await reconcileSitePickups(tx, fromSiteId, line.itemId);
+        await reconcileSitePickups(tx, toSiteId, line.itemId);
+      }
     });
   } catch (error) {
     return {
@@ -145,7 +181,8 @@ export async function transferBetweenSites(
 
   revalidateSites(fromSiteId);
   revalidateSites(toSiteId);
-  return { ok: true };
+  revalidatePath("/transfers");
+  return { ok: true, transferId };
 }
 
 /** Flags material as awaiting collection — not lost, not consumed, just not

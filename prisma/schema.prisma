@@ -101,22 +101,23 @@ enum BoxType {
 }
 
 model User {
-  id             String          @id @default(cuid())
-  name           String
-  email          String          @unique
-  passwordHash   String
-  role           Role            @default(EMPLOYEE)
+  id                 String            @id @default(cuid())
+  name               String
+  email              String            @unique
+  passwordHash       String
+  role               Role              @default(EMPLOYEE)
   // Accounts are deactivated, never deleted: every Transaction carries a
   // userId, and that trail is the answer to the original brief's third
   // problem — accountability for material going to sites. Deleting a leaver
   // would punch holes in it.
-  isActive       Boolean         @default(true)
-  createdAt      DateTime        @default(now())
-  transactions   Transaction[]
-  defectiveItems DefectiveItem[]
-  dispatches     Dispatch[]
-  deliveries     Delivery[]
-  pickups        SitePickup[]
+  isActive           Boolean           @default(true)
+  createdAt          DateTime          @default(now())
+  transactions       Transaction[]
+  defectiveItems     DefectiveItem[]
+  dispatches         Dispatch[]
+  deliveries         Delivery[]
+  transfers          Transfer[]
+  pickups            SitePickup[]
   /// Two relations to one model must be named. Requester is required on the
   /// row; decider is nullable, so a pending request has none yet.
   approvalsRequested ApprovalRequest[] @relation("ApprovalRequester")
@@ -212,10 +213,10 @@ model DefectiveItem {
   site          Site?        @relation(fields: [siteId], references: [id])
   siteId        String?
 
-  status DefectStatus @default(QUARANTINED)
+  status               DefectStatus @default(QUARANTINED)
   /// The delivery that made good on the claim. Set alongside status REPLACED,
   /// so an unfulfilled claim is a query rather than someone's memory.
-  replacedBy           Delivery? @relation("Replacement", fields: [replacedByDeliveryId], references: [id])
+  replacedBy           Delivery?    @relation("Replacement", fields: [replacedByDeliveryId], references: [id])
   replacedByDeliveryId String?
 
   note       String?
@@ -232,30 +233,35 @@ model DefectiveItem {
 /// which has to name the party the material is for and where it is going, not
 /// just the internal label the store uses for the place.
 model Site {
-  id             String          @id @default(cuid())
-  name           String
+  id                  String          @id @default(cuid())
+  name                String
   /// The SHORT label the site list and every site dropdown render. Kept
   /// distinct from `address` on purpose: a postal address in a <select> is
   /// unreadable, and shortening the address for the dropdown would mean the
   /// challan could never print the full one.
-  location       String?
+  location            String?
   /// Customer / party the project belongs to. The challan's "Delivery Challan
   /// For" block; falls back to `name` when unset.
-  customerName   String?
+  customerName        String?
   /// Full postal delivery address, multi-line.
-  address        String?
+  address             String?
   /// The client's own reference for the project, printed as Project ID. Free
   /// text rather than generated — it is THEIR numbering, not ours.
-  projectCode    String?
-  notes          String?
-  createdAt      DateTime        @default(now())
-  transactions   Transaction[]
-  defectiveItems DefectiveItem[]
-  dispatches     Dispatch[]
-  deliveries     Delivery[]
+  projectCode         String?
+  notes               String?
+  createdAt           DateTime        @default(now())
+  transactions        Transaction[]
+  defectiveItems      DefectiveItem[]
+  dispatches          Dispatch[]
+  deliveries          Delivery[]
   /// Transfers OUT of this site. Inbound ones arrive via `transactions`.
-  transfersOut   Transaction[]   @relation("TransferOrigin")
-  pickups        SitePickup[]
+  transfersOut        Transaction[]   @relation("TransferOrigin")
+  /// The batch Transfer documents this site originated / received — distinct
+  /// from `transfersOut` above, which is the older loose per-Transaction
+  /// relation. See the Transfer model's own comment for why both exist.
+  transferBatchesFrom Transfer[]      @relation("TransferBatchFrom")
+  transferBatchesTo   Transfer[]      @relation("TransferBatchTo")
+  pickups             SitePickup[]
 }
 
 /// Material left at a site that is neither in use nor consumed: too small a
@@ -380,6 +386,36 @@ model Delivery {
   @@index([siteId])
 }
 
+/// A batch of material moved from one site to another in a single event —
+/// mirrors Dispatch so a third document kind is not a special case. Each line
+/// still writes its own TRANSFER Transaction (siteId = destination, fromSiteId
+/// = origin, exactly as before); this row exists only to group them under one
+/// challan number and one pair of signature blocks, the way Dispatch groups
+/// ISSUE lines. `fromSite`/`toSite` are named relations, told apart from
+/// Site.transfersOut ("TransferOrigin", the older loose per-Transaction
+/// relation) so the two cannot collide.
+model Transfer {
+  id            String        @id @default(cuid())
+  /// OUR challan number — SCE/TC/nnnn. See Dispatch.challanNo for why this is
+  /// an Int allocated from Sequence rather than typed by a person.
+  challanNo     Int           @unique
+  fromSite      Site          @relation("TransferBatchFrom", fields: [fromSiteId], references: [id])
+  fromSiteId    String
+  toSite        Site          @relation("TransferBatchTo", fields: [toSiteId], references: [id])
+  toSiteId      String
+  transferredAt DateTime      @default(now())
+  note          String?
+  deliveredBy   String?
+  receivedBy    String?
+  user          User          @relation(fields: [userId], references: [id])
+  userId        String
+  transactions  Transaction[]
+
+  @@index([transferredAt])
+  @@index([fromSiteId])
+  @@index([toSiteId])
+}
+
 model Transaction {
   id        String          @id @default(cuid())
   type      TransactionType
@@ -403,7 +439,7 @@ model Transaction {
   /// material that no longer exists.
   appliedPlan String?
   /// Mandatory on ADJUSTMENT and REVERSAL.
-  reason String?
+  reason      String?
 
   /// A REVERSAL points at the movement it undoes. Unique, so a movement can be
   /// reversed at most once.
@@ -415,8 +451,6 @@ model Transaction {
   /// Aggregations filter on this rather than the relation because Prisma's
   /// groupBy does not accept relation filters — `reversedBy: null` throws there.
   reversedAt DateTime?
-
-  @@index([reversedAt])
 
   item   Item   @relation(fields: [itemId], references: [id])
   itemId String
@@ -446,13 +480,21 @@ model Transaction {
   delivery   Delivery? @relation(fields: [deliveryId], references: [id])
   deliveryId String?
 
+  /// Set on the TRANSFER rows of a batch transfer, so a site's history groups
+  /// them under one challan instead of N loose rows — same pattern as
+  /// dispatchId/deliveryId. Optional: nothing else writes TRANSFER rows.
+  transfer   Transfer? @relation(fields: [transferId], references: [id])
+  transferId String?
+
   defectiveItems DefectiveItem[]
 
+  @@index([reversedAt])
   @@index([itemId])
   @@index([siteId])
   @@index([createdAt])
   @@index([dispatchId])
   @@index([deliveryId])
+  @@index([transferId])
   @@index([fromSiteId])
 }
 
@@ -516,39 +558,39 @@ enum ApprovalStatus {
 }
 
 model ApprovalRequest {
-  id            String @id @default(cuid())
+  id        String  @id @default(cuid())
   /// Registry key, e.g. "site.delete". Deliberately not an enum: the set lives
   /// in src/lib/approvals/registry.ts, and a row whose kind has since been
   /// removed must still render as history rather than fail to load.
-  kind          String
+  kind      String
   /// JSON arguments for the operation. Re-parsed on approval, never trusted
   /// as-is — the requester controls this string.
-  args          String
+  args      String
   /// Human summary, built SERVER-side at request time and frozen. Never from a
   /// requester-supplied label: finance could otherwise label a delete of site A
   /// as "delete site B" and phish an approval. Frozen because the site may be
   /// renamed or gone by the time an admin looks; the live truth comes from
   /// re-running the operation's own precheck at render time.
-  summary       String
+  summary   String
   /// Nullable: toggleFrontRow carries no form, so there is nowhere to type one.
-  reason        String?
+  reason    String?
   /// The row acted on ("Site:ckx…"), used to collapse duplicate pending
   /// requests. Two finance users can otherwise queue the same deletion twice,
   /// and the second becomes a confusing FAILED after the first succeeds.
-  targetKey     String?
+  targetKey String?
 
   status    ApprovalStatus @default(PENDING)
   createdAt DateTime       @default(now())
 
-  requestedBy   User   @relation("ApprovalRequester", fields: [requestedById], references: [id])
+  requestedBy   User      @relation("ApprovalRequester", fields: [requestedById], references: [id])
   requestedById String
   /// The first admin to answer. Set together with status by one guarded
   /// updateMany, which is what makes the claim atomic.
-  decidedBy    User?     @relation("ApprovalDecider", fields: [decidedById], references: [id])
-  decidedById  String?
-  decidedAt    DateTime?
+  decidedBy     User?     @relation("ApprovalDecider", fields: [decidedById], references: [id])
+  decidedById   String?
+  decidedAt     DateTime?
   /// A rejection's note, or a FAILED row's refusal message.
-  decisionNote String?
+  decisionNote  String?
 
   @@index([status, createdAt])
   @@index([requestedById])
