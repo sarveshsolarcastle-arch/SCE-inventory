@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { addPacks, addOpenPack, recalcItemStock } from "@/lib/packs";
 import { emptyAppliedPlan, addSealedDelta, serialiseAppliedPlan } from "@/lib/corrections";
 import { reconcileSitePickups } from "@/lib/sitePickups";
+import { nextChallanNo, SITE_CHALLAN_SEQUENCE_KEY } from "@/lib/challan";
 
 /* -------------------------------------------------------------------------
  * Recording goods received. Deliveries trickle — usually one or two item
@@ -40,6 +41,11 @@ export type DeliveryInput = {
   /** null = into the store. Set = delivered direct to that site, never
    * touching the store. */
   siteId?: string | null;
+  /** Who physically carried the material, and who signed for it at the site.
+   * Only meaningful — and only stored — when siteId is set: a store delivery
+   * has no signature block to print. */
+  deliveredBy?: string | null;
+  receivedBy?: string | null;
   lines: DeliveryLineInput[];
 };
 
@@ -127,6 +133,11 @@ export async function recordDelivery(input: DeliveryInput): Promise<DeliveryResu
   let deliveryId = "";
 
   await prisma.$transaction(async (tx) => {
+    // Same transaction as the write, for the same reason the dispatch path
+    // does it — a delivery that fails half-way must not burn a number and
+    // leave a gap in what is supposed to be a gap-free official series.
+    const challanNo = siteId ? await nextChallanNo(tx, SITE_CHALLAN_SEQUENCE_KEY) : null;
+
     const delivery = await tx.delivery.create({
       data: {
         reference: input.reference?.trim() || null,
@@ -134,6 +145,9 @@ export async function recordDelivery(input: DeliveryInput): Promise<DeliveryResu
         note: input.note?.trim() || null,
         siteId,
         userId,
+        challanNo,
+        deliveredBy: siteId ? input.deliveredBy?.trim() || null : null,
+        receivedBy: siteId ? input.receivedBy?.trim() || null : null,
       },
     });
     deliveryId = delivery.id;

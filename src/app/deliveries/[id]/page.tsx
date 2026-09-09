@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Printer } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { describeMovement, formatQuantity } from "@/lib/units";
 import Link from "next/link";
@@ -8,6 +8,8 @@ import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
 import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
 import Alert from "@/components/ui/Alert";
 import EmptyState from "@/components/ui/EmptyState";
+import { buttonClasses } from "@/components/ui/Button";
+import { formatSiteChallanNo, siteChallanOf } from "@/lib/challan";
 
 export default async function DeliveryDetailPage({
   params,
@@ -34,17 +36,36 @@ export default async function DeliveryDetailPage({
   // destination line above explains where the material went.
   const lines = delivery.transactions.filter((t) => t.type === "STOCK_IN");
 
+  const numbered = siteChallanOf(delivery);
+  // Only offered when there is something to deliver — the challan page
+  // refuses a fully-reversed delivery anyway, and a Print button that leads
+  // to a refusal is a worse answer than no button.
+  const activeIssueLines = delivery.transactions.filter((t) => t.type === "ISSUE" && !t.reversedAt);
+  const canPrint = numbered != null && activeIssueLines.length > 0;
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
         <PageHeader
-          title={`Delivery ${delivery.reference || `#${delivery.id.slice(0, 8)}`}`}
+          title={
+            numbered
+              ? `Delivery ${formatSiteChallanNo(numbered.challanNo)}`
+              : `Delivery ${delivery.reference || `#${delivery.id.slice(0, 8)}`}`
+          }
           subtitle={
             <>
               {delivery.supplier ? `From ${delivery.supplier} · ` : ""}
               received {delivery.receivedAt.toLocaleDateString()} by {delivery.user.name}
               {delivery.note && ` — ${delivery.note}`}
             </>
+          }
+          actions={
+            canPrint ? (
+              <Link href={`/deliveries/${delivery.id}/challan`} className={buttonClasses("secondary")}>
+                <Printer size={14} aria-hidden />
+                Print challan
+              </Link>
+            ) : undefined
           }
         />
         {delivery.site ? (
