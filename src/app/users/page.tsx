@@ -163,7 +163,15 @@ export default async function UsersPage() {
                       <Td>{u.email}</Td>
                       <Td>
                         <form action={setUserRole.bind(null, u.id)} className="flex gap-2">
+                          {/* Keyed on the role so the <select> is a NEW DOM node
+                              whenever the saved role changes. React resets an
+                              uncontrolled form after a server action but never
+                              re-syncs a <select>'s selected <option>, so without
+                              this the dropdown snaps back to the role the page
+                              was first rendered with — the save had worked, but
+                              the screen said otherwise. */}
                           <Select
+                            key={u.role}
                             name="role"
                             defaultValue={u.role}
                             disabled={isSelf}
