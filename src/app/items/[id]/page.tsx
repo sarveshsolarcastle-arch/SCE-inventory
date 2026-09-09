@@ -19,10 +19,13 @@ import EmptyState from "@/components/ui/EmptyState";
 
 export default async function ItemDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ error?: string }>;
 }) {
   const { id } = await params;
+  const { error } = await searchParams;
 
   const item = await prisma.item.findUnique({
     where: { id },
@@ -160,6 +163,7 @@ export default async function ItemDetailPage({
             </CardHeader>
             <CardBody>
               <form action={updateWithId} className="space-y-3">
+                {error && <Alert tone="danger">{error}</Alert>}
                 <Field label="Name">
                   <Input name="name" defaultValue={item.name} required />
                 </Field>
@@ -189,11 +193,12 @@ export default async function ItemDetailPage({
                   <Input
                     name="scrapThreshold"
                     type="number"
+                    min={0}
                     defaultValue={item.scrapThreshold === null ? "" : String(item.scrapThreshold)}
                   />
                 </Field>
                 <Field label="Minimum stock">
-                  <Input name="minStock" type="number" defaultValue={String(item.minStock)} />
+                  <Input name="minStock" type="number" min={0} defaultValue={String(item.minStock)} />
                 </Field>
                 <Button type="submit">Save</Button>
               </form>

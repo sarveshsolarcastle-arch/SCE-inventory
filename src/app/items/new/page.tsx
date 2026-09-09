@@ -3,14 +3,22 @@ import PageHeader from "@/components/ui/PageHeader";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Field, Input, Select } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
+import Alert from "@/components/ui/Alert";
 
-export default function NewItemPage() {
+export default async function NewItemPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error } = await searchParams;
+
   return (
     <div className="max-w-lg space-y-4">
       <PageHeader title="New Item" />
       <Card>
         <CardBody>
           <form action={createItem} className="space-y-4">
+            {error && <Alert tone="danger">{error}</Alert>}
             <Field label="Name">
               <Input name="name" required />
             </Field>
@@ -37,10 +45,10 @@ export default function NewItemPage() {
               </Select>
             </Field>
             <Field label="Scrap threshold (continuous only — offcuts at or below this stop being stock)">
-              <Input name="scrapThreshold" type="number" />
+              <Input name="scrapThreshold" type="number" min={0} />
             </Field>
             <Field label="Minimum stock">
-              <Input name="minStock" type="number" defaultValue="0" />
+              <Input name="minStock" type="number" min={0} defaultValue="0" />
             </Field>
             <p className="text-sm font-semibold text-ink-subtle">
               New items start at zero. Stock arrives by recording a movement, so every unit has an

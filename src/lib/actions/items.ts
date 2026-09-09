@@ -9,7 +9,17 @@ export async function createItem(formData: FormData) {
   "use server";
   await requireCapability("item:manage");
 
-  const fields = readItemFields(formData);
+  // readItemFields throws on bad input (e.g. a negative minStock). Turned
+  // into a redirect back to the form with the message, rather than an
+  // unhandled crash: the number inputs have no `min` enforcement of their
+  // own once a value is typed rather than spun, so this is the actual
+  // backstop, not a redundant one.
+  let fields: ReturnType<typeof readItemFields>;
+  try {
+    fields = readItemFields(formData);
+  } catch (error) {
+    redirect(`/items/new?error=${encodeURIComponent(errorMessage(error))}`);
+  }
 
   // Deliberately no starting stock: it used to write currentStock with no
   // Transaction behind it, so seeded stock had no audit trail and updateItem
@@ -18,6 +28,10 @@ export async function createItem(formData: FormData) {
 
   revalidatePath("/items");
   redirect(`/items/${item.id}`);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Could not save the item";
 }
 
 /** Shared parsing/validation for the create and edit forms. */
@@ -51,19 +65,24 @@ export async function updateItem(itemId: string, formData: FormData) {
   "use server";
   await requireCapability("item:manage");
 
-  const fields = readItemFields(formData);
+  let fields: ReturnType<typeof readItemFields>;
+  try {
+    fields = readItemFields(formData);
 
-  const packSizes = await prisma.packStock.findMany({
-    where: { itemId, sealedCount: { gt: 0 } },
-    orderBy: { packSize: "asc" },
-    take: 1,
-  });
-  // A threshold at or above the smallest pack size would scrap a delivery on
-  // arrival — the pack would be born below the usable line.
-  if (fields.scrapThreshold !== null && packSizes[0] && fields.scrapThreshold >= packSizes[0].packSize) {
-    throw new Error(
-      `Scrap threshold must be below the smallest pack size in stock (${packSizes[0].packSize} ${fields.baseUnit})`
-    );
+    const packSizes = await prisma.packStock.findMany({
+      where: { itemId, sealedCount: { gt: 0 } },
+      orderBy: { packSize: "asc" },
+      take: 1,
+    });
+    // A threshold at or above the smallest pack size would scrap a delivery on
+    // arrival — the pack would be born below the usable line.
+    if (fields.scrapThreshold !== null && packSizes[0] && fields.scrapThreshold >= packSizes[0].packSize) {
+      throw new Error(
+        `Scrap threshold must be below the smallest pack size in stock (${packSizes[0].packSize} ${fields.baseUnit})`
+      );
+    }
+  } catch (error) {
+    redirect(`/items/${itemId}?error=${encodeURIComponent(errorMessage(error))}`);
   }
 
   await prisma.item.update({ where: { id: itemId }, data: fields });
