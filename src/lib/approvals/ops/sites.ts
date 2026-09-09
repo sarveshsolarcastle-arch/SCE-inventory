@@ -39,6 +39,11 @@ export async function countSiteBlockers(
     }),
     dispatches: await tx.dispatch.count({ where: { siteId } }),
     deliveries: await tx.delivery.count({ where: { siteId } }),
+    // Both directions, same reason as transactions above: a transfer OUT of
+    // this site carries it as fromSiteId only.
+    transfers: await tx.transfer.count({
+      where: { OR: [{ fromSiteId: siteId }, { toSiteId: siteId }] },
+    }),
     defectiveItems: await tx.defectiveItem.count({ where: { siteId } }),
     pickups: await tx.sitePickup.count({ where: { siteId } }),
   };

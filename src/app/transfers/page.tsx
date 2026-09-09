@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { requireCapability } from "@/lib/permissions";
 import PageHeader from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
@@ -14,6 +15,11 @@ export default async function TransfersPage({
 }: {
   searchParams: Promise<{ page?: string }>;
 }) {
+  // Checked here, not left to proxy.ts — that file documents itself as
+  // convenience only, matching the same direct check on /ledger and the
+  // challan routes.
+  await requireCapability("ledger:view");
+
   const { page: rawPage } = await searchParams;
   const requestedPage = parsePage(rawPage);
 

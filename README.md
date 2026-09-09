@@ -293,6 +293,25 @@ typed or edited.
 > once already (commit `78a5454`, caught only because `dev.db` held a single row at the time).
 > See PROGRESS.md §7 for the full writeup.
 >
+> ✅ **Four bugs from a review of the above, fixed 2026-09-10.** HIGH: `/ledger?from=<garbage>`
+> 500'd — an unvalidated date param reached Prisma as an Invalid Date. Fixed with new
+> `src/lib/dateFilter.ts` (6 tests). Two MEDIUM: the Material Statement still read as a delivery
+> challan (hardcoded "Delivery Challan For" heading + empty signature blocks a customer could
+> sign) — `ChallanSheet` gained `partyHeading`/`showSignatures` props; and `SI-TAGGED-ITEMS.md`
+> named four SKUs that don't exist in the live catalogue — three corrected against production,
+> the fourth flagged unconfirmed rather than guessed. LOW: the statement's reference (UTC) and
+> printed date (server-local) could disagree by a day — both now built from the same local
+> calendar day. Two latent risks closed: the transfer backfill migration aborted entirely on any
+> legacy row with a NULL `fromSiteId` — reproduced against a scratch database and fixed with a
+> NOT NULL guard on both the insert and the linking update; and `/transfers` was missing the
+> direct `requireCapability` check every other new route has. `SiteBlockerCounts` also gained a
+> `transfers` field so a site-delete refusal names "N transfer challans" specifically — verified
+> live. Not built: a batch `reverseTransfer` (deferred — new functionality touching the approvals
+> runtime) and applying the two pending production migrations (left for a separate decision).
+> See PROGRESS.md §7 for the full writeup, including the two claims from the review that turned
+> out not to hold (SQLite's `LIKE` is already case-insensitive here) and a flagged follow-up
+> (`/dispatches`/`/deliveries` have the same pre-existing missing-capability-check gap).
+>
 > **`src/lib/company.ts` now carries the client's real name, address, phone, email and website**
 > (filled in 2026-09-08, after being a stub with blank strings). Values still route through
 > `companyContactLines()`, which drops any field left blank rather than printing an empty label —

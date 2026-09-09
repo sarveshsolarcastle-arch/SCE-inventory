@@ -11,6 +11,7 @@ function counts(over: Partial<SiteBlockerCounts> = {}): SiteBlockerCounts {
     transactions: 0,
     dispatches: 0,
     deliveries: 0,
+    transfers: 0,
     defectiveItems: 0,
     pickups: 0,
     ...over,
@@ -50,9 +51,21 @@ test("blockers are listed worst-first, whatever order the counts arrive in", () 
 
 test("every blocker is reported, not just the first", () => {
   const phrases = siteBlockerPhrases(
-    counts({ transactions: 1, dispatches: 1, deliveries: 1, defectiveItems: 1, pickups: 1 })
+    counts({
+      transactions: 1,
+      dispatches: 1,
+      deliveries: 1,
+      transfers: 1,
+      defectiveItems: 1,
+      pickups: 1,
+    })
   );
-  assert.equal(phrases.length, 5);
+  assert.equal(phrases.length, 6);
+});
+
+test("a transfer challan gets its own named phrase, not just a bigger stock-movement count", () => {
+  assert.deepEqual(siteBlockerPhrases(counts({ transfers: 1 })), ["1 transfer challan"]);
+  assert.deepEqual(siteBlockerPhrases(counts({ transfers: 2 })), ["2 transfer challans"]);
 });
 
 test("a zero count is not a blocker", () => {

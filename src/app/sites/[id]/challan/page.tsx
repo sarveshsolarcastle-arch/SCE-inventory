@@ -64,7 +64,14 @@ export default async function SiteMaterialStatementPage({
   }));
 
   const today = new Date();
-  const reference = `SCE/MS/${today.toISOString().slice(0, 10)}`;
+  // Built from the SAME local calendar day the sheet's own Date field prints
+  // (toLocaleDateString below) — toISOString() reads UTC, which disagrees
+  // with the local date for part of every day east of Greenwich (all evening,
+  // IST) and would print two different dates on one sheet.
+  const y = today.getFullYear();
+  const m = String(today.getMonth() + 1).padStart(2, "0");
+  const d = String(today.getDate()).padStart(2, "0");
+  const reference = `SCE/MS/${y}-${m}-${d}`;
 
   return (
     <div className="space-y-4">
@@ -81,6 +88,8 @@ export default async function SiteMaterialStatementPage({
 
       <ChallanSheet
         title="Material Statement"
+        partyHeading="Prepared For"
+        showSignatures={false}
         challanNo={reference}
         date={today}
         party={{ name: site.customerName || site.name, address: site.address, projectCode: site.projectCode }}

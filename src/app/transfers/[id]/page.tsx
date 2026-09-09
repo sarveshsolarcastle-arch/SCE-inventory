@@ -1,5 +1,6 @@
 import { Printer } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { requireCapability } from "@/lib/permissions";
 import { describeMovement } from "@/lib/units";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -22,6 +23,11 @@ export default async function TransferDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  // Checked here, not left to proxy.ts — that file documents itself as
+  // convenience only, matching the same direct check on /ledger and the
+  // challan routes.
+  await requireCapability("ledger:view");
+
   const { id } = await params;
 
   const transfer = await prisma.transfer.findUnique({

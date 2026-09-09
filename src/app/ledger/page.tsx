@@ -4,6 +4,7 @@ import { requireCapability } from "@/lib/permissions";
 import { describeMovement } from "@/lib/units";
 import { formatChallanNo, formatSiteChallanNo, formatTransferChallanNo } from "@/lib/challan";
 import { parsePage, pageArgs, clampPage } from "@/lib/pagination";
+import { parseDateFilter } from "@/lib/dateFilter";
 import PageHeader from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
@@ -59,10 +60,12 @@ export default async function LedgerPage({
   const requestedPage = parsePage(rawPage);
   const typeFilter = isTypeFilterKey(type) ? type : undefined;
 
-  // `to` is a calendar day from a date input; without end-of-day it means
+  // A malformed, truncated or hand-edited ?from=/?to= must not reach Prisma
+  // as an Invalid Date — that throws a 500 rather than matching nothing.
+  // parseDateFilter also pushes `to` to end-of-day: without it, `to` means
   // midnight and a same-day filter returns nothing.
-  const fromDate = from ? new Date(`${from}T00:00:00`) : undefined;
-  const toDate = to ? new Date(`${to}T23:59:59.999`) : undefined;
+  const fromDate = parseDateFilter(from, false);
+  const toDate = parseDateFilter(to, true);
 
   const where: Prisma.TransactionWhereInput = {
     ...(typeFilter ? { type: { in: [...TYPE_FILTERS[typeFilter]] } } : {}),
