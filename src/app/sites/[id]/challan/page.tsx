@@ -90,7 +90,7 @@ export default async function SiteMaterialStatementPage({
         reference={null}
         deliveredBy={null}
         receivedBy={null}
-        note="Everything currently at this site, merged into one quantity per item. This is a snapshot, not a delivery record."
+        note={null}
       />
     </div>
   );
