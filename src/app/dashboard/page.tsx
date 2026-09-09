@@ -188,6 +188,9 @@ export default async function DashboardPage() {
           <CardTitle tone="ok" icon={<Clock size={13} />}>
             Recent Activity
           </CardTitle>
+          <Link href="/ledger" className="text-xs font-bold text-accent hover:text-accent-hover">
+            View all →
+          </Link>
         </CardHeader>
         <TableWrap>
           <Table>

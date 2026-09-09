@@ -1,21 +1,29 @@
+import type { ReactNode } from "react";
+
 export default function SearchBar({
   name = "q",
   defaultValue,
   placeholder,
   action,
   className = "",
+  children,
 }: {
   name?: string;
   defaultValue?: string;
   placeholder?: string;
   action?: string;
   className?: string;
+  /** Hidden inputs for other active filters, so submitting this search box
+   * alone does not drop them — a GET form submission replaces the query
+   * string with its own fields only. */
+  children?: ReactNode;
 }) {
   return (
     <form
       action={action}
       className={`flex w-full max-w-sm items-center gap-2 rounded-control border border-line-strong bg-surface px-3 py-2 ${className}`}
     >
+      {children}
       <svg
         width="14"
         height="14"

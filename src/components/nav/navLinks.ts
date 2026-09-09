@@ -21,6 +21,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Overview",
     links: [
       { href: "/dashboard", label: "Dashboard", capability: null, icon: "dashboard" },
+      { href: "/ledger", label: "Ledger", capability: "ledger:view", icon: "ledger" },
       { href: "/items", label: "Items", capability: "ledger:view", icon: "items" },
     ],
   },

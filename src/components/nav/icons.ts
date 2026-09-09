@@ -16,11 +16,13 @@ import {
   Users,
   UserCog,
   DatabaseBackup,
+  ScrollText,
   type LucideIcon,
 } from "lucide-react";
 
 export type IconName =
   | "dashboard"
+  | "ledger"
   | "items"
   | "deliveryIn"
   | "deliveries"
@@ -42,6 +44,7 @@ export type IconName =
  * here — passing a LucideIcon function from a server component throws. */
 export const ICONS: Record<IconName, LucideIcon> = {
   dashboard: LayoutDashboard,
+  ledger: ScrollText,
   items: Package,
   deliveryIn: PackagePlus,
   deliveries: ArrowDownToLine,

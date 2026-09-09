@@ -7,21 +7,32 @@ import { Card } from "@/components/ui/Card";
 import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
 import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
+import Pager from "@/components/ui/Pager";
 import { formatSiteChallanNo } from "@/lib/challan";
+import { parsePage, pageArgs, clampPage } from "@/lib/pagination";
 
-export default async function DeliveriesPage() {
-  const [deliveries, user] = await Promise.all([
-    prisma.delivery.findMany({
-      orderBy: { receivedAt: "desc" },
-      include: {
-        site: true,
-        user: true,
-        transactions: { where: { type: "STOCK_IN" } },
-        defectiveItems: true,
-      },
-    }),
-    currentUser(),
-  ]);
+export default async function DeliveriesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const { page: rawPage } = await searchParams;
+  const requestedPage = parsePage(rawPage);
+
+  // A requested page past the end must fall back to the actual last page
+  // rather than render an empty table, so total has to be known first.
+  const [total, user] = await Promise.all([prisma.delivery.count(), currentUser()]);
+  const page = clampPage(requestedPage, total);
+  const deliveries = await prisma.delivery.findMany({
+    orderBy: { receivedAt: "desc" },
+    ...pageArgs(page),
+    include: {
+      site: true,
+      user: true,
+      transactions: { where: { type: "STOCK_IN" } },
+      defectiveItems: true,
+    },
+  });
 
   const canRecord = can(user?.role, "delivery:record");
 
@@ -29,7 +40,7 @@ export default async function DeliveriesPage() {
     <div className="space-y-4">
       <PageHeader
         title="Deliveries"
-        subtitle={`${deliveries.length} deliver${deliveries.length === 1 ? "y" : "ies"}`}
+        subtitle={`${total} deliver${total === 1 ? "y" : "ies"}`}
         actions={
           canRecord ? (
             <Link href="/deliveries/new" className={buttonClasses("primary", "md")}>
@@ -89,6 +100,7 @@ export default async function DeliveriesPage() {
           </Table>
         </TableWrap>
         {deliveries.length === 0 && <EmptyState>No deliveries recorded yet.</EmptyState>}
+        <Pager total={total} page={page} basePath="/deliveries" />
       </Card>
     </div>
   );
