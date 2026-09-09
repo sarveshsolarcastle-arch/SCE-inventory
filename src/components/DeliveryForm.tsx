@@ -90,6 +90,8 @@ export default function DeliveryForm({
   const [note, setNote] = useState("");
   const [destination, setDestination] = useState<"STORE" | "SITE">("STORE");
   const [siteId, setSiteId] = useState("");
+  const [deliveredBy, setDeliveredBy] = useState("");
+  const [receivedBy, setReceivedBy] = useState("");
   // Opens with 3 rows, not 15: deliveries trickle, and a one-line challan is
   // the common case.
   const [rows, setRows] = useState<RowState[]>(() => [blankRow(), blankRow(), blankRow()]);
@@ -127,6 +129,8 @@ export default function DeliveryForm({
         supplier,
         note,
         siteId: destination === "SITE" ? siteId : null,
+        deliveredBy: destination === "SITE" ? deliveredBy : null,
+        receivedBy: destination === "SITE" ? receivedBy : null,
         lines: activeRows.map(toLine),
       });
 
@@ -215,6 +219,22 @@ export default function DeliveryForm({
                   </option>
                 ))}
               </Select>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Delivered by (optional)">
+                  <Input
+                    value={deliveredBy}
+                    onChange={(e) => setDeliveredBy(e.target.value)}
+                    placeholder="Driver or person carrying it"
+                  />
+                </Field>
+                <Field label="Received by (optional)">
+                  <Input
+                    value={receivedBy}
+                    onChange={(e) => setReceivedBy(e.target.value)}
+                    placeholder="Person at site who signs"
+                  />
+                </Field>
+              </div>
               <Alert tone="warn" className="text-xs">
                 The material never touches the store, so store stock is unchanged. It is
                 recorded against the site straight away, and the opened leftovers come back

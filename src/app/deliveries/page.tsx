@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
 import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
+import { formatSiteChallanNo } from "@/lib/challan";
 
 export default async function DeliveriesPage() {
   const [deliveries, user] = await Promise.all([
@@ -65,7 +66,10 @@ export default async function DeliveriesPage() {
                   <Td className="text-ink-subtle">{d.supplier ?? "—"}</Td>
                   <Td>
                     {d.site ? (
-                      <Badge tone="info">Direct to {d.site.name}</Badge>
+                      <Badge tone="info">
+                        {d.challanNo != null && `${formatSiteChallanNo(d.challanNo)} · `}
+                        Direct to {d.site.name}
+                      </Badge>
                     ) : (
                       <span className="text-ink-subtle">Store</span>
                     )}

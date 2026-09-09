@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatChallanNo } from "./challan.ts";
+import { formatChallanNo, formatSiteChallanNo, siteChallanOf } from "./challan.ts";
 
 test("pads to four digits", () => {
   assert.equal(formatChallanNo(1), "SCE/DC/0001");
@@ -17,4 +17,24 @@ test("every number formats to a distinct string", () => {
   const seen = new Set<string>();
   for (let n = 1; n <= 2000; n++) seen.add(formatChallanNo(n));
   assert.equal(seen.size, 2000);
+});
+
+test("site challan format is told apart from the dispatch one", () => {
+  assert.equal(formatSiteChallanNo(1), "SCE/SDC/0001");
+  assert.equal(formatSiteChallanNo(42), "SCE/SDC/0042");
+  assert.notEqual(formatSiteChallanNo(42), formatChallanNo(42));
+});
+
+test("siteChallanOf refuses a store delivery", () => {
+  assert.equal(siteChallanOf({ challanNo: null, site: null }), null);
+});
+
+test("siteChallanOf refuses a site delivery with no number", () => {
+  const site = { id: "s1", name: "Site One" } as never;
+  assert.equal(siteChallanOf({ challanNo: null, site }), null);
+});
+
+test("siteChallanOf accepts a numbered site delivery", () => {
+  const site = { id: "s1", name: "Site One" } as never;
+  assert.deepEqual(siteChallanOf({ challanNo: 7, site }), { challanNo: 7, site });
 });

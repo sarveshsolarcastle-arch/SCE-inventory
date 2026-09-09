@@ -354,6 +354,16 @@ model Delivery {
   receivedAt DateTime @default(now())
   note       String?
 
+  /// Set ONLY on a direct-to-site delivery (siteId non-null) — a store
+  /// delivery is goods inward, not a document we issue. Its own series
+  /// (key "siteChallan"), separate from Dispatch.challanNo, so the two
+  /// documents never share an identity. Nullable because the store path has
+  /// none; readers go through siteChallanOf() rather than testing the pair
+  /// themselves.
+  challanNo   Int?    @unique
+  deliveredBy String?
+  receivedBy  String?
+
   site   Site?   @relation(fields: [siteId], references: [id])
   siteId String?
 
