@@ -68,3 +68,11 @@ next-env.d.ts
 /Current Stock*.xlsx
 /delivery-challan-format.pdf
 /example print.pdf
+
+# Generated from the client's stock spreadsheet, so the same data as the .xlsx
+# above and excluded for the same reason. Regenerate with
+#   python scripts/build-stock-import.py "<path to the .xlsx>"
+# Flip these two lines if you would rather the import be reproducible from a
+# fresh clone without the source sheet to hand.
+/scripts/stock-import.json
+/scripts/stock-shelf-locations.md
