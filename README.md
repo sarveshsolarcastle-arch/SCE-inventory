@@ -172,7 +172,11 @@ alternatives, and the two decisions still open.
   admin-only restore page (see PROGRESS.md's Phase 9). Still open: the live restore drill —
   restoring against the real database at least once to prove the button works, not just the
   underlying dump/restore logic.
-- The seeded passwords above are still in place. You can now change them in the app.
+- ⚠️ **The seeded passwords above are still in place, and the pilot now holds the client's
+  real catalogue.** `admin@example.com` / `admin123` currently signs in to production. This
+  was a known gap while the database was empty; it is a live one now. Change all three in the
+  app, and consider deactivating the two example accounts entirely — the three real
+  `@solarcastle.in` logins do not need them.
 
 **Phase 11, decided 2026-09-05 — all three parts built, the last on 2026-09-07.** The employee
 role folds into finance, and finance gets an approval queue for the admin-only actions (any admin
@@ -236,6 +240,13 @@ was pulled back is a false record. The Total row is suppressed when lines use di
 because 150 m of wire plus 40 screws is not 190 of anything. And the challan number cannot be
 typed or edited.
 
+> ✅ **The opening stock is loaded, 2026-09-09.** 103 items on both databases from the
+> client's pack-structure sheet — `python scripts/build-stock-import.py "<xlsx>"` to rebuild the
+> JSON, then `npx tsx scripts/import-stock.ts --yes-import <fragment>`. Stock is created as
+> `PackStock`/`OpenPack` rows with `recalcItemStock` deriving the total; **never** by writing
+> `Item.currentStock`, which is a cache that the first dispatch would recompute to zero. There
+> are deliberately **no ledger rows** behind the opening balance.
+>
 > ✅ **Both databases were migrated and wiped on 2026-09-08**, at the client's request —
 > everything except `User` rows. All 6 accounts survived, including the three real
 > `@solarcastle.in` logins. The pilot now holds 0 rows in every operational table, with the

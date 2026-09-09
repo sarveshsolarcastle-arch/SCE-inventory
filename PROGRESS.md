@@ -1464,6 +1464,33 @@ local and live, keeping only `User` rows. Both are done and independently verifi
 - **All 6 accounts survived**, including the three real ones —
   `sanchita.p@solarcastle.in`, `durgesh.solarcastle@gmail.com`, `sales.solarcastle@gmail.com`.
 
+**✅ The opening stock was then loaded, 2026-09-09 — both databases.** 103 items from the
+client's 109-row "Current Stock — Pack Structure v3" sheet, via
+`scripts/build-stock-import.py` (xlsx → reviewable JSON) then `scripts/import-stock.ts`.
+Verified against the live database afterwards: 103 Item, 10 PackStock, 128 OpenPack, and
+**0 Transaction / 0 Delivery** — the client asked for these to exist "as if they were always
+there", so the opening balance deliberately has no ledger behind it. Everything after it is
+recorded normally.
+
+Four resolutions were taken with the client and are encoded in `build-stock-import.py`:
+duplicate SKUs case by case (cables merged keeping each roll separate, ACDB/DCDB split into
+`-1IN1`/`-2IN2`), generated SKUs for the seven tape rows, the three flexible-pipe items moved
+to **cm** because their sub-metre offcuts cannot live in an integer metre, and shelf placement
+skipped — the sheet gives a row but no column, and the map is meant to match physical stickers.
+That mapping lives in `scripts/stock-shelf-locations.md`, because `Item` has no notes column.
+
+⚠️ **Stock is created as PackStock and OpenPack rows, never by writing `Item.currentStock`.**
+That column is a cache; setting it directly looks correct until the first dispatch, when
+`recalcItemStock` recomputes it from empty pack tables and every quantity drops to zero. Proved
+rather than assumed: a real dispatch on `dev.db` opened a sealed 100-packet for the Rawal Plugs,
+cut 250 m off the 500 m roll leaving `199, 250` as separate rolls, and all three lines
+decremented correctly. Every one of the 103 totals also cross-checks against the sheet's own
+COMPUTED TOTAL, with zero mismatches, on both databases.
+
+Two follow-ups the import left open: `WSH-FLT-SS-12-06` is at **0** because the source sheet
+flags it "count needed", and `#SI` was stripped from 23 item names, read as a shelf-inspection
+marker rather than part of the product name.
+
 **Backups, if any of it is ever wanted back:** `backups/PRE-WIPE-inventory-2026-09-08.sql`
 (454 rows) and the migration script's own `backups/pre-migration-2026-09-08T11-17-38-088Z.sql`.
 `dev.db.pre-wipe-20260908-163312.bak` for the local one. What went, beyond stock figures: seven
