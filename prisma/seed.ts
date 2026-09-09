@@ -3,7 +3,7 @@ import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
 import bcrypt from "bcryptjs";
 import { resolveDatabaseUrl } from "../src/lib/databaseUrl.ts";
-import { CHALLAN_SEQUENCE_KEY } from "../src/lib/challan.ts";
+import { CHALLAN_SEQUENCE_KEYS } from "../src/lib/challan.ts";
 
 const adapter = new PrismaLibSql({
   url: resolveDatabaseUrl(),
@@ -81,14 +81,18 @@ async function main() {
     if (!existing) await prisma.site.create({ data: { name } });
   }
 
-  // The challan counter. `update: {}` so re-seeding never rewinds a series that
-  // has already been printed on paper — handing out a number twice would put
-  // two different challans into the client's records under one identity.
-  await prisma.sequence.upsert({
-    where: { key: CHALLAN_SEQUENCE_KEY },
-    update: {},
-    create: { key: CHALLAN_SEQUENCE_KEY, value: 0 },
-  });
+  // Every challan counter. `update: {}` so re-seeding never rewinds a series
+  // that has already been printed on paper — handing out a number twice would
+  // put two different challans into the client's records under one identity.
+  // Iterating CHALLAN_SEQUENCE_KEYS rather than naming one key here is what
+  // stops a future series being forgotten.
+  for (const key of CHALLAN_SEQUENCE_KEYS) {
+    await prisma.sequence.upsert({
+      where: { key },
+      update: {},
+      create: { key, value: 0 },
+    });
+  }
 
   for (const a of accounts) {
     console.log(`  ${a.role.padEnd(8)} ${a.email} / ${a.password}`);

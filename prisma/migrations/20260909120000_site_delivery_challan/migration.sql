@@ -14,9 +14,20 @@ CREATE UNIQUE INDEX "Delivery_challanNo_key" ON "Delivery"("challanNo");
 -- (deterministic on re-run), so the historical series reads in the order
 -- material actually went out. Store deliveries (siteId NULL) stay NULL and
 -- coexist fine under a unique index — SQLite treats NULLs as distinct.
+--
+-- The ROW_NUMBER() has to be computed over the WHOLE filtered set before
+-- narrowing to one row: filtering to "id" = this row in the SAME WHERE as
+-- "siteId" IS NOT NULL leaves the window function exactly one row to number,
+-- so every row gets 1 and the unique index rejects the second. The inner
+-- query numbers every site delivery first; only the outer WHERE picks the
+-- one row back out by id.
 UPDATE "Delivery" SET "challanNo" = (
-  SELECT ROW_NUMBER() OVER (ORDER BY "receivedAt", "id")
-  FROM "Delivery" d2 WHERE d2."siteId" IS NOT NULL AND d2."id" = "Delivery"."id"
+  SELECT "rn" FROM (
+    SELECT "id", ROW_NUMBER() OVER (ORDER BY "receivedAt", "id") AS "rn"
+    FROM "Delivery"
+    WHERE "siteId" IS NOT NULL
+  ) "numbered"
+  WHERE "numbered"."id" = "Delivery"."id"
 ) WHERE "siteId" IS NOT NULL;
 
 -- The counter starts above whatever the backfill just used, so the next
