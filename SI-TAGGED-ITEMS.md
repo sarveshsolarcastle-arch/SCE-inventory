@@ -11,7 +11,7 @@ marked so they're easy to search for. Pulled from `Current Stock 1 - Pack Struct
 | TEE- Pipes | `TEE-PIP` | Material | pcs | 216 |
 | PG20 Glands | `GLD-PG20` | Fixing | pcs | 40 |
 | AC cable,black,4core x 4sqmm, | `CBL-AC-4C-04` | Material | m | 12 |
-| ACDB 1IN1 | `BOX-ACDB-1IN1` ⚠️ unconfirmed | Equipment | box | 1 |
+| ACDB 1IN1 | `BOX-ACDB-1IN1` | Equipment | box | 1 |
 | DCDB 1IN1 OUT | `BOX-DCDB-1IN1` | Equipment | box | 1 |
 | Inverter | `INV-SOLAR-5KW` | Equipment | box | 2 |
 | Inverter (2nd row, same SKU) | `INV-SOLAR-5KW` | Equipment | box | 1 |
@@ -31,14 +31,12 @@ marked so they're easy to search for. Pulled from `Current Stock 1 - Pack Struct
 | metal cable tie | `TIE-CBL-SS` | Fixing | pcs/packet | 800 |
 | walkway m clamp (2nd row, same SKU as M clamps) | `CLM-M-WKWY` | Fixing | pcs | 8 |
 
-⚠️ **Corrected — the SKUs above for the ACDB/DCDB rows were wrong.** This doc originally listed
+✅ **Corrected — the SKUs above for the ACDB/DCDB rows were wrong.** This doc originally listed
 all four as `BOX-ACDB` / `BOX-DCDB`, the pre-import generic SKUs. The import correctly
 disambiguated them by size; those two generic SKUs don't exist in the live catalogue at all, so
-searching or re-tagging by them found nothing. `BOX-DCDB-1IN1`, `BOX-DCDB-2IN2` and
-`BOX-ACDB-2IN2` are confirmed against production. **`BOX-ACDB-1IN1` is not** — it's the SKU the
-same naming pattern implies for the "ACDB 1IN1" row, but it was not found when checked, so treat
-it as unverified until someone confirms whether that item exists under a different SKU or was
-never carried into the live catalogue at all.
+searching or re-tagging by them found nothing. All four corrected SKUs — `BOX-ACDB-1IN1`,
+`BOX-DCDB-1IN1`, `BOX-DCDB-2IN2` and `BOX-ACDB-2IN2` — are confirmed directly against production
+(`BOX-ACDB-1IN1`: "ACDB 1IN1", stock 1, exactly as the table above says).
 
 ## Reference only — "Don't Refer" section, no live quantity (11)
 

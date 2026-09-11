@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  describeTransferObstacle,
   emptyAppliedPlan,
   findReversalObstacles,
   parseAppliedPlan,
@@ -100,6 +101,14 @@ test("a created pack must still be exactly as it was left", () => {
   });
   assert.deepEqual(findReversalObstacles(plan, world([["n1", 350, "OPEN"]])), []);
   assert.equal(findReversalObstacles(plan, world([["n1", 300, "OPEN"]])).length, 1);
+});
+
+test("a transfer obstacle names what is missing, not just that something is", () => {
+  assert.match(describeTransferObstacle({ kind: "already_reversed" }), /already been reversed/);
+  assert.match(
+    describeTransferObstacle({ kind: "moved_on", needed: 10, available: 3 }),
+    /Only 3 .* reversing would remove 10/
+  );
 });
 
 test("round-trips through JSON, and malformed input is not reversible", () => {

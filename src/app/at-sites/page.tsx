@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { requireCapability } from "@/lib/permissions";
 import { materialAcrossSites } from "@/lib/stock";
 import PageHeader from "@/components/ui/PageHeader";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -17,6 +18,10 @@ export default async function AtSitesPage({
 }: {
   searchParams: Promise<{ filter?: string; sort?: string }>;
 }) {
+  // Checked here, not left to proxy.ts — that file documents itself as
+  // convenience only, matching the same direct check on /ledger and /transfers.
+  await requireCapability("ledger:view");
+
   const { filter, sort } = await searchParams;
   const flaggedOnly = filter === "flagged";
   const sortByAge = sort === "age";

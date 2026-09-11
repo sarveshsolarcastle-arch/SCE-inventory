@@ -162,6 +162,24 @@ export function findReversalObstacles(
   return obstacles;
 }
 
+/** A TRANSFER never touches packs — see the Transfer model's comment — so it
+ * has no AppliedPlan to replay backwards. Its only obstacle is the site-level
+ * analogue of `insufficient_sealed`: material this transfer brought in has
+ * since moved on again (consumed there, or transferred onward), so reversing
+ * it would remove material that is no longer at the destination. */
+export type TransferObstacle =
+  | { kind: "already_reversed" }
+  | { kind: "moved_on"; needed: number; available: number };
+
+export function describeTransferObstacle(o: TransferObstacle): string {
+  switch (o.kind) {
+    case "already_reversed":
+      return "This transfer has already been reversed.";
+    case "moved_on":
+      return `Only ${o.available} of that material is still at the destination site (some has been used or moved on since) — reversing would remove ${o.needed}.`;
+  }
+}
+
 export function describeObstacle(o: ReversalObstacle): string {
   switch (o.kind) {
     case "no_plan":

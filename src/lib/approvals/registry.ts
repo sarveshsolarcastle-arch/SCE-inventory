@@ -26,7 +26,7 @@
 
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { describeObstacle } from "@/lib/corrections";
+import { describeObstacle, describeTransferObstacle } from "@/lib/corrections";
 import { describeSiteBlockers } from "@/lib/siteBlockers";
 import { describeRefusal, planAdjustment } from "@/lib/adjustment";
 import * as siteOps from "./ops/sites";
@@ -35,6 +35,7 @@ import * as correctionOps from "./ops/corrections";
 import {
   parseReverseDispatchArgs,
   parseReverseTransactionArgs,
+  parseReverseTransferArgs,
   parseShelfCreateArgs,
   parseShelfDeleteArgs,
   parseSiteCreateArgs,
@@ -48,7 +49,12 @@ import {
 import type { ArgsFor, OperationKind } from "./kinds";
 import { formatPrecheck, type Precheck } from "./precheck";
 import { describeKind } from "./summary";
-import { revalidateCorrections, revalidateShelf, revalidateSites } from "./revalidate";
+import {
+  revalidateCorrections,
+  revalidateShelf,
+  revalidateSites,
+  revalidateTransfers,
+} from "./revalidate";
 
 /** What each operation hands back on success. Void for the ones whose whole
  * effect is in the database — only the three that create or rename something
@@ -64,6 +70,7 @@ export type ResultFor<K extends OperationKind> = {
   "shelf.slot.frontRow": void;
   "stock.reverseTransaction": void;
   "stock.reverseDispatch": void;
+  "stock.reverseTransfer": void;
   "stock.adjust": void;
 }[K];
 
@@ -179,6 +186,12 @@ async function movementLabel(transactionId: string): Promise<string | null> {
   );
 }
 
+/** "1 line" / "3 lines" — spelled out rather than appending an unconditional
+ * "s", the same reasoning siteBlockers.ts documents for its own plurals. */
+function lineCount(n: number): string {
+  return `${n} line${n === 1 ? "" : "s"}`;
+}
+
 async function dispatchLabel(dispatchId: string): Promise<string | null> {
   const dispatch = await prisma.dispatch.findUnique({
     where: { id: dispatchId },
@@ -186,14 +199,39 @@ async function dispatchLabel(dispatchId: string): Promise<string | null> {
       reference: true,
       dispatchedAt: true,
       site: { select: { name: true } },
-      _count: { select: { transactions: true } },
+      // Filtered to ISSUE: unfiltered also counts the REVERSAL rows a
+      // reversal writes under the same dispatchId, so a dispatch reversed
+      // once and requested again would count its own undo as a second line.
+      // The list page already gets this right (`where: { type: "ISSUE" }`);
+      // this now matches it.
+      _count: { select: { transactions: { where: { type: "ISSUE" } } } },
     },
   });
   if (!dispatch) return null;
   const named = dispatch.reference ? `dispatch ${dispatch.reference}` : "the dispatch";
   return (
     `${named} to ${dispatch.site.name} of ` +
-    `${dispatch.dispatchedAt.toLocaleDateString()} (${dispatch._count.transactions} lines)`
+    `${dispatch.dispatchedAt.toLocaleDateString()} (${lineCount(dispatch._count.transactions)})`
+  );
+}
+
+async function transferLabel(transferId: string): Promise<string | null> {
+  const transfer = await prisma.transfer.findUnique({
+    where: { id: transferId },
+    select: {
+      transferredAt: true,
+      fromSite: { select: { name: true } },
+      toSite: { select: { name: true } },
+      // Filtered to TRANSFER — see dispatchLabel above; a REVERSAL row this
+      // transfer's own reversal wrote carries the same transferId and would
+      // otherwise be counted as a second line of the transfer it undoes.
+      _count: { select: { transactions: { where: { type: "TRANSFER" } } } },
+    },
+  });
+  if (!transfer) return null;
+  return (
+    `the transfer from ${transfer.fromSite.name} to ${transfer.toSite.name} of ` +
+    `${transfer.transferredAt.toLocaleDateString()} (${lineCount(transfer._count.transactions)})`
   );
 }
 
@@ -414,6 +452,48 @@ export const OPERATIONS: Registry = {
     },
     execute: (tx, args, actorId) => correctionOps.reverseDispatch(tx, args, actorId),
     revalidate: () => revalidateCorrections(),
+  },
+
+  "stock.reverseTransfer": {
+    parse: parseReverseTransferArgs,
+    summarise: async (args) =>
+      describeKind(
+        "stock.reverseTransfer",
+        { ...args },
+        { transfer: await transferLabel(args.transferId) }
+      ),
+    targetKey: (args) => `Transfer:${args.transferId}`,
+    // Same reasoning as reverseDispatch's precheck: checks EVERY line, because
+    // the operation is all-or-nothing and an admin told "ready" off line 1
+    // alone would be misled.
+    precheck: async (args) => {
+      if ((await transferLabel(args.transferId)) === null) return missing("That transfer");
+      const movements = await prisma.transaction.findMany({
+        where: { transferId: args.transferId, type: "TRANSFER", reversedAt: null },
+        orderBy: { createdAt: "asc" },
+      });
+      if (!movements.length) {
+        return formatPrecheck({
+          kind: "blocked",
+          reason: "nothing is left to reverse on this transfer",
+        });
+      }
+      for (const movement of movements) {
+        const obstacles = await correctionOps.findTransferObstaclesFor(db, movement);
+        if (obstacles.length) {
+          return formatPrecheck({
+            kind: "blocked",
+            reason: describeTransferObstacle(obstacles[0]),
+          });
+        }
+      }
+      return CLEAR;
+    },
+    execute: (tx, args, actorId) => correctionOps.reverseTransfer(tx, args, actorId),
+    revalidate: (args) => {
+      revalidateCorrections();
+      revalidateTransfers(args.transferId);
+    },
   },
 
   "stock.adjust": {

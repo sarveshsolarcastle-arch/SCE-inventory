@@ -139,8 +139,15 @@ async function main() {
   const { serialiseAppliedPlan, emptyAppliedPlan, addSealedDelta } = await import(
     "../src/lib/corrections.ts"
   );
-  const { nextChallanNo, formatChallanNo, formatSiteChallanNo, SITE_CHALLAN_SEQUENCE_KEY, CHALLAN_SEQUENCE_KEYS } =
-    await import("../src/lib/challan.ts");
+  const {
+    nextChallanNo,
+    formatChallanNo,
+    formatSiteChallanNo,
+    formatTransferChallanNo,
+    SITE_CHALLAN_SEQUENCE_KEY,
+    TRANSFER_CHALLAN_SEQUENCE_KEY,
+    CHALLAN_SEQUENCE_KEYS,
+  } = await import("../src/lib/challan.ts");
   const { describeKind } = await import("../src/lib/approvals/summary.ts");
   const shelfOps = await import("../src/lib/approvals/ops/shelf.ts");
   const correctionOps = await import("../src/lib/approvals/ops/corrections.ts");
@@ -813,7 +820,25 @@ async function main() {
 
       await stamp(CONSUMED);
 
-      /* ---- 21 Aug: Powai → Vasai, without passing through the store ---- */
+      /* ---- 21 Aug: Powai → Vasai, without passing through the store ----
+       * A real Transfer document, not a bare TRANSFER Transaction — the same
+       * grouping record transferBatch (siteLifecycle.ts) writes, and the one
+       * thing the site-to-site transfer itself needs to show up on
+       * `/transfers` and to have a printable challan. An orphan row here
+       * (transferId left null) would reproduce, on every fresh seed, exactly
+       * the malformed-legacy-row shape the backfill migration's own NULL
+       * guard exists to tolerate — not demonstrate it. */
+      const transferChallan1 = await nextChallanNo(tx, TRANSFER_CHALLAN_SEQUENCE_KEY);
+      const transfer1 = await tx.transfer.create({
+        data: {
+          challanNo: transferChallan1,
+          fromSiteId: powai.id,
+          toSiteId: vasai.id,
+          transferredAt: TRANSFERRED,
+          note: "Twenty spares moved straight across from Powai",
+          userId: finance.id,
+        },
+      });
 
       await tx.transaction.create({
         data: {
@@ -822,6 +847,7 @@ async function main() {
           itemId: items["MOD-540"].id,
           siteId: vasai.id, // destination
           fromSiteId: powai.id, // origin
+          transferId: transfer1.id,
           userId: finance.id,
           note: "Twenty spares moved straight across from Powai",
         },
@@ -1136,11 +1162,12 @@ async function main() {
     );
   }
 
-  const [movements, dispatches, deliveries, defects, pickups, pending, slots] =
+  const [movements, dispatches, deliveries, transfers, defects, pickups, pending, slots] =
     await Promise.all([
       prisma.transaction.count(),
       prisma.dispatch.count(),
       prisma.delivery.count(),
+      prisma.transfer.count(),
       prisma.defectiveItem.count(),
       prisma.sitePickup.count(),
       prisma.approvalRequest.count({ where: { status: "PENDING" } }),
@@ -1151,6 +1178,10 @@ async function main() {
     orderBy: { challanNo: "asc" },
     select: { challanNo: true, site: { select: { name: true } } },
   });
+  const transferChallans = await prisma.transfer.findMany({
+    orderBy: { challanNo: "asc" },
+    select: { challanNo: true, fromSite: { select: { name: true } }, toSite: { select: { name: true } } },
+  });
   const siteChallans = await prisma.delivery.findMany({
     where: { challanNo: { not: null } },
     orderBy: { challanNo: "asc" },
@@ -1159,8 +1190,8 @@ async function main() {
 
   console.log(
     `\n  ${report.length} items, ${movements} movements, ${dispatches} dispatches, ` +
-      `${deliveries} deliveries,\n  ${defects} defective rows, ${pickups} pickup flags, ` +
-      `${pending} pending approvals, ${slots} boxes assigned.`,
+      `${deliveries} deliveries, ${transfers} transfers,\n  ${defects} defective rows, ` +
+      `${pickups} pickup flags, ${pending} pending approvals, ${slots} boxes assigned.`,
   );
   for (const c of challans) {
     console.log(`  ${formatChallanNo(c.challanNo)}  →  ${c.site.name}`);
@@ -1169,6 +1200,9 @@ async function main() {
     // c.challanNo is non-null by the where clause; c.site is non-null because
     // a numbered delivery is a direct-to-site one by construction.
     console.log(`  ${formatSiteChallanNo(c.challanNo!)}  →  ${c.site!.name} (direct)`);
+  }
+  for (const c of transferChallans) {
+    console.log(`  ${formatTransferChallanNo(c.challanNo)}  →  ${c.fromSite.name} → ${c.toSite.name}`);
   }
   for (const a of accounts) {
     console.log(`  ${a.role.padEnd(8)} ${a.email} / ${a.password}`);

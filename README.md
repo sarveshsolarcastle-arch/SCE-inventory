@@ -306,11 +306,19 @@ typed or edited.
 > NOT NULL guard on both the insert and the linking update; and `/transfers` was missing the
 > direct `requireCapability` check every other new route has. `SiteBlockerCounts` also gained a
 > `transfers` field so a site-delete refusal names "N transfer challans" specifically — verified
-> live. Not built: a batch `reverseTransfer` (deferred — new functionality touching the approvals
-> runtime) and applying the two pending production migrations (left for a separate decision).
-> See PROGRESS.md §7 for the full writeup, including the two claims from the review that turned
-> out not to hold (SQLite's `LIKE` is already case-insensitive here) and a flagged follow-up
-> (`/dispatches`/`/deliveries` have the same pre-existing missing-capability-check gap).
+> live. Not built there: a batch `reverseTransfer`, and applying the two pending production
+> migrations (left for a separate decision). See PROGRESS.md §7 for the full writeup, including
+> the two claims from the review that turned out not to hold (SQLite's `LIKE` is already
+> case-insensitive here) and a flagged follow-up (`/dispatches`/`/deliveries` have the same
+> pre-existing missing-capability-check gap).
+>
+> ✅ **A batch `stock.reverseTransfer`, built 2026-09-10.** The gap above turned out to be
+> worse than "un-batched": a `TRANSFER` never touches packs, so the existing pack-based
+> reversal always refused it — reversing a transfer was not possible at all, one line or many.
+> New `stock.reverseTransfer` operation (mirrors `reverseDispatch`'s all-or-nothing loop, but
+> checks the destination site's current balance rather than replaying a pack plan, since none
+> exists) reverses every line of a transfer under one reason and one approval. `ReverseButton`
+> now appears on `/transfers/[id]`. See PROGRESS.md §7 for the full writeup.
 >
 > **`src/lib/company.ts` now carries the client's real name, address, phone, email and website**
 > (filled in 2026-09-08, after being a stub with blank strings). Values still route through

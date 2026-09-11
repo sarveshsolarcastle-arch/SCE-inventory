@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, Printer } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { requireCapability } from "@/lib/permissions";
 import { describeMovement, formatQuantity } from "@/lib/units";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -17,6 +18,10 @@ export default async function DeliveryDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+
+  // Checked here, not left to proxy.ts — that file documents itself as
+  // convenience only, matching the same direct check on /ledger and /transfers.
+  await requireCapability("ledger:view");
 
   const delivery = await prisma.delivery.findUnique({
     where: { id },

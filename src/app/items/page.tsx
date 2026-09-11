@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { requireCapability } from "@/lib/permissions";
 import PageHeader from "@/components/ui/PageHeader";
 import SearchBar from "@/components/ui/SearchBar";
 import { buttonClasses } from "@/components/ui/Button";
@@ -21,6 +22,10 @@ export default async function ItemsPage({
 }: {
   searchParams: Promise<{ q?: string; sort?: string; dir?: string }>;
 }) {
+  // Checked here, not left to proxy.ts — that file documents itself as
+  // convenience only, matching the same direct check on /ledger and /transfers.
+  await requireCapability("ledger:view");
+
   const { q, sort, dir } = await searchParams;
   const sortKey: SortKey = isSortKey(sort) ? sort : "name";
   const sortDir: "asc" | "desc" = dir === "desc" ? "desc" : "asc";

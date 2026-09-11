@@ -43,6 +43,14 @@ export function revalidateCorrections() {
   revalidatePath("/dispatches", "layout");
 }
 
+/** A transfer reversal's own pages, on top of revalidateCorrections — which
+ * already covers "/sites" (both ends' balances) but knows nothing about
+ * "/transfers", the one page family corrections.ts never touches. */
+export function revalidateTransfers(transferId?: string) {
+  revalidatePath("/transfers");
+  if (transferId) revalidatePath(`/transfers/${transferId}`);
+}
+
 /** The queue's own pages. Raising, approving, rejecting or withdrawing a
  * request all change the pill in the header, which every page renders. */
 export function revalidateApprovals() {

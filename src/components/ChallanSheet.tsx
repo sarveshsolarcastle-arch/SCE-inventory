@@ -54,8 +54,17 @@ export type ChallanSheetProps = {
   /** Heading over the party block. Defaults to "Delivery Challan For" — the
    * material statement overrides this too, for the same reason as `title`:
    * changing the banner alone still left this section calling itself a
-   * delivery challan. */
+   * delivery challan. The transfer challan overrides it to "Transfer From",
+   * because there `party` is not a customer at all — see `shipToHeading`. */
   partyHeading?: string;
+  /** Heading over the shipTo block. Defaults to "Shipping To" — the transfer
+   * challan overrides it to "Transfer To". A Dispatch/Delivery/Statement
+   * always names the SAME site's customer as `party` and that site itself as
+   * `shipTo`, so the two can never disagree. A Transfer has no single
+   * customer: material moves site → site, each of which may belong to a
+   * different customer entirely, so `party`/`shipTo` here are the origin and
+   * destination sites themselves, never a customer name. */
+  shipToHeading?: string;
   /** Whether to print the Received By / Delivered By signature blocks.
    * Defaults to true. The material statement sets it false: a live snapshot
    * has no delivery to sign for, and printing ruled Date/Signature lines next
@@ -63,6 +72,19 @@ export type ChallanSheetProps = {
    * confusion the title/partyHeading overrides exist to avoid — a customer
    * signing it as though it were a delivery record. */
   showSignatures?: boolean;
+  /** Label over `challanNo`. Defaults to "Challan No." — the material
+   * statement overrides it to "Reference No.", since its own header comment
+   * says outright that it "is not one": `challanNo` there carries a
+   * deterministic date-based reference, not an allocated challan number, and
+   * labelling it "Challan No." would misstate that on the printed page
+   * itself, the same misstatement the title/partyHeading overrides exist to
+   * avoid elsewhere on this sheet. */
+  documentNoLabel?: string;
+  /** Whether to print "Delivery time" and "Their ref." in the details strip.
+   * Defaults to true. The material statement sets it false: it is a snapshot
+   * of a balance, not a record of a delivery, so there is no delivery time to
+   * write down and no other party's document to reference. */
+  showDeliveryDetails?: boolean;
   challanNo: string;
   date: Date;
   party: { name: string; address: string | null; projectCode: string | null };
@@ -82,7 +104,10 @@ export type ChallanSheetProps = {
 export default function ChallanSheet({
   title = "Delivery Challan",
   partyHeading = "Delivery Challan For",
+  shipToHeading = "Shipping To",
   showSignatures = true,
+  documentNoLabel = "Challan No.",
+  showDeliveryDetails = true,
   challanNo,
   date,
   party,
@@ -150,7 +175,7 @@ export default function ChallanSheet({
         </section>
 
         <section className="space-y-0.5">
-          <h2 className="text-xs font-bold tracking-wide uppercase">Shipping To</h2>
+          <h2 className="text-xs font-bold tracking-wide uppercase">{shipToHeading}</h2>
           <FilledOrBlank label="Shipping Name" value={shipTo.name} />
           <FilledOrBlank label="Address" value={shipTo.address} />
           <Blank label="Phone No." />
@@ -161,13 +186,13 @@ export default function ChallanSheet({
 
       <div className="mb-2 grid gap-4 border-y border-ink-subtle px-4 py-1.5 sm:grid-cols-2">
         <div className="space-y-0.5">
-          <FilledOrBlank label="Challan No." value={challanNo} />
+          <FilledOrBlank label={documentNoLabel} value={challanNo} />
           <FilledOrBlank label="Date" value={date.toLocaleDateString("en-GB")} />
           {supplier !== undefined && <FilledOrBlank label="Supplier" value={supplier} />}
         </div>
         <div className="space-y-0.5">
-          <Blank label="Delivery time" />
-          <FilledOrBlank label="Their ref." value={reference} />
+          {showDeliveryDetails && <Blank label="Delivery time" />}
+          {showDeliveryDetails && <FilledOrBlank label="Their ref." value={reference} />}
           <FilledOrBlank label="Issued by" value={issuedBy} />
         </div>
       </div>

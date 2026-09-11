@@ -90,6 +90,8 @@ export default async function SiteMaterialStatementPage({
         title="Material Statement"
         partyHeading="Prepared For"
         showSignatures={false}
+        documentNoLabel="Reference No."
+        showDeliveryDetails={false}
         challanNo={reference}
         date={today}
         party={{ name: site.customerName || site.name, address: site.address, projectCode: site.projectCode }}

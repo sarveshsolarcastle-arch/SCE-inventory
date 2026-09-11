@@ -27,6 +27,7 @@ export type OperationKind =
   | "shelf.slot.frontRow"
   | "stock.reverseTransaction"
   | "stock.reverseDispatch"
+  | "stock.reverseTransfer"
   | "stock.adjust";
 
 export const OPERATION_KINDS: readonly OperationKind[] = [
@@ -40,6 +41,7 @@ export const OPERATION_KINDS: readonly OperationKind[] = [
   "shelf.slot.frontRow",
   "stock.reverseTransaction",
   "stock.reverseDispatch",
+  "stock.reverseTransfer",
   "stock.adjust",
 ];
 
@@ -60,6 +62,7 @@ export const CAPABILITY_FOR_KIND: Record<OperationKind, Capability> = {
   "shelf.slot.frontRow": "shelf:manage",
   "stock.reverseTransaction": "stock:reverse",
   "stock.reverseDispatch": "stock:reverse",
+  "stock.reverseTransfer": "stock:reverse",
   "stock.adjust": "stock:adjust",
 };
 
@@ -92,6 +95,7 @@ export type SlotFrontRowArgs = { shelfId: string; slotId: string };
 
 export type ReverseTransactionArgs = { transactionId: string; reason: string };
 export type ReverseDispatchArgs = { dispatchId: string; reason: string };
+export type ReverseTransferArgs = { transferId: string; reason: string };
 
 /** Carries the LEDGER FIGURES the counter was shown, not just what they
  * counted — which is the whole reason a delayed approval can be applied
@@ -117,6 +121,7 @@ export type ArgsFor<K extends OperationKind> = {
   "shelf.slot.frontRow": SlotFrontRowArgs;
   "stock.reverseTransaction": ReverseTransactionArgs;
   "stock.reverseDispatch": ReverseDispatchArgs;
+  "stock.reverseTransfer": ReverseTransferArgs;
   "stock.adjust": StockAdjustArgs;
 }[K];
 
