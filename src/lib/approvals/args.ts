@@ -18,6 +18,7 @@ import type {
   BoxType,
   ReverseDispatchArgs,
   ReverseTransactionArgs,
+  ReverseTransferArgs,
   ShelfCreateArgs,
   ShelfDeleteArgs,
   SiteCreateArgs,
@@ -163,6 +164,11 @@ export function parseReverseTransactionArgs(raw: unknown): ReverseTransactionArg
 export function parseReverseDispatchArgs(raw: unknown): ReverseDispatchArgs {
   const o = obj(raw);
   return { dispatchId: str(o.dispatchId, "Dispatch"), reason: str(o.reason, "Reason") };
+}
+
+export function parseReverseTransferArgs(raw: unknown): ReverseTransferArgs {
+  const o = obj(raw);
+  return { transferId: str(o.transferId, "Transfer"), reason: str(o.reason, "Reason") };
 }
 
 /** The one worth the most care. A stock count that loses its ledger figures

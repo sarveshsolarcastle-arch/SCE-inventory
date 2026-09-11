@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2, Send } from "lucide-react";
 import { deleteSite } from "@/lib/actions/sites";
+import { ATTACHMENT_KINDS_SUMMARY } from "@/lib/siteBlockers";
 import {
   controlLabel,
   noticeFor,
@@ -140,8 +141,7 @@ export default function DeleteSiteButton({
       )}
 
       <p className="text-xs font-semibold text-ink-subtle">
-        Only possible while nothing is attached to this site — no movements,
-        dispatches or deliveries.
+        Only possible while nothing is attached to this site — no {ATTACHMENT_KINDS_SUMMARY}.
         {asking && " An admin has to approve it before it happens."}
       </p>
     </div>

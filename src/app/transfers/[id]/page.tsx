@@ -1,23 +1,19 @@
-import { Printer } from "lucide-react";
+import { Printer, Undo2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireCapability } from "@/lib/permissions";
+import { capabilityMode, currentUser, requireCapability } from "@/lib/permissions";
+import { reverseTransfer } from "@/lib/actions/corrections";
+import { ReverseButton } from "@/components/CorrectionPanel";
 import { describeMovement } from "@/lib/units";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import PageHeader from "@/components/ui/PageHeader";
-import { Card } from "@/components/ui/Card";
+import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
 import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
 import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
 import { buttonClasses } from "@/components/ui/Button";
 import { formatTransferChallanNo } from "@/lib/challan";
 
-/* No reversal control on this page: a TRANSFER Transaction carries no
- * appliedPlan (it never opens a pack), so findObstaclesFor in
- * ops/corrections.ts always refuses it with "no_plan" — the item page's own
- * history table hides its ReverseButton for exactly this reason, on the same
- * `t.appliedPlan` check. Nothing here would ever render, so it is left out
- * rather than kept as a column that can never do anything. */
 export default async function TransferDetailPage({
   params,
 }: {
@@ -36,8 +32,10 @@ export default async function TransferDetailPage({
       fromSite: true,
       toSite: true,
       user: true,
+      // All transactions this batch grouped, not just TRANSFER — the
+      // REVERSAL rows reverseTransfer writes carry the same transferId, and
+      // the card below needs them to say what was undone and why.
       transactions: {
-        where: { type: "TRANSFER" },
         orderBy: { createdAt: "asc" },
         include: { item: true },
       },
@@ -46,8 +44,13 @@ export default async function TransferDetailPage({
 
   if (!transfer) notFound();
 
-  const activeLines = transfer.transactions.filter((t) => !t.reversedAt);
-  const fullyReversed = transfer.transactions.length > 0 && activeLines.length === 0;
+  const user = await currentUser();
+  const reverseMode = capabilityMode(user?.role, "stock:reverse");
+
+  const transferLines = transfer.transactions.filter((t) => t.type === "TRANSFER");
+  const reversalLines = transfer.transactions.filter((t) => t.type === "REVERSAL");
+  const activeLines = transferLines.filter((t) => !t.reversedAt);
+  const fullyReversed = transferLines.length > 0 && activeLines.length === 0;
 
   return (
     <div className="space-y-6">
@@ -75,7 +78,19 @@ export default async function TransferDetailPage({
                 Print challan
               </Link>
             )}
-            {fullyReversed && <Badge tone="neutral">Reversed</Badge>}
+            {fullyReversed ? (
+              <Badge tone="neutral">Reversed</Badge>
+            ) : (
+              reverseMode !== "none" &&
+              activeLines.length > 0 && (
+                <ReverseButton
+                  action={reverseTransfer.bind(null, transfer.id)}
+                  label="this whole transfer"
+                  mode={reverseMode}
+                  detail="This removes it from both sites' balances, exactly as if it never happened. It refuses if the destination has already moved some of it on again."
+                />
+              )
+            )}
           </div>
         }
       />
@@ -91,7 +106,7 @@ export default async function TransferDetailPage({
               </tr>
             </THead>
             <tbody>
-              {transfer.transactions.map((t) => (
+              {transferLines.map((t) => (
                 <Tr key={t.id}>
                   <Td>
                     <Link href={`/items/${t.item.id}`} className="font-bold text-ink hover:text-accent">
@@ -111,8 +126,25 @@ export default async function TransferDetailPage({
             </tbody>
           </Table>
         </TableWrap>
-        {transfer.transactions.length === 0 && <EmptyState>No lines on this transfer.</EmptyState>}
+        {transferLines.length === 0 && <EmptyState>No lines on this transfer.</EmptyState>}
       </Card>
+
+      {reversalLines.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle tone="danger" icon={<Undo2 size={13} />}>
+              Reversal
+            </CardTitle>
+          </CardHeader>
+          <CardBody>
+            <p className="text-sm font-semibold text-ink-subtle">
+              {reversalLines.length} line{reversalLines.length === 1 ? "" : "s"} of this transfer
+              {fullyReversed ? "" : " have been"} reversed
+              {reversalLines[0]?.reason && `, reason: "${reversalLines[0].reason}"`}.
+            </p>
+          </CardBody>
+        </Card>
+      )}
     </div>
   );
 }

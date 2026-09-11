@@ -27,6 +27,7 @@ import { NotPermittedError } from "@/lib/permissions";
 import {
   parseReverseDispatchArgs,
   parseReverseTransactionArgs,
+  parseReverseTransferArgs,
   parseStockAdjustArgs,
 } from "@/lib/approvals/args";
 import { runOrRequest } from "@/lib/approvals/runOrRequest";
@@ -82,6 +83,26 @@ export async function reverseDispatch(
     return outcome.kind === "executed" ? { ok: true } : describeRequested(outcome);
   } catch (error) {
     return refusal(error, "Dispatch reversal failed");
+  }
+}
+
+/** Reverses every not-yet-reversed line of a batch transfer in one go — same
+ * shape as reverseDispatch, and for the same reason: a wrong multi-item
+ * transfer should take one reason and one approval to undo, not one per
+ * line. */
+export async function reverseTransfer(
+  transferId: string,
+  formData: FormData
+): Promise<CorrectionResult> {
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!reason) return { ok: false, message: "A reason is required to reverse a transfer" };
+
+  try {
+    const args = parseReverseTransferArgs({ transferId, reason });
+    const outcome = await runOrRequest("stock.reverseTransfer", args, reason);
+    return outcome.kind === "executed" ? { ok: true } : describeRequested(outcome);
+  } catch (error) {
+    return refusal(error, "Transfer reversal failed");
   }
 }
 

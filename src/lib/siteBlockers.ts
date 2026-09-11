@@ -46,6 +46,25 @@ const BLOCKERS: {
   { key: "pickups", one: "collection flag", many: "collection flags" },
 ];
 
+/** Every kind of attachment that blocks a delete, plural, worst-first — for
+ * UI copy that has to say WHAT counts as "attached" before there is anything
+ * to count yet, such as DeleteSiteButton's hint under the button. Reads
+ * straight off BLOCKERS rather than being retyped, which is what let that
+ * hint drift out of step with this list before: it listed three kinds by
+ * hand and silently stopped naming the other three, `transfers` included,
+ * once they existed. */
+export const BLOCKER_KIND_NAMES: readonly string[] = BLOCKERS.map(({ many }) => many);
+
+/** "stock movements, dispatches, deliveries, transfer challans, defective-item
+ * records or collection flags" — BLOCKER_KIND_NAMES as one English list, for
+ * the same hint. Kept as its own export, not inlined at the call site, so the
+ * join rule (Oxford-comma-free, "or" before the last) lives in one place. */
+export const ATTACHMENT_KINDS_SUMMARY: string = (() => {
+  const names = BLOCKER_KIND_NAMES;
+  if (names.length <= 1) return names.join("");
+  return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+})();
+
 export function siteBlockerPhrases(counts: SiteBlockerCounts): string[] {
   return BLOCKERS.filter(({ key }) => counts[key] > 0).map(
     ({ key, one, many }) => `${counts[key]} ${counts[key] === 1 ? one : many}`

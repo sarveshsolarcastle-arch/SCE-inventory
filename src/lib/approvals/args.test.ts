@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   InvalidArgsError,
   parseReverseTransactionArgs,
+  parseReverseTransferArgs,
   parseShelfCreateArgs,
   parseSiteCreateArgs,
   parseSiteDeleteArgs,
@@ -159,6 +160,18 @@ test("a reversal must carry its reason", () => {
   );
   assert.throws(
     () => parseReverseTransactionArgs({ transactionId: "t1", reason: "  " }),
+    InvalidArgsError
+  );
+});
+
+test("a transfer reversal must carry its reason, same as a single-movement one", () => {
+  assert.deepEqual(parseReverseTransferArgs({ transferId: "t1", reason: "wrong site" }), {
+    transferId: "t1",
+    reason: "wrong site",
+  });
+  assert.throws(() => parseReverseTransferArgs({ transferId: "t1" }), InvalidArgsError);
+  assert.throws(
+    () => parseReverseTransferArgs({ transferId: "t1", reason: "   " }),
     InvalidArgsError
   );
 });

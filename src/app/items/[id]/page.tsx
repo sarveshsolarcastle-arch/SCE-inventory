@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { updateItem } from "@/lib/actions/items";
 import { openPackAction } from "@/lib/actions/transactions";
 import { describeMovement, formatQuantity, formatStock } from "@/lib/units";
-import { can, capabilityMode, currentUser } from "@/lib/permissions";
+import { can, capabilityMode, currentUser, requireCapability } from "@/lib/permissions";
 import { adjustStock, reverseTransaction } from "@/lib/actions/corrections";
 import { AdjustStockForm, ReverseButton } from "@/components/CorrectionPanel";
 import Link from "next/link";
@@ -26,6 +26,10 @@ export default async function ItemDetailPage({
 }) {
   const { id } = await params;
   const { error } = await searchParams;
+
+  // Checked here, not left to proxy.ts — that file documents itself as
+  // convenience only, matching the same direct check on /ledger and /transfers.
+  await requireCapability("ledger:view");
 
   const item = await prisma.item.findUnique({
     where: { id },

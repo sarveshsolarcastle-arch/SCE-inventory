@@ -11,10 +11,13 @@ import type { Prisma } from "@/generated/prisma/client";
 import { applyInverse, recalcItemStock, addPacks } from "@/lib/packs";
 import {
   describeObstacle,
+  describeTransferObstacle,
   findReversalObstacles,
   parseAppliedPlan,
   type ReversalObstacle,
+  type TransferObstacle,
 } from "@/lib/corrections";
+import { itemQuantityAtSite } from "@/lib/stock";
 import { reconcileForMovement } from "@/lib/sitePickups";
 import {
   describeAdjustment,
@@ -24,6 +27,7 @@ import {
 import type {
   ReverseDispatchArgs,
   ReverseTransactionArgs,
+  ReverseTransferArgs,
   StockAdjustArgs,
 } from "../kinds";
 
@@ -76,6 +80,43 @@ export async function findObstaclesFor(
     })
   );
   return obstacles;
+}
+
+type TransferMovement = {
+  id: string;
+  itemId: string;
+  /** Destination. */
+  siteId: string | null;
+  /** Origin. */
+  fromSiteId: string | null;
+  transferId: string | null;
+  quantity: number;
+  reversedAt: Date | null;
+  createdAt: Date;
+};
+
+/** Everything standing in the way of reversing one TRANSFER line, without
+ * changing anything. Shared by the operation, which throws on the first
+ * obstacle, and the approvals precheck, which shows it. Mirrors
+ * findObstaclesFor's role for pack-based reversals, but a transfer has no
+ * appliedPlan to check against — its only obstacle is whether the destination
+ * site still holds what it would take back. */
+export async function findTransferObstaclesFor(
+  tx: Prisma.TransactionClient,
+  movement: TransferMovement
+): Promise<TransferObstacle[]> {
+  if (movement.reversedAt) return [{ kind: "already_reversed" }];
+  if (!movement.siteId) return [];
+
+  // Includes this very movement's own contribution, which is exactly right:
+  // if nothing has moved since, held is at least movement.quantity and the
+  // reversal is clear. If some has been consumed or transferred onward from
+  // the destination, held drops below it.
+  const held = await itemQuantityAtSite(tx, movement.itemId, movement.siteId);
+  if (held < movement.quantity) {
+    return [{ kind: "moved_on", needed: movement.quantity, available: held }];
+  }
+  return [];
 }
 
 /** The shared primitive behind both a single reversal and a whole-dispatch one:
@@ -151,6 +192,67 @@ export async function reverseDispatch(
 
   for (const movement of movements) {
     await reverseMovementTx(tx, movement, actorId, args.reason);
+  }
+}
+
+/** The shared primitive behind reverseTransfer, one line at a time: verify the
+ * destination still holds what this line brought in, then exclude it from the
+ * ledger. No applyInverse and no appliedPlan — a TRANSFER never touches packs,
+ * so "restoring the exact prior state" is just no longer counting it, exactly
+ * as materialsAtSite already treats every reversedAt row. */
+async function reverseTransferLineTx(
+  tx: Prisma.TransactionClient,
+  movement: TransferMovement,
+  actorId: string,
+  reason: string
+): Promise<void> {
+  const obstacles = await findTransferObstaclesFor(tx, movement);
+  if (obstacles.length) throw new Error(describeTransferObstacle(obstacles[0]));
+
+  await tx.transaction.update({
+    where: { id: movement.id },
+    data: { reversedAt: new Date() },
+  });
+
+  await tx.transaction.create({
+    data: {
+      type: "REVERSAL",
+      quantity: movement.quantity,
+      itemId: movement.itemId,
+      siteId: movement.siteId,
+      fromSiteId: movement.fromSiteId,
+      transferId: movement.transferId,
+      userId: actorId,
+      reason,
+      reversesId: movement.id,
+      note: `Reverses TRANSFER of ${movement.createdAt.toLocaleDateString()}`,
+    },
+  });
+
+  // Both ends' flags may be stale now the transfer is excluded from the
+  // ledger — same reconciliation transferBatch itself runs on the way in.
+  await reconcileForMovement(tx, movement.itemId, [movement.siteId, movement.fromSiteId]);
+}
+
+/** Reverses every not-yet-reversed line of a batch transfer, atomically — same
+ * shape and same reason as reverseDispatch: one obstacle anywhere aborts the
+ * whole transfer's reversal, so a wrong multi-line transfer is undone with one
+ * reason and one approval instead of one per line. Each compensating REVERSAL
+ * row carries the same transferId as the TRANSFER it undoes, so the transfer
+ * and both site pages group them as one event. */
+export async function reverseTransfer(
+  tx: Prisma.TransactionClient,
+  args: ReverseTransferArgs,
+  actorId: string
+): Promise<void> {
+  const movements = await tx.transaction.findMany({
+    where: { transferId: args.transferId, type: "TRANSFER", reversedAt: null },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!movements.length) throw new Error("Nothing left to reverse on this transfer");
+
+  for (const movement of movements) {
+    await reverseTransferLineTx(tx, movement, actorId, args.reason);
   }
 }
 

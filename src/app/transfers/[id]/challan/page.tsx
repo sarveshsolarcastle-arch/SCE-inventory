@@ -10,9 +10,17 @@ import { buttonClasses } from "@/components/ui/Button";
 /* -------------------------------------------------------------------------
  * The printable challan for a batch site-to-site transfer — same sheet as a
  * Dispatch or a direct-to-site Delivery, its own number series
- * (formatTransferChallanNo). The origin site is the "party" and the
- * destination is "Shipping To", so the sheet reads as material moving from
- * one project to the other rather than from-the-company-to-a-customer.
+ * (formatTransferChallanNo).
+ *
+ * UNLIKE a Dispatch, Delivery or the site Material Statement, `party` here is
+ * NOT a customer. Those three always print the SAME site's customer as
+ * `party` and that site itself as `shipTo`, so the two can never disagree.
+ * A transfer moves material between two of the company's own sites, which
+ * may belong to two entirely different customers — printing the origin
+ * site's customer as though it were the recipient of a delivery to the
+ * destination site would misstate who the goods are for. So both `party` and
+ * `shipTo` here are the sites themselves — origin and destination — under
+ * "Transfer From" / "Transfer To" headings, never a customer name.
  * ---------------------------------------------------------------------- */
 
 export default async function TransferChallanPage({
@@ -81,8 +89,10 @@ export default async function TransferChallanPage({
       <ChallanSheet
         challanNo={formatTransferChallanNo(transfer.challanNo)}
         date={transfer.transferredAt}
+        partyHeading="Transfer From"
+        shipToHeading="Transfer To"
         party={{
-          name: fromSite.customerName || fromSite.name,
+          name: fromSite.name,
           address: fromSite.address,
           projectCode: fromSite.projectCode,
         }}

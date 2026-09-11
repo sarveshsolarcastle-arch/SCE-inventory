@@ -298,6 +298,19 @@ When surplus goes straight from one site to another without returning to the sto
 packs at all — packs are a store-side concept, and this material never goes near a shelf.
 **Check `/at-sites` before ordering anything (§5.1); this is the action that saves the money.**
 
+**Since 2026-09-09, a whole visit moves in one action.** Pick every item leaving this site,
+type each one's quantity, choose the ONE destination site once, and submit — that produces a
+single printable challan (`SCE/TC/…`, at `/transfers`), the same way one Dispatch covers many
+ISSUE lines. A row cannot be typed into both Consume and Transfer for more than what is
+physically here — the input caps update live against each other as you type, and the submit
+buttons refuse an over-committed row rather than letting the server reject it later.
+
+**Wrong transfer?** There is no edit. A mistake has to be *reversed* (`stock.reverseTransfer`,
+from `/transfers/[id]`) — one reason, one approval, undoes every line of that challan
+together, the same shape as reversing a whole dispatch (§8). It refuses if the destination has
+already moved some of that material on again (consumed it, or transferred it onward) — reverse
+before that happens, not after.
+
 ### 9.3 Return — material coming back to the store
 
 Record a `RETURN`. If part of what came back is damaged, **split it on the same line** using
@@ -331,6 +344,16 @@ heading that way.
 | When surplus is identified | Decide: return, transfer, or pickup-flag. Never leave it undecided. |
 | On return to the office | Hand the signed challan copy to Finance A |
 | Weekly | Walk `/at-sites` and confirm each site's list matches what is physically there |
+
+### 9.6 Material statement — for the customer
+
+**Since 2026-09-09.** `/sites/[id]/challan` prints everything currently at the site, on one
+sheet, for handing to the customer — dated (`SCE/MS/<date>`), not challan-numbered, because it
+is a live balance that can be reprinted at any time, not a record of one delivery. It carries
+no provenance: dispatched, transferred, and direct-delivered material all merge into one line
+per item, with nothing saying which route each unit arrived by. It is a **statement, not a
+challan** — no signature blocks — so do not use it in place of a Dispatch or Delivery challan
+when material is actually moving; print it only to show a customer what is on site right now.
 
 ---
 
@@ -435,7 +458,7 @@ hide it.
 
 ### The approval queue in full
 
-Eleven operations Finance may request. Everything else Finance does is immediate.
+Twelve operations Finance may request. Everything else Finance does is immediate.
 
 | Operation | Raised by | Typical trigger |
 |---|---|---|
@@ -449,6 +472,7 @@ Eleven operations Finance may request. Everything else Finance does is immediate
 | `shelf.slot.frontRow` | Finance A | Acting on a placement suggestion |
 | `stock.reverseTransaction` | Either | A single movement booked in error |
 | `stock.reverseDispatch` | Finance A | A whole dispatch booked in error (§8) |
+| `stock.reverseTransfer` | Finance A | A whole site-to-site transfer booked in error (§9.2) |
 | `stock.adjust` | Finance A | Physical count disagrees with the ledger (§10.1) |
 
 <details>

@@ -10,7 +10,7 @@ import {
   transferBatch,
 } from "@/lib/actions/siteLifecycle";
 import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
-import { Input, Select } from "@/components/ui/Field";
+import { Field, Input, Select } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
 import Alert from "@/components/ui/Alert";
 import Badge from "@/components/ui/Badge";
@@ -50,6 +50,11 @@ export default function SiteMaterialPanel({
   // trip instead of a per-row picker.
   const [transferQty, setTransferQty] = useState<Record<string, string>>({});
   const [transferDestination, setTransferDestination] = useState("");
+  // Printed on the transfer challan's signature blocks, same as
+  // DispatchBatchForm's pair — blank is fine, the challan then prints ruled
+  // lines to fill in when the material actually moves.
+  const [deliveredBy, setDeliveredBy] = useState("");
+  const [receivedBy, setReceivedBy] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [lastTransferId, setLastTransferId] = useState<string | null>(null);
@@ -144,9 +149,13 @@ export default function SiteMaterialPanel({
         fromSiteId: siteId,
         toSiteId: transferDestination,
         lines: transferLines,
+        deliveredBy,
+        receivedBy,
       });
       if (result.ok) {
         clearBatches();
+        setDeliveredBy("");
+        setReceivedBy("");
         setLastTransferId(result.transferId);
         router.refresh();
       } else setError(result.message);
@@ -239,7 +248,7 @@ export default function SiteMaterialPanel({
           )}
 
           {canTransfer && otherSites.length > 0 && rows.length > 0 && (
-            <>
+            <div className="flex w-full flex-wrap items-end gap-2">
               <Select
                 value={transferDestination}
                 onChange={(e) => setTransferDestination(e.target.value)}
@@ -252,6 +261,23 @@ export default function SiteMaterialPanel({
                   </option>
                 ))}
               </Select>
+              {/* Optional — printed on the transfer challan's signature
+                  blocks. Left blank, the challan prints them as ruled lines
+                  to fill in by hand, same as a Dispatch challan. */}
+              <Field label="Delivered by (optional)" className="w-40">
+                <Input
+                  value={deliveredBy}
+                  onChange={(e) => setDeliveredBy(e.target.value)}
+                  placeholder="Driver or carrier"
+                />
+              </Field>
+              <Field label="Received by (optional)" className="w-40">
+                <Input
+                  value={receivedBy}
+                  onChange={(e) => setReceivedBy(e.target.value)}
+                  placeholder="Person who signs"
+                />
+              </Field>
               <Button
                 type="button"
                 variant="secondary"
@@ -264,7 +290,7 @@ export default function SiteMaterialPanel({
                   ? "Recording…"
                   : `Record transfer${transferLines.length ? ` (${transferLines.length} item${transferLines.length === 1 ? "" : "s"})` : ""}`}
               </Button>
-            </>
+            </div>
           )}
         </div>
       </CardBody>

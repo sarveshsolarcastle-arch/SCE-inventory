@@ -2,7 +2,7 @@ import Link from "next/link";
 import { MapPin } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { materialAcrossSites } from "@/lib/stock";
-import { capabilityMode, currentUser } from "@/lib/permissions";
+import { capabilityMode, currentUser, requireCapability } from "@/lib/permissions";
 import { controlLabel } from "@/lib/approvals/labels";
 import PageHeader from "@/components/ui/PageHeader";
 import { buttonClasses } from "@/components/ui/Button";
@@ -11,6 +11,10 @@ import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
 
 export default async function SitesPage() {
+  // Checked here, not left to proxy.ts — that file documents itself as
+  // convenience only, matching the same direct check on /ledger and /transfers.
+  await requireCapability("ledger:view");
+
   const [sites, atSites, user] = await Promise.all([
     prisma.site.findMany({ orderBy: { name: "asc" } }),
     materialAcrossSites(),

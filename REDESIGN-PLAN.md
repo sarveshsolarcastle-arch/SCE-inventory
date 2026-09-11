@@ -1497,8 +1497,11 @@ Catalogued before any work starts, because each is subtle, deliberate, and would
    opening this pack" acknowledgment **resets on any edit to that row**, plus `errorRowKey`
    row highlighting on server rejection.
 3. **[SiteMaterialPanel](src/components/SiteMaterialPanel.tsx)** — the two-step "this consume
-   would clear a pickup flag" warning (Go back / Consume anyway), and the per-row
-   single-open-panel toggle.
+   would clear a pickup flag" warning (Go back / Consume anyway) still holds verbatim. *The
+   per-row single-open-panel toggle this line originally described does not: batching transfers
+   (2026-09-09, see PROGRESS.md §7) replaced Transfer's per-row toggle-and-form with an
+   always-visible inline quantity input, matching Consume's shape, so one derived "remaining"
+   figure could govern both. Only the Flag panel still toggles open per row.*
 4. **[ShelfGrid](src/components/ShelfGrid.tsx)** — the per-cell popover: admin-gated,
    single-open via `openSlotId`, auto-closing per mini-form submit, **reset on Front/Back
    switch**.

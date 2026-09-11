@@ -2,7 +2,7 @@ import { Pencil, Clock, Printer } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { updateSite } from "@/lib/actions/sites";
 import { materialsAtSite, oldestContributingDate, effectiveFlagged } from "@/lib/stock";
-import { can, capabilityMode, currentUser } from "@/lib/permissions";
+import { can, capabilityMode, currentUser, requireCapability } from "@/lib/permissions";
 import { controlLabel, requestHint } from "@/lib/approvals/labels";
 import { formatChallanNo } from "@/lib/challan";
 import SiteMaterialPanel, { type HeldRow } from "@/components/SiteMaterialPanel";
@@ -28,6 +28,10 @@ export default async function SiteDetailPage({
 }) {
   const { id } = await params;
   const { requested } = await searchParams;
+
+  // Checked here, not left to proxy.ts — that file documents itself as
+  // convenience only, matching the same direct check on /ledger and /transfers.
+  await requireCapability("ledger:view");
 
   const site = await prisma.site.findUnique({ where: { id } });
   if (!site) notFound();

@@ -171,12 +171,19 @@ export function ReverseButton({
   action,
   label,
   mode,
+  detail = "This restores the packs exactly as they were. It is not the same as a return, which would create new stock.",
 }: {
   action: (formData: FormData) => Promise<CorrectionResult>;
   label: string;
   /** `do` reverses it; `request` asks an admin to. The page renders nothing at
    * all for `none`, so this never sees it. */
   mode: ControlMode;
+  /** What undoing it actually restores. Defaults to the pack-based wording,
+   * right for a transaction or dispatch reversal — both replay an AppliedPlan.
+   * A TRANSFER never touches packs (see the Transfer model's comment), so its
+   * call site overrides this rather than telling site staff it restores packs
+   * that were never involved. */
+  detail?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -232,8 +239,7 @@ export function ReverseButton({
       className="space-y-2 rounded-control border border-warn-line bg-warn-soft p-2"
     >
       <p className="text-xs font-semibold text-warn-ink">
-        {asking ? "Ask an admin to undo" : "Undo"} {label}? This restores the packs exactly as
-        they were. It is not the same as a return, which would create new stock.
+        {asking ? "Ask an admin to undo" : "Undo"} {label}? {detail}
         {asking && " Nothing is undone until one of them approves."}
       </p>
       <Input name="reason" required placeholder="Reason (required)" />

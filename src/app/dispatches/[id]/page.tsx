@@ -1,6 +1,6 @@
 import { Printer, Undo2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { capabilityMode, currentUser } from "@/lib/permissions";
+import { capabilityMode, currentUser, requireCapability } from "@/lib/permissions";
 import { reverseDispatch } from "@/lib/actions/corrections";
 import { ReverseButton } from "@/components/CorrectionPanel";
 import { describeMovement } from "@/lib/units";
@@ -20,6 +20,10 @@ export default async function DispatchDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+
+  // Checked here, not left to proxy.ts — that file documents itself as
+  // convenience only, matching the same direct check on /ledger and /transfers.
+  await requireCapability("ledger:view");
 
   const dispatch = await prisma.dispatch.findUnique({
     where: { id },
