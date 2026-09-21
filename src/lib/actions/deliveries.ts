@@ -10,8 +10,8 @@ import { nextChallanNo, SITE_CHALLAN_SEQUENCE_KEY } from "@/lib/challan";
 
 /* -------------------------------------------------------------------------
  * Recording goods received. Deliveries trickle — usually one or two item
- * types as stock runs out — so this is the lighter of the two batch flows:
- * 3 blank rows rather than 15, and no Excel paste (ruled out with the user).
+ * types as stock runs out — so the form opens with 3 blank rows rather than
+ * a dispatch's 15, and grows when a supplier's sheet is pasted in.
  *
  * What actually matters here is the Delivery record: supplier, challan
  * reference, and above all DESTINATION.
