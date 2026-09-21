@@ -7,14 +7,18 @@ import {
   type DeliveryLineInput,
   type DeliveryResult,
 } from "@/lib/actions/deliveries";
+import { parseDeliveryPaste, orientPack } from "@/lib/deliveryPaste";
+import { matchItem, type MatchCandidate } from "@/lib/matching";
 import { formatQuantity } from "@/lib/units";
 import type { MeasureType } from "@/generated/prisma/enums";
-import { Field, Input, Select } from "@/components/ui/Field";
+import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
 import Alert from "@/components/ui/Alert";
+import Badge from "@/components/ui/Badge";
 import PillToggle from "@/components/ui/PillToggle";
 import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
-import { FileText, MapPin, PackagePlus, Plus } from "lucide-react";
+import { MATCH_STATUS_TONE } from "@/components/ui/tones";
+import { ClipboardPaste, FileText, MapPin, PackagePlus, Plus } from "lucide-react";
 
 export type FormItem = {
   id: string;
@@ -34,7 +38,12 @@ type Site = { id: string; name: string };
 
 type RowState = {
   key: string;
+  /** The pasted line this row came from, echoed on the row so a bad match is
+   * checkable against what the sheet actually said. Empty when typed by hand. */
+  sourceText: string;
   itemQuery: string;
+  /** Set only once the user has confirmed an item — by picking it from the
+   * list, or accepting a suggestion. A fuzzy guess never ships on its own. */
   itemId: string;
   packSize: string;
   packCount: string;
@@ -47,6 +56,7 @@ function blankRow(): RowState {
   keyCounter += 1;
   return {
     key: `d-${keyCounter}`,
+    sourceText: "",
     itemQuery: "",
     itemId: "",
     packSize: "",
@@ -56,9 +66,9 @@ function blankRow(): RowState {
   };
 }
 
-function toLine(row: RowState): DeliveryLineInput {
+function toLine(row: RowState, itemId: string): DeliveryLineInput {
   return {
-    itemId: row.itemId,
+    itemId,
     packSize: row.packSize ? Number(row.packSize) : null,
     packCount: Number(row.packCount) || 0,
     loose: Number(row.loose) || 0,
@@ -67,12 +77,37 @@ function toLine(row: RowState): DeliveryLineInput {
 }
 
 function rowTotal(row: RowState): number {
-  const line = toLine(row);
+  const line = toLine(row, "");
   return (line.packSize ?? 0) * line.packCount + line.loose;
 }
 
 function isBlank(row: RowState): boolean {
   return !row.itemId && !row.itemQuery.trim() && rowTotal(row) === 0;
+}
+
+type Resolution =
+  | { status: "exact"; itemId: string; candidates: [] }
+  | { status: "suggested"; itemId: string; candidates: [] }
+  | { status: "ambiguous"; itemId: ""; candidates: MatchCandidate[] }
+  | { status: "unmatched"; itemId: ""; candidates: [] };
+
+function resolveRow(row: RowState, items: FormItem[]): Resolution {
+  if (row.itemId) return { status: "exact", itemId: row.itemId, candidates: [] };
+  const m = matchItem(row.itemQuery, items);
+  if (m.status === "exact") return { status: "exact", itemId: m.itemId, candidates: [] };
+  if (m.status === "suggested") return { status: "suggested", itemId: m.itemId, candidates: [] };
+  if (m.status === "ambiguous") return { status: "ambiguous", itemId: "", candidates: m.candidates };
+  return { status: "unmatched", itemId: "", candidates: [] };
+}
+
+/** An item with no pack unit has no pack fields to fill — its inputs are
+ * disabled, so anything sitting in them would be invisible on screen and
+ * still reach the server. Folded into loose instead, where it can be seen. */
+function fitPackToItem(row: RowState, item: FormItem): Partial<RowState> {
+  if (item.packUnit) return {};
+  const packed = (Number(row.packSize) || 0) * (Number(row.packCount) || 0);
+  if (packed <= 0) return { packSize: "", packCount: "" };
+  return { packSize: "", packCount: "", loose: String((Number(row.loose) || 0) + packed) };
 }
 
 export default function DeliveryForm({
@@ -92,13 +127,18 @@ export default function DeliveryForm({
   const [siteId, setSiteId] = useState("");
   const [deliveredBy, setDeliveredBy] = useState("");
   const [receivedBy, setReceivedBy] = useState("");
+  const [pasteText, setPasteText] = useState("");
   // Opens with 3 rows, not 15: deliveries trickle, and a one-line challan is
-  // the common case.
+  // the common case. A paste grows the grid to fit whatever was pasted.
   const [rows, setRows] = useState<RowState[]>(() => [blankRow(), blankRow(), blankRow()]);
   const [error, setError] = useState<string | null>(null);
   const [rowErrors, setRowErrors] = useState<Map<number, string[]>>(new Map());
 
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+  const resolutions = useMemo(
+    () => new Map(rows.map((r) => [r.key, resolveRow(r, items)])),
+    [rows, items]
+  );
   const activeRows = rows.filter((r) => !isBlank(r));
 
   function updateRow(key: string, patch: Partial<RowState>) {
@@ -115,11 +155,76 @@ export default function DeliveryForm({
     });
   }
 
+  /** Accepting a suggestion or an ambiguous candidate. Unlike picking a new
+   * item from the list, the quantities already typed were meant for THIS
+   * item, so they stay — only a pack on an unpackaged item is folded away. */
+  function confirmItem(key: string, itemId: string) {
+    const item = itemById.get(itemId);
+    setRows((prev) =>
+      prev.map((r) => {
+        if (r.key !== key) return r;
+        const patched: RowState = {
+          ...r,
+          itemId,
+          itemQuery: item ? `${item.name} (${item.sku})` : r.itemQuery,
+        };
+        return item ? { ...patched, ...fitPackToItem(patched, item) } : patched;
+      })
+    );
+  }
+
+  function handleParse() {
+    const parsed = parseDeliveryPaste(pasteText);
+    if (!parsed.length) return;
+
+    const newRows = parsed.map((p) => {
+      const row = blankRow();
+      row.sourceText = p.sourceText;
+      row.itemQuery = p.name;
+      const resolution = resolveRow(row, items);
+      if (resolution.status === "exact") row.itemId = resolution.itemId;
+      const item = row.itemId ? itemById.get(row.itemId) : undefined;
+
+      if (p.packCount != null && p.packSize != null) {
+        const pack = orientPack(
+          { packCount: p.packCount, packSize: p.packSize },
+          item?.knownPackSizes ?? []
+        );
+        row.packCount = String(pack.packCount);
+        row.packSize = String(pack.packSize);
+      } else if (p.loose != null) {
+        row.loose = String(p.loose);
+      }
+      return item ? { ...row, ...fitPackToItem(row, item) } : row;
+    });
+
+    // Grows to fit: the still-blank starting rows drop out, and the grid
+    // extends past three if the sheet is longer.
+    setRows((prev) => [...prev.filter((r) => !isBlank(r)), ...newRows]);
+    setPasteText("");
+  }
+
+  const summary = activeRows.reduce(
+    (acc, r) => {
+      const res = resolutions.get(r.key)!;
+      if (res.status === "unmatched") acc.unmatched++;
+      else if (res.status === "ambiguous") acc.ambiguous++;
+      else if (res.status === "suggested") acc.unconfirmed++;
+      else if (rowTotal(r) <= 0) acc.incomplete++;
+      return acc;
+    },
+    { unmatched: 0, ambiguous: 0, unconfirmed: 0, incomplete: 0 }
+  );
+
   const blocked =
-    activeRows.length === 0 || (destination === "SITE" && !siteId) || pending;
+    activeRows.length === 0 ||
+    (destination === "SITE" && !siteId) ||
+    pending ||
+    summary.unmatched + summary.ambiguous + summary.unconfirmed + summary.incomplete > 0;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (blocked) return;
     setError(null);
     setRowErrors(new Map());
 
@@ -131,7 +236,7 @@ export default function DeliveryForm({
         siteId: destination === "SITE" ? siteId : null,
         deliveredBy: destination === "SITE" ? deliveredBy : null,
         receivedBy: destination === "SITE" ? receivedBy : null,
-        lines: activeRows.map(toLine),
+        lines: activeRows.map((r) => toLine(r, resolutions.get(r.key)!.itemId)),
       });
 
       if (result.ok) {
@@ -248,6 +353,37 @@ export default function DeliveryForm({
         </CardBody>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle icon={<ClipboardPaste className="h-3.5 w-3.5" />} tone="special">
+            Paste from Excel
+          </CardTitle>
+          <span className="text-xs font-semibold text-ink-subtle">Optional shortcut</span>
+        </CardHeader>
+        <CardBody className="space-y-2">
+          <Textarea
+            value={pasteText}
+            onChange={(e) => setPasteText(e.target.value)}
+            rows={4}
+            placeholder={"Wire 2.5mm\t2 x 400\nScrews M4\t60"}
+            className="font-mono"
+          />
+          <p className="text-xs font-semibold text-ink-subtle">
+            One item per line, name first — extra columns are fine. A plain number goes in
+            as loose stock; write <span className="font-mono">2 x 400</span> for two sealed
+            packs of 400. Every row is yours to check before it is recorded.
+          </p>
+          <Button
+            type="button"
+            onClick={handleParse}
+            disabled={!pasteText.trim()}
+            variant="secondary"
+          >
+            Parse into rows
+          </Button>
+        </CardBody>
+      </Card>
+
       <datalist id="delivery-items">
         {items.map((i) => (
           <option key={i.id} value={`${i.name} (${i.sku})`} />
@@ -269,9 +405,11 @@ export default function DeliveryForm({
               key={row.key}
               index={index}
               row={row}
-              item={itemById.get(row.itemId)}
+              resolution={resolutions.get(row.key)!}
+              item={itemById.get(resolutions.get(row.key)!.itemId)}
               errors={rowErrors.get(activeRows.indexOf(row)) ?? []}
               onChoose={(v) => chooseItem(row.key, v)}
+              onConfirm={(id) => confirmItem(row.key, id)}
               onUpdate={(patch) => updateRow(row.key, patch)}
               onRemove={() => setRows((prev) => prev.filter((r) => r.key !== row.key))}
             />
@@ -292,6 +430,10 @@ export default function DeliveryForm({
         <div className="text-sm">
           <p className="font-extrabold text-ink">
             {activeRows.length} line{activeRows.length === 1 ? "" : "s"} ready
+            {summary.unmatched > 0 && ` · ${summary.unmatched} unmatched`}
+            {summary.ambiguous > 0 && ` · ${summary.ambiguous} ambiguous`}
+            {summary.unconfirmed > 0 && ` · ${summary.unconfirmed} need item confirmed`}
+            {summary.incomplete > 0 && ` · ${summary.incomplete} missing a quantity`}
           </p>
           <p className="font-semibold text-ink-muted">
             {destination === "SITE"
@@ -310,17 +452,21 @@ export default function DeliveryForm({
 function DeliveryRowCard({
   index,
   row,
+  resolution,
   item,
   errors,
   onChoose,
+  onConfirm,
   onUpdate,
   onRemove,
 }: {
   index: number;
   row: RowState;
+  resolution: Resolution;
   item: FormItem | undefined;
   errors: string[];
   onChoose: (value: string) => void;
+  onConfirm: (itemId: string) => void;
   onUpdate: (patch: Partial<RowState>) => void;
   onRemove: () => void;
 }) {
@@ -328,6 +474,7 @@ function DeliveryRowCard({
   // independently on the server and in the browser, so using it in a DOM
   // attribute produced a hydration mismatch. useId is stable across both.
   const sizesId = useId();
+  const confirmed = resolution.status === "exact";
   const packaged = !!item?.packUnit;
   const total = rowTotal(row);
   const defective = Number(row.defectiveQty) || 0;
@@ -335,7 +482,7 @@ function DeliveryRowCard({
 
   // A filled row is worth seeing at a glance when the form is 6 lines long, so
   // the number chip carries the state rather than adding another badge.
-  const filled = !!item && total > 0;
+  const filled = confirmed && total > 0;
 
   return (
     <div
@@ -361,7 +508,7 @@ function DeliveryRowCard({
             {index + 1}
           </span>
           <span className="text-xs font-bold text-ink-muted">
-            {item ? item.name : "Empty line"}
+            {confirmed && item ? item.name : "Empty line"}
           </span>
         </span>
         <button
@@ -374,12 +521,51 @@ function DeliveryRowCard({
         </button>
       </div>
 
-      <Input
-        list="delivery-items"
-        value={row.itemQuery}
-        onChange={(e) => onChoose(e.target.value)}
-        placeholder="Item name…"
-      />
+      {row.sourceText && (
+        <p className="font-mono text-[11px] text-ink-subtle">
+          pasted &ldquo;{row.sourceText}&rdquo;
+        </p>
+      )}
+
+      <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+        <Input
+          list="delivery-items"
+          value={row.itemQuery}
+          onChange={(e) => onChoose(e.target.value)}
+          placeholder="Item name…"
+        />
+        {resolution.status === "suggested" && item && (
+          <Badge tone={MATCH_STATUS_TONE.suggested}>suggested: {item.name}</Badge>
+        )}
+        {resolution.status === "unmatched" && row.itemQuery.trim() !== "" && (
+          <Badge tone={MATCH_STATUS_TONE.unmatched}>no match — pick manually</Badge>
+        )}
+        {resolution.status === "ambiguous" && (
+          <Badge tone={MATCH_STATUS_TONE.ambiguous}>ambiguous — pick one</Badge>
+        )}
+      </div>
+
+      {resolution.status === "suggested" && item && (
+        <Button type="button" onClick={() => onConfirm(item.id)} variant="secondary" size="sm">
+          ✓ Use {item.name} ({item.sku})
+        </Button>
+      )}
+
+      {resolution.status === "ambiguous" && (
+        <div className="flex flex-wrap gap-2">
+          {resolution.candidates.map((c) => (
+            <Button
+              key={c.itemId}
+              type="button"
+              onClick={() => onConfirm(c.itemId)}
+              variant="secondary"
+              size="sm"
+            >
+              {c.name} ({c.sku})
+            </Button>
+          ))}
+        </div>
+      )}
 
       <div className="grid gap-2 sm:grid-cols-2">
         <Field label={packaged ? `Pack size (${item!.baseUnit})` : "Pack size — not packaged"}>
