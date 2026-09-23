@@ -30,7 +30,7 @@ export default async function NewSiteDeliveryPage() {
     <div className="space-y-4">
       <PageHeader
         title="Record a Site Stock_In"
-        subtitle="Goods received on behalf of a site, straight there — never touching the store. Nothing here cuts or opens a pack. A pack size new to an item is fine — just type it."
+        subtitle="Goods received on behalf of a site, delivered straight there and never touching the store. A pack size that is new to an item is fine — just type it."
       />
       <DeliveryForm items={itemsForForm} sites={sites} mode="site" />
     </div>
