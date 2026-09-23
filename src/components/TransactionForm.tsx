@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useId, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { recordMovement, type MovementInput } from "@/lib/actions/transactions";
 import { type PackSnapshot } from "@/lib/allocation";
@@ -71,6 +71,11 @@ export default function TransactionForm({
   const [defectiveQty, setDefectiveQty] = useState("");
 
   const [error, setError] = useState<string | null>(null);
+
+  // useId, not a module counter: the counter advances independently on the
+  // server and in the browser, which produced a hydration mismatch when used
+  // in a DOM attribute. Same fix as the delivery grid.
+  const sizesId = useId();
 
   const item = items.find((i) => i.id === itemId) ?? null;
   const isContinuous = item?.measure === "CONTINUOUS";
@@ -161,29 +166,49 @@ export default function TransactionForm({
 
       {item && (
         <>
-          {item.packUnit && item.packs.sealed.some((g) => g.sealedCount > 0) && (
+          {/* Offered for every packaged item, and NOT limited to sizes the
+              store happens to hold right now. Sending a site extra sealed
+              packs on purpose and getting the spares back is routine — and
+              the store's shelf is empty of them precisely BECAUSE they all
+              went out. Gating this on store stock meant the field vanished in
+              exactly that case, and the only way to record the return was as
+              loose material, which restocks sealed packs as an open pack.
+
+              Typed rather than picked, like the delivery grid, because a pack
+              can come back that the store never held: a direct-to-site
+              delivery creates no PackStock row, so its sizes are not on
+              record here. Known sizes are offered as suggestions. */}
+          {item.packUnit && (
             <fieldset className="space-y-2 rounded-card border border-line p-3.5">
               <legend className="px-1 text-sm font-semibold text-ink-muted">
                 Whole sealed {item.packUnit}s — came back unopened
               </legend>
+              <p className="text-xs font-semibold text-ink-subtle">
+                Leave blank unless a {item.packUnit} came back sealed. A size the store has
+                not held before is fine — just type it.
+              </p>
               <div className="flex gap-2">
-                <Select value={sealedSize} onChange={(e) => setSealedSize(e.target.value)}>
-                  <option value="">— none —</option>
-                  {item.packs.sealed
-                    .filter((g) => g.sealedCount > 0)
-                    .map((g) => (
-                      <option key={g.packSize} value={g.packSize}>
-                        {g.packSize} {item.baseUnit}
-                      </option>
-                    ))}
-                </Select>
+                <Input
+                  type="number"
+                  min={1}
+                  inputMode="numeric"
+                  list={sizesId}
+                  value={sealedSize}
+                  onChange={(e) => setSealedSize(e.target.value)}
+                  placeholder={`size in ${item.baseUnit}`}
+                />
+                <datalist id={sizesId}>
+                  {item.packs.sealed.map((g) => (
+                    <option key={g.packSize} value={g.packSize} />
+                  ))}
+                </datalist>
                 <Input
                   type="number"
                   min={1}
                   inputMode="numeric"
                   value={sealedCount}
                   onChange={(e) => setSealedCount(e.target.value)}
-                  placeholder="how many"
+                  placeholder={`how many ${item.packUnit}s`}
                 />
               </div>
             </fieldset>
