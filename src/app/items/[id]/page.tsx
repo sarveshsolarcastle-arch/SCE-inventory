@@ -152,6 +152,7 @@ export default async function ItemDetailPage({
         <AdjustStockForm
           rows={countRows}
           baseUnit={item.baseUnit}
+          packUnit={item.packUnit}
           action={adjustStock.bind(null, item.id)}
           mode={adjustMode}
         />
