@@ -439,11 +439,11 @@ export default function DispatchBatchForm({
           {summary.ambiguous > 0 && ` · ${summary.ambiguous} ambiguous`}
           {summary.unconfirmed > 0 && ` · ${summary.unconfirmed} need item confirmed`}
           {summary.incomplete > 0 && ` · ${summary.incomplete} missing a quantity`}
-          {summary.needsOpen > 0 && ` · ${summary.needsOpen} need a roll opened`}
+          {summary.needsOpen > 0 && ` · ${summary.needsOpen} need a pack opened`}
           {summary.outOfStock > 0 && ` · ${summary.outOfStock} out of stock`}
         </p>
         <Button type="submit" disabled={pending || blocked}>
-          {pending ? "Recording…" : "Record dispatch"}
+          {pending ? "Recording…" : "Record Stock_Out"}
         </Button>
       </div>
     </form>

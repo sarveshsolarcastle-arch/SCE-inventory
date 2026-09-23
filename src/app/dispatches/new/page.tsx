@@ -37,7 +37,7 @@ export default async function NewDispatchPage() {
     <div className="space-y-4">
       <PageHeader
         title="Stock_Out"
-        subtitle="Paste an item list from Excel, or add rows by hand. Nothing is recorded until every row is matched, priced against stock, and any pack that needs opening is approved."
+        subtitle="Material leaving the store for a site, recorded as one challan. Paste an item list from Excel, or add rows by hand. Nothing is written until every row is matched to an item, covered by available stock, and any sealed pack that must be opened is approved."
       />
       <DispatchBatchForm items={itemsForForm} sites={sites} />
     </div>
