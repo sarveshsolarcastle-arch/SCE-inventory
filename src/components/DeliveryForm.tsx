@@ -15,7 +15,6 @@ import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
 import Alert from "@/components/ui/Alert";
 import Badge from "@/components/ui/Badge";
-import PillToggle from "@/components/ui/PillToggle";
 import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
 import { MATCH_STATUS_TONE } from "@/components/ui/tones";
 import { ClipboardPaste, FileText, MapPin, PackagePlus, Plus } from "lucide-react";
@@ -113,9 +112,16 @@ function fitPackToItem(row: RowState, item: FormItem): Partial<RowState> {
 export default function DeliveryForm({
   items,
   sites,
+  mode,
 }: {
   items: FormItem[];
   sites: Site[];
+  /** Fixed for the lifetime of the form — each entry point (the store-only
+   * "Record Stock_In" and the site-only "Record Site Stock_In") is its own
+   * page, not a toggle a person can flip mid-form. Splitting it this way
+   * means a person can never accidentally record a site's material into the
+   * store, or vice versa, by leaving a toggle on the wrong setting. */
+  mode: "store" | "site";
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -123,7 +129,7 @@ export default function DeliveryForm({
   const [reference, setReference] = useState("");
   const [supplier, setSupplier] = useState("");
   const [note, setNote] = useState("");
-  const [destination, setDestination] = useState<"STORE" | "SITE">("STORE");
+  const destination: "STORE" | "SITE" = mode === "site" ? "SITE" : "STORE";
   const [siteId, setSiteId] = useState("");
   const [deliveredBy, setDeliveredBy] = useState("");
   const [receivedBy, setReceivedBy] = useState("");
@@ -293,65 +299,50 @@ export default function DeliveryForm({
         </CardBody>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle
-            icon={<MapPin className="h-3.5 w-3.5" />}
-            tone={destination === "SITE" ? "warn" : "ok"}
-          >
-            Destination
-          </CardTitle>
-          <span className="text-xs font-semibold text-ink-subtle">
-            {destination === "SITE" ? "Bypasses the store" : "Normal path"}
-          </span>
-        </CardHeader>
-        <CardBody className="space-y-3">
-          <PillToggle
-            value={destination}
-            onChange={(v) => setDestination(v)}
-            options={[
-              { value: "STORE", label: "Into the store" },
-              { value: "SITE", label: "Direct to a site" },
-            ]}
-          />
-          {destination === "SITE" && (
-            <>
-              <Select value={siteId} onChange={(e) => setSiteId(e.target.value)} required>
-                <option value="">Select a site…</option>
-                {sites.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </Select>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Delivered by (optional)">
-                  <Input
-                    value={deliveredBy}
-                    onChange={(e) => setDeliveredBy(e.target.value)}
-                    placeholder="Driver or person carrying it"
-                  />
-                </Field>
-                <Field label="Received by (optional)">
-                  <Input
-                    value={receivedBy}
-                    onChange={(e) => setReceivedBy(e.target.value)}
-                    placeholder="Person at site who signs"
-                  />
-                </Field>
-              </div>
-              <Alert tone="warn" className="text-xs">
-                The material never touches the store, so store stock is unchanged. It is
-                recorded against the site straight away, and the opened leftovers come back
-                later as an ordinary return.
-              </Alert>
-            </>
-          )}
-          <p className="text-xs font-semibold text-ink-subtle">
-            One destination per challan. A supplier splitting a shipment is two deliveries.
-          </p>
-        </CardBody>
-      </Card>
+      {/* Store mode has nothing to choose — the page it lives on IS the
+          choice, and its subtitle already says "into the store". A card
+          holding one badge and generic advice about splitting challans is
+          left over from when destination was a toggle. */}
+      {destination === "SITE" && (
+        <Card>
+          <CardHeader>
+            <CardTitle icon={<MapPin className="h-3.5 w-3.5" />} tone="warn">
+              Destination
+            </CardTitle>
+            <span className="text-xs font-semibold text-ink-subtle">Bypasses the store</span>
+          </CardHeader>
+          <CardBody className="space-y-3">
+            <Select value={siteId} onChange={(e) => setSiteId(e.target.value)} required>
+              <option value="">Select a site…</option>
+              {sites.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Delivered by (optional)">
+                <Input
+                  value={deliveredBy}
+                  onChange={(e) => setDeliveredBy(e.target.value)}
+                  placeholder="Driver or person carrying it"
+                />
+              </Field>
+              <Field label="Received by (optional)">
+                <Input
+                  value={receivedBy}
+                  onChange={(e) => setReceivedBy(e.target.value)}
+                  placeholder="Person at site who signs"
+                />
+              </Field>
+            </div>
+            <Alert tone="warn" className="text-xs">
+              Store stock is unchanged — the material is recorded against the site straight
+              away, and leftovers come back later as an ordinary return.
+            </Alert>
+          </CardBody>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -369,9 +360,9 @@ export default function DeliveryForm({
             className="font-mono"
           />
           <p className="text-xs font-semibold text-ink-subtle">
-            One item per line, name first — extra columns are fine. A plain number goes in
-            as loose stock; write <span className="font-mono">2 x 400</span> for two sealed
-            packs of 400. Every row is yours to check before it is recorded.
+            One item per line, name first; extra columns are ignored. A plain number is
+            loose stock — write <span className="font-mono">2 x 400</span> for two sealed
+            packs of 400.
           </p>
           <Button
             type="button"
@@ -442,7 +433,7 @@ export default function DeliveryForm({
           </p>
         </div>
         <Button type="submit" disabled={blocked}>
-          {pending ? "Recording…" : "Record delivery"}
+          {pending ? "Recording…" : mode === "site" ? "Record Site Stock_In" : "Record Stock_In"}
         </Button>
       </div>
     </form>

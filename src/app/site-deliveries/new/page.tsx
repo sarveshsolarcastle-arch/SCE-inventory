@@ -2,7 +2,11 @@ import { prisma } from "@/lib/prisma";
 import DeliveryForm, { type FormItem } from "@/components/DeliveryForm";
 import PageHeader from "@/components/ui/PageHeader";
 
-export default async function NewDeliveryPage() {
+/* Site-only twin of /deliveries/new — see DeliveryForm's `mode` prop. Same
+ * items/sites fetch, same form, same recordDelivery action; the only
+ * difference is `mode="site"`, which fixes the destination instead of
+ * letting it be toggled. */
+export default async function NewSiteDeliveryPage() {
   const [items, sites] = await Promise.all([
     prisma.item.findMany({
       orderBy: { name: "asc" },
@@ -25,10 +29,10 @@ export default async function NewDeliveryPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Record a Stock_In"
-        subtitle="Goods received from a supplier, into the store. Deliveries only ever add material, so nothing here cuts or opens a pack. A pack size new to an item is fine — just type it."
+        title="Record a Site Stock_In"
+        subtitle="Goods received on behalf of a site, straight there — never touching the store. Nothing here cuts or opens a pack. A pack size new to an item is fine — just type it."
       />
-      <DeliveryForm items={itemsForForm} sites={sites} mode="store" />
+      <DeliveryForm items={itemsForForm} sites={sites} mode="site" />
     </div>
   );
 }
