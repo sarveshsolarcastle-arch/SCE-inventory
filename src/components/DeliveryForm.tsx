@@ -344,36 +344,41 @@ export default function DeliveryForm({
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle icon={<ClipboardPaste className="h-3.5 w-3.5" />} tone="special">
-            Paste from Excel
-          </CardTitle>
-          <span className="text-xs font-semibold text-ink-subtle">Optional shortcut</span>
-        </CardHeader>
-        <CardBody className="space-y-2">
-          <Textarea
-            value={pasteText}
-            onChange={(e) => setPasteText(e.target.value)}
-            rows={4}
-            placeholder={"Wire 2.5mm\t2 x 400\nScrews M4\t60"}
-            className="font-mono"
-          />
-          <p className="text-xs font-semibold text-ink-subtle">
-            One item per line, name first; extra columns are ignored. A plain number is
-            loose stock — write <span className="font-mono">2 x 400</span> for two sealed
-            packs of 400.
-          </p>
-          <Button
-            type="button"
-            onClick={handleParse}
-            disabled={!pasteText.trim()}
-            variant="secondary"
-          >
-            Parse into rows
-          </Button>
-        </CardBody>
-      </Card>
+      {/* Site-only. Record Stock_In (store) and Stock_Out both dropped their
+          paste box — see REMOVED.md, 2026-09-23 — leaving this the only
+          delivery-side entry point still offering it. */}
+      {mode === "site" && (
+        <Card>
+          <CardHeader>
+            <CardTitle icon={<ClipboardPaste className="h-3.5 w-3.5" />} tone="special">
+              Paste from Excel
+            </CardTitle>
+            <span className="text-xs font-semibold text-ink-subtle">Optional shortcut</span>
+          </CardHeader>
+          <CardBody className="space-y-2">
+            <Textarea
+              value={pasteText}
+              onChange={(e) => setPasteText(e.target.value)}
+              rows={4}
+              placeholder={"Wire 2.5mm\t2 x 400\nScrews M4\t60"}
+              className="font-mono"
+            />
+            <p className="text-xs font-semibold text-ink-subtle">
+              One item per line, name first; extra columns are ignored. A plain number is
+              loose stock — write <span className="font-mono">2 x 400</span> for two sealed
+              packs of 400.
+            </p>
+            <Button
+              type="button"
+              onClick={handleParse}
+              disabled={!pasteText.trim()}
+              variant="secondary"
+            >
+              Parse into rows
+            </Button>
+          </CardBody>
+        </Card>
+      )}
 
       <datalist id="delivery-items">
         {items.map((i) => (

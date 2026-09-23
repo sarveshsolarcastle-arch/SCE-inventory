@@ -15,11 +15,10 @@ import {
   type PackSnapshot,
 } from "@/lib/allocation";
 import { describeAllocationErrors, type ApprovedOpens } from "@/lib/packs";
-import { parseDispatchPaste } from "@/lib/dispatchPaste";
 import { matchItem, type MatchCandidate } from "@/lib/matching";
 import { formatQuantity, piecesTotal, type Piece } from "@/lib/units";
 import type { MeasureType } from "@/generated/prisma/enums";
-import { Field, Input, Select, Textarea } from "@/components/ui/Field";
+import { Field, Input, Select } from "@/components/ui/Field";
 import Button from "@/components/ui/Button";
 import Alert from "@/components/ui/Alert";
 import Badge from "@/components/ui/Badge";
@@ -168,7 +167,6 @@ export default function DispatchBatchForm({
   // challan then prints ruled lines to fill in when the van is loaded.
   const [deliveredBy, setDeliveredBy] = useState("");
   const [receivedBy, setReceivedBy] = useState("");
-  const [pasteText, setPasteText] = useState("");
   const [rows, setRows] = useState<DispatchRowState[]>(() =>
     Array.from({ length: 15 }, makeBlankRow)
   );
@@ -239,31 +237,6 @@ export default function DispatchBatchForm({
         return item ? { ...patched, ...defaultQuantityPatch(patched, item) } : patched;
       })
     );
-  }
-
-  function handleParse() {
-    const parsed = parseDispatchPaste(pasteText);
-    if (!parsed.length) return;
-    const newRows = parsed.map((p) => {
-      const row = makeBlankRow();
-      row.sourceText = p.sourceText;
-      row.itemQuery = p.name;
-      row.parsedQuantity = p.quantity;
-      const resolution = resolveRow(row, items);
-      if (resolution.status === "exact") {
-        row.manualItemId = resolution.itemId;
-        const item = itemById.get(resolution.itemId);
-        if (item) Object.assign(row, defaultQuantityPatch(row, item));
-      }
-      return row;
-    });
-    // Grows to fit: replace the (still blank) starting rows, or extend past
-    // them if the sheet is longer than 15 lines.
-    setRows((prev) => {
-      const kept = prev.filter((r) => !isBlank(r));
-      return [...kept, ...newRows];
-    });
-    setPasteText("");
   }
 
   function addRow() {
@@ -384,22 +357,6 @@ export default function DispatchBatchForm({
             placeholder="Person at site who signs"
           />
         </Field>
-      </div>
-
-      <div className="space-y-2 rounded-card border border-dashed border-line-strong p-3.5">
-        <label className="text-sm font-semibold text-ink-muted">
-          Paste from Excel — one item per line, name and quantity (extra columns are fine)
-        </label>
-        <Textarea
-          value={pasteText}
-          onChange={(e) => setPasteText(e.target.value)}
-          rows={4}
-          placeholder={"Wire 2.5mm\t150\nScrews M4\t60"}
-          className="font-mono"
-        />
-        <Button type="button" onClick={handleParse} disabled={!pasteText.trim()} variant="secondary">
-          Parse into rows
-        </Button>
       </div>
 
       <datalist id="dispatch-items">
