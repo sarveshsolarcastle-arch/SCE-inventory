@@ -127,6 +127,13 @@ export async function reverseTransfer(
  *                             see adjustment.ts's NewOpenLine. Never paired
  *                             with a ledger_ field: there is nothing prior to
  *                             disagree with, so the whole value is the length.
+ *   newsealedsize_<key>      paired with newsealedcount_<key> below: a whole
+ *   newsealedcount_<key>     sealed pack SIZE the item has no row for at all
+ *                             yet (a fresh 500 m roll where 500 is new). Also
+ *                             never paired with ledger_ — folded straight
+ *                             into `sealed` below with ledger 0, since
+ *                             planAdjustment already upserts a size it has
+ *                             never seen.
  */
 export async function adjustStock(
   itemId: string,
@@ -142,6 +149,8 @@ export async function adjustStock(
   const counted = new Map<string, number>();
   const displayed = new Map<string, number>();
   const newLengths: number[] = [];
+  const newSealedSize = new Map<string, number>();
+  const newSealedCount = new Map<string, number>();
   for (const [key, value] of formData.entries()) {
     if (key.startsWith("new_")) {
       const raw = String(value).trim();
@@ -151,6 +160,24 @@ export async function adjustStock(
         return { ok: false, message: "A new cut length must be a whole number greater than zero" };
       }
       newLengths.push(n);
+      continue;
+    }
+
+    if (key.startsWith("newsealedsize_") || key.startsWith("newsealedcount_")) {
+      const isSize = key.startsWith("newsealedsize_");
+      const rowKey = key.slice(isSize ? 14 : 15);
+      const raw = String(value).trim();
+      if (raw === "") continue;
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n <= 0) {
+        return {
+          ok: false,
+          message: isSize
+            ? "A new pack size must be a whole number greater than zero"
+            : "A new pack's count must be a whole number greater than zero",
+        };
+      }
+      (isSize ? newSealedSize : newSealedCount).set(rowKey, n);
       continue;
     }
 
@@ -186,6 +213,18 @@ export async function adjustStock(
     } else {
       open.push({ packId: rowKey.slice(5), counted: count, ledger });
     }
+  }
+
+  // A row is a pair — a size with no count (or vice versa) is a form left
+  // half-filled, not a row to silently drop.
+  const newSealedKeys = new Set([...newSealedSize.keys(), ...newSealedCount.keys()]);
+  for (const rowKey of newSealedKeys) {
+    const packSize = newSealedSize.get(rowKey);
+    const count = newSealedCount.get(rowKey);
+    if (packSize === undefined || count === undefined) {
+      return { ok: false, message: "A new pack size needs both a size and a count." };
+    }
+    sealed.push({ packSize, counted: count, ledger: 0 });
   }
 
   const newOpen = newLengths.map((length) => ({ length }));

@@ -29,6 +29,22 @@ function blankNewPiece(): NewPieceRow {
   return { key: `new-${newPieceCounter}`, value: "" };
 }
 
+/** A row for a whole sealed pack SIZE the item has never been recorded
+ * holding before — a fresh 500 m roll where 500 has no row to correct at
+ * all. Two fields, unlike NewPieceRow: a size and a count, since there is no
+ * existing row's size to reuse. Posted as a pair (newsealedsize_<key> /
+ * newsealedcount_<key>) and folded into the ordinary `sealed` array
+ * server-side — planAdjustment already upserts a sealed size it has never
+ * seen (see adjustment.ts), so nothing downstream of the form needed to
+ * change for this one, only the way in. */
+type NewSealedRow = { key: string; size: string; count: string };
+
+let newSealedCounter = 0;
+function blankNewSealed(): NewSealedRow {
+  newSealedCounter += 1;
+  return { key: `newsealed-${newSealedCounter}`, size: "", count: "" };
+}
+
 /** Records a physical count. Works at pack level because "set the quantity" is
  * ambiguous once an item holds both sealed packs and open remainders.
  *
@@ -48,11 +64,15 @@ function blankNewPiece(): NewPieceRow {
 export function AdjustStockForm({
   rows,
   baseUnit,
+  packUnit,
   action,
   mode,
 }: {
   rows: CountRow[];
   baseUnit: string;
+  /** Null means the item is never packaged — adding a whole new sealed pack
+   * size makes no sense for it, so that control does not render at all. */
+  packUnit: string | null;
   action: (formData: FormData) => Promise<CorrectionResult>;
   /** `do` applies the adjustment; `request` asks an admin to. The page renders
    * nothing at all for `none`, so this never sees it. */
@@ -63,11 +83,13 @@ export function AdjustStockForm({
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [newPieces, setNewPieces] = useState<NewPieceRow[]>([]);
+  const [newSealed, setNewSealed] = useState<NewSealedRow[]>([]);
 
   const asking = mode === "request";
 
-  function resetNewPieces() {
+  function resetNewRows() {
     setNewPieces([]);
+    setNewSealed([]);
   }
 
   if (!open) {
@@ -93,7 +115,7 @@ export function AdjustStockForm({
           if (result.ok) {
             setOpen(false);
             setNotice(null);
-            resetNewPieces();
+            resetNewRows();
             router.refresh();
             return;
           }
@@ -122,7 +144,7 @@ export function AdjustStockForm({
         )}
       </p>
 
-      {rows.length === 0 && newPieces.length === 0 && (
+      {rows.length === 0 && newPieces.length === 0 && newSealed.length === 0 && (
         <p className="text-sm font-semibold text-ink-subtle">
           Nothing on the ledger to count yet — add a piece below if there is stock on the
           shelf that was never booked in.
@@ -195,6 +217,77 @@ export function AdjustStockForm({
         + Add a cut length
       </Button>
 
+      {/* packUnit-gated: a whole sealed pack only means something for an item
+          that is ever packaged at all. Otherwise "add a new pack size" is a
+          control for a concept that item doesn't have. */}
+      {packUnit && (
+        <>
+          {newSealed.length > 0 && (
+            <div className="space-y-2 rounded-card border border-dashed border-line-strong p-2.5">
+              <p className="text-xs font-semibold text-ink-subtle">
+                A whole sealed {packUnit} SIZE never on record before — e.g. a fresh 500{" "}
+                {baseUnit} roll where this item has never held a 500 {baseUnit} pack.
+                Recorded sealed, not as an open pack: a full roll is not a cut length.
+              </p>
+              {newSealed.map((row) => (
+                <div key={row.key} className="flex items-center gap-2">
+                  <Input
+                    name={`newsealedsize_${row.key}`}
+                    type="number"
+                    min={1}
+                    inputMode="numeric"
+                    value={row.size}
+                    onChange={(e) =>
+                      setNewSealed((prev) =>
+                        prev.map((p) =>
+                          p.key === row.key ? { ...p, size: e.target.value } : p
+                        )
+                      )
+                    }
+                    placeholder={`size (${baseUnit})`}
+                    className="w-28"
+                  />
+                  <span className="text-sm text-ink-subtle">×</span>
+                  <Input
+                    name={`newsealedcount_${row.key}`}
+                    type="number"
+                    min={1}
+                    inputMode="numeric"
+                    value={row.count}
+                    onChange={(e) =>
+                      setNewSealed((prev) =>
+                        prev.map((p) =>
+                          p.key === row.key ? { ...p, count: e.target.value } : p
+                        )
+                      )
+                    }
+                    placeholder={`sealed ${packUnit}s`}
+                    className="w-28"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setNewSealed((prev) => prev.filter((p) => p.key !== row.key))}
+                    className="text-xs font-semibold text-ink-subtle hover:text-danger-ink"
+                    aria-label="Remove this pack size"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <Button
+            type="button"
+            onClick={() => setNewSealed((prev) => [...prev, blankNewSealed()])}
+            variant="secondary"
+            size="sm"
+          >
+            + Add a new pack size
+          </Button>
+        </>
+      )}
+
       <div className="space-y-1">
         <label className="text-sm font-semibold text-ink-muted">Reason (required)</label>
         <Input name="reason" required placeholder={`e.g. annual count — 12 ${baseUnit} unaccounted`} />
@@ -207,7 +300,7 @@ export function AdjustStockForm({
           type="button"
           onClick={() => {
             setOpen(false);
-            resetNewPieces();
+            resetNewRows();
           }}
           variant="secondary"
         >
