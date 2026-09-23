@@ -519,7 +519,7 @@ export const OPERATIONS: Registry = {
         prisma.openPack.findMany({ where: { itemId: args.itemId, state: "OPEN" } }),
       ]);
       const plan = planAdjustment(
-        { sealed: args.sealed, open: args.open },
+        { sealed: args.sealed, open: args.open, newOpen: args.newOpen },
         {
           sealed: sealedNow.map((g) => ({
             packSize: g.packSize,

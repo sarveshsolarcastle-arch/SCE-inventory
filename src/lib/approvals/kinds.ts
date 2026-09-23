@@ -107,6 +107,9 @@ export type StockAdjustArgs = {
   itemId: string;
   sealed: { packSize: number; counted: number; ledger: number }[];
   open: { packId: string; counted: number; ledger: number }[];
+  /** New OpenPack rows to create — see adjustment.ts's NewOpenLine. No
+   * `ledger` field: there is nothing prior for these to be a delta against. */
+  newOpen: { length: number }[];
   reason: string;
 };
 

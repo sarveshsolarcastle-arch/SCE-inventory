@@ -8,7 +8,7 @@
  * separately, on the ApprovalRequest row. */
 
 import type { Prisma } from "@/generated/prisma/client";
-import { applyInverse, recalcItemStock, addPacks } from "@/lib/packs";
+import { applyInverse, recalcItemStock, addPacks, addOpenPack } from "@/lib/packs";
 import {
   describeObstacle,
   describeTransferObstacle,
@@ -282,7 +282,7 @@ export async function adjustStock(
   ]);
 
   const plan = planAdjustment(
-    { sealed: args.sealed, open: args.open },
+    { sealed: args.sealed, open: args.open, newOpen: args.newOpen },
     {
       sealed: sealedNow.map((g) => ({ packSize: g.packSize, sealedCount: g.sealedCount })),
       open: openNow.map((p) => ({
@@ -319,6 +319,14 @@ export async function adjustStock(
         data: { remaining: { increment: change.delta } },
       });
     }
+  }
+
+  // A piece the counter found with no row behind it at all. addOpenPack
+  // applies the item's own scrap-threshold rule, same as a delivery would —
+  // a genuinely tiny offcut lands in the recycle list rather than stock,
+  // exactly as if it had been booked in that way to begin with.
+  for (const piece of plan.newOpen) {
+    await addOpenPack(tx, item, piece.length);
   }
 
   await recalcItemStock(tx, args.itemId);

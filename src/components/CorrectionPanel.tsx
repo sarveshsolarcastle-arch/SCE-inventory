@@ -17,6 +17,18 @@ import Alert from "@/components/ui/Alert";
 
 export type CountRow = { key: string; label: string; current: number };
 
+/** A row for a piece the counter found on the shelf with no ledger row behind
+ * it at all — not a correction to something existing, a brand new OpenPack.
+ * Client-only state: unlike CountRow, the server has nothing to compare it
+ * against, so there is no `current`/ledger figure to carry. */
+type NewPieceRow = { key: string; value: string };
+
+let newPieceCounter = 0;
+function blankNewPiece(): NewPieceRow {
+  newPieceCounter += 1;
+  return { key: `new-${newPieceCounter}`, value: "" };
+}
+
 /** Records a physical count. Works at pack level because "set the quantity" is
  * ambiguous once an item holds both sealed packs and open remainders.
  *
@@ -50,8 +62,13 @@ export function AdjustStockForm({
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [newPieces, setNewPieces] = useState<NewPieceRow[]>([]);
 
   const asking = mode === "request";
+
+  function resetNewPieces() {
+    setNewPieces([]);
+  }
 
   if (!open) {
     return (
@@ -76,6 +93,7 @@ export function AdjustStockForm({
           if (result.ok) {
             setOpen(false);
             setNotice(null);
+            resetNewPieces();
             router.refresh();
             return;
           }
@@ -104,9 +122,10 @@ export function AdjustStockForm({
         )}
       </p>
 
-      {rows.length === 0 && (
+      {rows.length === 0 && newPieces.length === 0 && (
         <p className="text-sm font-semibold text-ink-subtle">
-          Nothing in stock to count. Record a stock-in first.
+          Nothing on the ledger to count yet — add a piece below if there is stock on the
+          shelf that was never booked in.
         </p>
       )}
 
@@ -131,6 +150,51 @@ export function AdjustStockForm({
         </div>
       ))}
 
+      {newPieces.length > 0 && (
+        <div className="space-y-2 rounded-card border border-dashed border-line-strong p-2.5">
+          <p className="text-xs font-semibold text-ink-subtle">
+            Not on the ledger at all — each one becomes its own new open pack, not a
+            correction to anything above.
+          </p>
+          {newPieces.map((row) => (
+            <div key={row.key} className="flex items-center gap-2">
+              <label className="flex-1 text-sm font-semibold text-ink">New piece</label>
+              <Input
+                name={`new_${row.key}`}
+                type="number"
+                min={1}
+                inputMode="numeric"
+                value={row.value}
+                onChange={(e) =>
+                  setNewPieces((prev) =>
+                    prev.map((p) => (p.key === row.key ? { ...p, value: e.target.value } : p))
+                  )
+                }
+                placeholder={baseUnit}
+                className="w-28"
+              />
+              <button
+                type="button"
+                onClick={() => setNewPieces((prev) => prev.filter((p) => p.key !== row.key))}
+                className="text-xs font-semibold text-ink-subtle hover:text-danger-ink"
+                aria-label="Remove this piece"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Button
+        type="button"
+        onClick={() => setNewPieces((prev) => [...prev, blankNewPiece()])}
+        variant="secondary"
+        size="sm"
+      >
+        + Add a cut length
+      </Button>
+
       <div className="space-y-1">
         <label className="text-sm font-semibold text-ink-muted">Reason (required)</label>
         <Input name="reason" required placeholder={`e.g. annual count — 12 ${baseUnit} unaccounted`} />
@@ -139,7 +203,14 @@ export function AdjustStockForm({
       {notice && <Alert tone={notice.tone}>{notice.message}</Alert>}
 
       <div className="flex gap-2">
-        <Button type="button" onClick={() => setOpen(false)} variant="secondary">
+        <Button
+          type="button"
+          onClick={() => {
+            setOpen(false);
+            resetNewPieces();
+          }}
+          variant="secondary"
+        >
           Cancel
         </Button>
         <Button type="submit" disabled={pending} variant="secondary">
