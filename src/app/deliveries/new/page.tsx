@@ -26,7 +26,7 @@ export default async function NewDeliveryPage() {
     <div className="space-y-4">
       <PageHeader
         title="Record a Stock_In"
-        subtitle="Goods received from a supplier, into the store. A pack size that is new to an item is fine — just type it."
+        subtitle="Goods received from a supplier, into the store. A pack size new to an item needs no setting up — just type it."
       />
       <DeliveryForm items={itemsForForm} sites={sites} mode="store" />
     </div>

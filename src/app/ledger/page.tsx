@@ -135,7 +135,7 @@ export default async function LedgerPage({
     <div className="space-y-4">
       <PageHeader
         title="Ledger"
-        subtitle="Every movement ever recorded — adjustments and reversals included, with the reason and note behind each one."
+        subtitle="Every movement ever recorded, including adjustments and reversals, each with the reason and note behind it."
       />
 
       <FilterPills active={activePill} options={pillOptions} />

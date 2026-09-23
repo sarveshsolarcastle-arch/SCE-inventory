@@ -54,7 +54,7 @@ export default async function AtSitesPage({
     <div className="space-y-4">
       <PageHeader
         title="Material at Sites"
-        subtitle="Everything issued or delivered to a site and not yet returned, consumed or transferred on. Not counted in store stock — it cannot be handed out today — so reorder levels ignore it."
+        subtitle="Everything issued or delivered to a site and not yet returned, consumed or transferred on. None of it counts as store stock, because none of it can be handed out today, so reorder levels ignore it."
       />
 
       <FilterPills

@@ -29,7 +29,7 @@ export default async function RecyclePage() {
     <div className="space-y-4">
       <PageHeader
         title="Recycle"
-        subtitle="Offcuts at or below their item's scrap threshold. Not counted in stock and cannot be issued, but nothing has been deleted — move them to a Recyclable box on the shelf when convenient."
+        subtitle="Offcuts at or below their item's scrap threshold. They no longer count as stock and cannot be issued, but nothing has been deleted — move them to a Recyclable box on the shelf when convenient."
       />
 
       <Card>

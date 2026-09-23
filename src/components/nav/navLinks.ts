@@ -59,14 +59,30 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: "dispatchOut",
       },
       { href: "/dispatches", label: "Delivery Ledger", capability: "ledger:view", icon: "dispatches" },
+    ],
+  },
+  {
+    // Returns are their own movement, not a footnote to sending material out:
+    // they run the other way, they are the only thing that clears a pickup
+    // flag, and they are the one path that can quarantine goods on arrival.
+    label: "Returns",
+    links: [
       {
         href: "/transactions/new",
         label: "Site Returns",
         // stock:return, not stock:issue — this screen only brings material
-        // home now. Every role holding one holds the other today, so nothing
+        // home. Every role holding one holds the other today, so nothing
         // changes on screen; it stops the gate lying about what the page does.
         capability: "stock:return",
         icon: "issueReturn",
+      },
+      {
+        // The Ledger, pre-filtered — not a second page. `activeHref` compares
+        // query params so this and plain "Ledger" cannot both light up.
+        href: "/ledger?type=RETURN",
+        label: "Returns Ledger",
+        capability: "ledger:view",
+        icon: "ledger",
       },
     ],
   },
