@@ -30,7 +30,7 @@ const ROUTE_CAPABILITIES: [prefix: string, capability: Capability][] = [
   ["/approvals", "approval:view"],
   ["/sites/new", "site:manage"],
   ["/shelf/new", "shelf:manage"],
-  ["/transactions/new", "stock:issue"],
+  ["/transactions/new", "stock:return"],
   ["/deliveries/new", "delivery:record"],
   ["/dispatches/new", "stock:issue"],
   ["/users", "user:manage"],

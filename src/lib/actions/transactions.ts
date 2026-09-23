@@ -153,8 +153,8 @@ export async function recordMovement(input: MovementInput): Promise<MovementResu
           type: input.type,
           quantity: total,
           itemId: item.id,
-          // Stock-in is never against a site; the paired direct-to-site form
-          // arrives in a later phase.
+          // Stock-in is never against a site. Direct-to-site receipts are a
+          // Delivery, not a movement — see recordDelivery.
           siteId: input.type === "STOCK_IN" ? null : siteId,
           userId,
           note,

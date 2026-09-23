@@ -40,12 +40,12 @@ export default async function DispatchesPage({
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Dispatches"
+        title="Delivery Ledger"
         subtitle={`${total} dispatch${total === 1 ? "" : "es"}`}
         actions={
           <Link href="/dispatches/new" className={buttonClasses("primary", "md")}>
             <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M10 4v12M4 10h12" /></svg>
-            New Dispatch
+            Record Stock_Out
           </Link>
         }
       />
