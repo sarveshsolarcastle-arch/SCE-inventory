@@ -42,7 +42,7 @@ export const NAV_GROUPS: NavGroup[] = [
     links: [
       {
         href: "/site-deliveries/new",
-        label: "Site Stock_In",
+        label: "Site Delivery",
         capability: "delivery:record",
         icon: "deliveryIn",
       },

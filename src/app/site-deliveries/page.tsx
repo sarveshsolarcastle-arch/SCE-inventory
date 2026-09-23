@@ -60,7 +60,7 @@ export default async function SiteDeliveriesPage({
           canRecord ? (
             <Link href="/site-deliveries/new" className={buttonClasses("primary", "md")}>
               <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M10 4v12M4 10h12" /></svg>
-              Record Site Stock_In
+              Record Site Delivery
             </Link>
           ) : undefined
         }
