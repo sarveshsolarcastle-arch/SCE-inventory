@@ -92,7 +92,7 @@ export default async function ItemDetailPage({
             </span>
           }
         />
-        <p className="text-sm font-semibold text-ink-subtle">
+        <p className="inline-flex w-fit rounded-card border border-info-line bg-info-soft px-3 py-1.5 text-sm font-bold text-info-ink">
           {formatStock(item, item.packStock, openRemaining)}
         </p>
         {item.scrapStock > 0 && (
