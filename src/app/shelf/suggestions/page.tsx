@@ -12,7 +12,7 @@ export default async function SuggestionsPage() {
     <div className="space-y-4">
       <PageHeader
         title="Placement Suggestions"
-        subtitle="Based on how often each item was issued in the last 30 days. Items used frequently but sitting outside a front-row (easily accessible) slot are suggested for a swap with a less-used item currently in front."
+        subtitle="Based on how often each item was issued over the last 30 days. A frequently used item sitting outside an easy-to-reach front-row slot is suggested for a swap with a less-used item currently in front."
       />
 
       <Card>

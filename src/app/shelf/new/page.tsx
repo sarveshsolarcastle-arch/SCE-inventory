@@ -11,7 +11,7 @@ export default async function NewShelfPage() {
     <div className="max-w-2xl space-y-4">
       <PageHeader
         title="New Shelf"
-        subtitle="Every shelf has two sides (front and back) with the same row/column layout. Slots are labeled to match your physical stickers (e.g. F1-1, B2-3). After sizing the grid, choose which box type — Fresh, Opened, or Recyclable — sits in each spot."
+        subtitle="Every shelf has two sides, front and back, sharing the same row and column layout. Slots are labelled to match your physical stickers, such as F1-1 or B2-3. Size the grid first, then choose which box type — Fresh, Opened or Recyclable — sits in each spot."
       />
       <NewShelfForm mode={mode} />
     </div>

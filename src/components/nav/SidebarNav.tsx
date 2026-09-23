@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { activeHref } from "./activeHref";
 import { ICONS, type IconName } from "./icons";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -36,8 +36,12 @@ export default function SidebarNav({
       .join("")
       .toUpperCase() || "?";
   const pathname = usePathname();
+  // With the query, not just the path: "Returns Ledger" is /ledger?type=RETURN,
+  // so dropping the query would light plain "Ledger" instead of it.
+  const searchParams = useSearchParams();
+  const query = searchParams.toString();
   const allHrefs = groups.flatMap((g) => g.links.map((l) => l.href));
-  const active = activeHref(pathname, allHrefs);
+  const active = activeHref(query ? `${pathname}?${query}` : pathname, allHrefs);
 
   return (
     <div

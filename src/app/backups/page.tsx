@@ -33,7 +33,7 @@ export default async function BackupsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Backups"
-        subtitle="A copy of the database is committed to GitHub every night, kept for 30 days."
+        subtitle="A copy of the database is committed to GitHub every night and kept for 30 days."
         actions={
           <a href="/api/backups/download" className={buttonClasses("secondary")}>
             <Download size={14} />
