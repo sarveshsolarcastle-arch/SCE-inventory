@@ -30,27 +30,42 @@ export const NAV_GROUPS: NavGroup[] = [
     links: [
       {
         href: "/deliveries/new",
-        label: "Record Delivery",
+        label: "Record Stock_In",
         capability: "delivery:record",
         icon: "deliveryIn",
       },
-      { href: "/deliveries", label: "Deliveries", capability: "ledger:view", icon: "deliveries" },
+      { href: "/deliveries", label: "Stock_In Ledger", capability: "ledger:view", icon: "deliveries" },
     ],
   },
   {
-    label: "Stock Out",
+    label: "Direct to Site",
+    links: [
+      {
+        href: "/site-deliveries/new",
+        label: "Site Stock_In",
+        capability: "delivery:record",
+        icon: "deliveryIn",
+      },
+      { href: "/site-deliveries", label: "Site Ledger", capability: "ledger:view", icon: "deliveries" },
+    ],
+  },
+  {
+    label: "Material Delivery",
     links: [
       {
         href: "/dispatches/new",
-        label: "Dispatch to Site",
+        label: "Stock_Out",
         capability: "stock:issue",
         icon: "dispatchOut",
       },
-      { href: "/dispatches", label: "Dispatches", capability: "ledger:view", icon: "dispatches" },
+      { href: "/dispatches", label: "Delivery Ledger", capability: "ledger:view", icon: "dispatches" },
       {
         href: "/transactions/new",
-        label: "Issue / Return",
-        capability: "stock:issue",
+        label: "Site Returns",
+        // stock:return, not stock:issue — this screen only brings material
+        // home now. Every role holding one holds the other today, so nothing
+        // changes on screen; it stops the gate lying about what the page does.
+        capability: "stock:return",
         icon: "issueReturn",
       },
     ],

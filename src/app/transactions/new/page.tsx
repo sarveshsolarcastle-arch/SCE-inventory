@@ -37,8 +37,8 @@ export default async function NewTransactionPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Issue / Return"
-        subtitle="Move material to and from a site. Incoming deliveries are recorded separately."
+        title="Site Returns"
+        subtitle="Material coming back from a site into the store. Issuing now happens on Stock_Out, which produces a challan; this screen only brings material home."
       />
       <TransactionForm items={itemsForForm} sites={sites} />
     </div>

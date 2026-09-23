@@ -17,7 +17,7 @@ import { TRANSACTION_TYPE_TONE } from "@/components/ui/tones";
  * it can actually perform, so an account is not shown doors it cannot open. */
 function actionsFor(role: Parameters<typeof can>[0]) {
   const all = [
-    { href: "/transactions/new", label: "Issue / Return", capability: "stock:issue" as const },
+    { href: "/transactions/new", label: "Site Returns", capability: "stock:return" as const },
     { href: "/items/new", label: "New item", capability: "item:manage" as const },
   ];
   return all.filter((a) => can(role, a.capability));

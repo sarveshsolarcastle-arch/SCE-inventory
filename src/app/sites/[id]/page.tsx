@@ -48,7 +48,8 @@ export default async function SiteDetailPage({
 
   // A batch dispatch writes 15+ rows in one go; grouping them by dispatchId
   // keeps the activity list readable instead of a wall of loose lines. A
-  // single-row Issue/Return (dispatchId null) still shows individually.
+  // single-row return (dispatchId null) still shows individually — as do the
+  // legacy single ISSUE rows from before that option was removed.
   type SiteTransaction = (typeof activityRows)[number];
   type ActivityEntry =
     | {
