@@ -117,7 +117,7 @@ export default function DeliveryForm({
   items: FormItem[];
   sites: Site[];
   /** Fixed for the lifetime of the form — each entry point (the store-only
-   * "Record Stock_In" and the site-only "Record Site Stock_In") is its own
+   * "Record Stock_In" and the site-only "Record a Site Delivery") is its own
    * page, not a toggle a person can flip mid-form. Splitting it this way
    * means a person can never accidentally record a site's material into the
    * store, or vice versa, by leaving a toggle on the wrong setting. */
@@ -438,7 +438,7 @@ export default function DeliveryForm({
           </p>
         </div>
         <Button type="submit" disabled={blocked}>
-          {pending ? "Recording…" : mode === "site" ? "Record Site Stock_In" : "Record Stock_In"}
+          {pending ? "Recording…" : mode === "site" ? "Record Site Delivery" : "Record Stock_In"}
         </Button>
       </div>
     </form>
