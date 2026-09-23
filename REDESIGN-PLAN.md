@@ -1015,9 +1015,14 @@ dispatch rather than showing loose rows.
 
 Deliveries **trickle** — typically one or two item types as stock runs out — so this is the
 lighter of the two flows. The multi-row grid still earns its place for the occasional larger
-challan and handles a single row perfectly well, but it opens with **3 blank rows, not 15**,
-and gets no paste (ruled out with the user). What matters most here is not the grid but the
-`Delivery` record: supplier, challan reference, and destination.
+challan and handles a single row perfectly well, and it opens with **3 blank rows, not 15**.
+What matters most here is not the grid but the `Delivery` record: supplier, challan
+reference, and destination.
+
+*(This paragraph ended "and gets no paste (ruled out with the user)" until **2026-09-21**,
+when the user asked for one after all. The grid now has an Excel paste box; see the Phase 5
+entry in [PROGRESS.md](PROGRESS.md) §9 and the "Out of scope" list below, where the
+corresponding bullet is struck through rather than deleted.)*
 
 ## Schema
 
@@ -3043,9 +3048,14 @@ Smaller points, noted in passing and still undecided:
 
 ## Out of scope (flagged, not built)
 
-- **Excel paste on the delivery grid** — ruled out with the user; deliveries stay typed.
+- ~~**Excel paste on the delivery grid** — ruled out with the user; deliveries stay typed.
   The Phase 4 parser is standalone, so wiring it in later is small if supplier challans
-  start arriving as spreadsheets.
+  start arriving as spreadsheets.~~ ✅ **Built 2026-09-21**, at the user's request. The
+  prediction that "wiring it in later is small" held only halfway: the splitting was reused
+  (lifted into [paste.ts](src/lib/paste.ts)), but the *parsing* could not be, because a
+  delivery line is not a quantity — material arrives as sealed packs or as loose stock and
+  the two land differently in `PackStock`. So [deliveryPaste.ts](src/lib/deliveryPaste.ts)
+  is its own parser, not a call into the Phase 4 one.
 - Barcode / scanner entry.
 - Learned name aliases — fuzzy matching is confirmed on the review screen every time.
   Worth revisiting once real sheets show which corrections repeat.

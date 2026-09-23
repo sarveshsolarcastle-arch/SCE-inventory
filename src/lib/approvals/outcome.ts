@@ -10,9 +10,9 @@
  * the row were gone. Dressing a request up as `ok: true` would have sent
  * DeleteSiteButton to /sites announcing a deletion that had not occurred.
  *
- * The `requested` discriminant is what a later stage branches on to soften the
- * tone from danger to info. Until then the message carries the whole meaning,
- * which is why it has to read as a complete sentence on its own.
+ * The `requested` discriminant is what `noticeFor` in labels.ts branches on to
+ * soften the tone from danger to info. The message still has to read as a
+ * complete sentence on its own, since callers are free to show it unadorned.
  *
  * Pure — no database, no framework — so the wording is under test.
  * ---------------------------------------------------------------------- */

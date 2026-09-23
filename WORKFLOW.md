@@ -195,6 +195,14 @@ UI reads the shared delivery ID and renders the pair as a single event.
    and the site if this is a direct-to-site delivery.
 3. One line per item, entered as pack size × pack count (e.g. 4 rolls × 400 m), not as a raw
    total. The app converts to base units itself.
+   - **If the challan arrived as a spreadsheet**, paste it into the "Paste from Excel" box
+     instead of typing — one item per line, name first, extra columns ignored. **Mind the
+     quantity column: a plain number is read as LOOSE stock, and `2 x 400` as two sealed
+     400 packs.** That distinction is not cosmetic — loose material becomes an open pack and
+     can be written off on arrival if it falls at or below the item's scrap threshold, while
+     a sealed pack stays sealed. Names are fuzzy-matched; anything unmatched or only
+     *suggested* blocks the submit until you confirm it. Check every row before recording —
+     the paste fills the grid in, it does not skip the count in step 1.
 4. **Anything damaged on arrival goes in as a defective quantity on the same line**, not as
    good stock. It becomes a `DefectiveItem` with source `DELIVERY`, status `QUARANTINED`.
    Quarantined goods physically exist but are **not stock** and cannot be issued.

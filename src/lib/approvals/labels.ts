@@ -66,14 +66,10 @@ export function requestHint(mode: ControlMode): string | null {
 
 export type Notice = { tone: "danger" | "info"; message: string };
 
-/** How to present a result that did not execute.
- *
- * The `requested` discriminant is the whole reason it exists on the result
- * type — outcome.ts put it there for "a later stage to branch on to soften the
- * tone from danger to info", and this is that stage. A request that was raised
- * successfully is `info`; everything else is `danger`, which is the safe
- * default for anything this function does not recognise.
- */
+/** How to present a result that did not execute. This is the stage outcome.ts
+ * added the `requested` discriminant for: a request raised successfully is
+ * `info`, and everything else is `danger` — the safe default for anything this
+ * does not recognise. */
 export function noticeFor(result: { ok: false; requested?: true; message: string }): Notice {
   return { tone: result.requested ? "info" : "danger", message: result.message };
 }

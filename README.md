@@ -129,7 +129,7 @@ It reads `.env` (the deployment database), not `.env.local`.
 
 All seven phases — the six-phase functional redesign and the Phase 7 UI overhaul — are built
 and verified in the browser; `npx tsc --noEmit` passes, `npm run lint` is clean, and `npm test`
-runs 168 unit tests.
+runs 210 unit tests.
 
 **Phase 8 — hosting — is in progress; re-planned 2026-08-25 into two parts.** Already built:
 account management (`/users` for an admin, `/account` for everyone), a `DATABASE_URL` that
@@ -155,8 +155,18 @@ alternatives, and the two decisions still open.
 
 **Not production-ready yet.** Before real stock goes in:
 
-- **The write-through actions still have no test coverage.** The 168 tests cover the pure
-  modules (allocation, corrections, matching, paste parsing, site balances, adjustment deltas,
+- **⚠️ A stale session cookie locks a user out of the whole app, with no way back in**
+  (found 2026-09-21, **not yet fixed**). `proxy.ts` decides "logged in" from the JWT
+  signature alone — it never reads the database, and cannot, since Prisma will not run in
+  the proxy. So a correctly-signed cookie naming a user row that no longer exists is waved
+  through; the page then re-reads the row, finds nothing, and throws. There is no
+  `error.tsx` anywhere in `src/app`, so with streaming SSR that throw leaves the browser on
+  a blank page that buffers forever with no error and nothing in the server logs — and
+  `/login` redirects anyone "logged in" to `/dashboard`, so the user cannot sign in again to
+  clear it. Clearing site cookies is the only exit. The fix is an error-boundary pair plus a
+  route handler that clears the cookie and lands on `/login`; see PROGRESS.md §7.
+- **The write-through actions still have no test coverage.** The 210 tests cover the pure
+  modules (allocation, corrections, matching, both paste parsers, site balances, adjustment deltas,
   capability tables, approval argument parsing/summaries/outcomes/labels, nav active-link
   matching, database-URL resolution, challan number formatting) and — **added 2026-09-08** —
   `packs.ts` itself, exercised against a real freshly-migrated SQLite database rather than a
