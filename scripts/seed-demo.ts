@@ -975,6 +975,7 @@ async function main() {
             open: [
               { packId: clampPack.id, counted: 135, ledger: clampPack.remaining },
             ],
+            newOpen: [],
             reason: "Monthly cycle count — five clamps short in box B2-1",
           },
           admin.id,

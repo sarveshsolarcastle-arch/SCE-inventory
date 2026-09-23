@@ -31,6 +31,16 @@
  * the world has moved on, and that refusal is the feature — appliedPlan exists
  * so restoring a roll that has since been cut cannot invent wire that no longer
  * exists. A delta would break it. This is for adjustment alone.
+ *
+ * 2026-09-23: a count can also introduce a piece that has NO row at all yet —
+ * an offcut sitting on the shelf that was never booked in as a delivery. That
+ * is `newOpen` below, and it is structurally different from the sealed/open
+ * lines above: there is no `ledger` figure to take a delta against, because
+ * nothing was ever shown to the counter to disagree with. The whole length
+ * IS the correction, so it is refusal-free by construction — there is no
+ * state it could conflict with. It still rides inside the same ADJUSTMENT
+ * transaction and the same mandatory reason as everything else here, rather
+ * than becoming a fake "delivery" that never happened.
  * ---------------------------------------------------------------------- */
 
 /** One line of the count form. `ledger` is the figure the form DISPLAYED to
@@ -39,10 +49,18 @@
  * with. */
 export type SealedCount = { packSize: number; counted: number; ledger: number };
 export type OpenCount = { packId: string; counted: number; ledger: number };
+/** A piece found on the shelf with no row at all behind it yet — not a
+ * correction to something already on the ledger, a brand new OpenPack. There
+ * is no `ledger` figure here on purpose: nothing was displayed to disagree
+ * with, so the whole `length` IS the correction. See NewOpenChange below for
+ * why this can never be a `SealedCount`/`OpenCount`-style delta instead. */
+export type NewOpenLine = { length: number };
 
 export type AdjustmentInput = {
   sealed: readonly SealedCount[];
   open: readonly OpenCount[];
+  /** Optional so every existing caller/test that predates this stays valid. */
+  newOpen?: readonly NewOpenLine[];
 };
 
 /** What the packs actually hold right now, read inside the transaction. */
@@ -79,6 +97,10 @@ export type OpenChange = {
 export type AdjustmentPlan = {
   sealed: SealedChange[];
   open: OpenChange[];
+  /** New OpenPack rows to create — pieces the counter found that have no
+   * existing row of any kind. Every one of these is unconditionally a
+   * positive addition; there is nothing to refuse it against. */
+  newOpen: NewOpenLine[];
   refusals: AdjustmentRefusal[];
   /** Total the counter said was on the shelf, in base units. */
   countedTotal: number;
@@ -112,6 +134,7 @@ export function planAdjustment(
   const plan: AdjustmentPlan = {
     sealed: [],
     open: [],
+    newOpen: [],
     refusals: [],
     countedTotal: 0,
     ledgerAtCount: 0,
@@ -181,6 +204,17 @@ export function planAdjustment(
       to,
       deletes: to === 0,
     });
+  }
+
+  // No `ledger` side to any of these — the point is that nothing was shown
+  // to disagree with, so the whole length is counted but none of it is
+  // charged against ledgerAtCount. That makes describeAdjustment's
+  // countedTotal - ledgerAtCount correction come out including the new
+  // piece automatically, with no separate wording needed for it.
+  for (const line of input.newOpen ?? []) {
+    if (line.length <= 0) continue;
+    plan.countedTotal += line.length;
+    plan.newOpen.push({ length: line.length });
   }
 
   return plan;

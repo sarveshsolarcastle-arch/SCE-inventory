@@ -266,3 +266,48 @@ test("a full round trip through JSON survives, which is the real use", () => {
   const roundTripped = JSON.parse(JSON.stringify(parseStockAdjustArgs(original)));
   assert.deepEqual(parseStockAdjustArgs(roundTripped), parseStockAdjustArgs(original));
 });
+
+test("a new piece needs no ledger figure — there is nothing prior to disagree with", () => {
+  const parsed = parseStockAdjustArgs({
+    itemId: "i1",
+    open: [],
+    newOpen: [{ length: 50 }],
+    reason: "found an offcut in box B2-1",
+  });
+  assert.deepEqual(parsed.newOpen, [{ length: 50 }]);
+});
+
+test("newOpen alone is enough to satisfy 'a count must cover something'", () => {
+  assert.doesNotThrow(() =>
+    parseStockAdjustArgs({
+      itemId: "i1",
+      sealed: [],
+      open: [],
+      newOpen: [{ length: 12 }],
+      reason: "found on the shelf",
+    })
+  );
+});
+
+test("a new piece of zero or negative length is refused, not silently dropped here", () => {
+  // Unlike planAdjustment (which drops a non-positive length defensively),
+  // the parser is the form's own validation layer and should say so.
+  assert.throws(
+    () =>
+      parseStockAdjustArgs({
+        itemId: "i1",
+        newOpen: [{ length: 0 }],
+        reason: "x",
+      }),
+    InvalidArgsError
+  );
+});
+
+test("newOpen defaults to empty when omitted, for every caller that predates it", () => {
+  const parsed = parseStockAdjustArgs({
+    itemId: "i1",
+    sealed: [{ packSize: 400, counted: 3, ledger: 2 }],
+    reason: "count",
+  });
+  assert.deepEqual(parsed.newOpen, []);
+});

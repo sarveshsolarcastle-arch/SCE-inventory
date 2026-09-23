@@ -123,6 +123,10 @@ export async function reverseTransfer(
  *   sealed_<packSize>        counted number of sealed packs of that size
  *   open_<packId>            counted remaining in that open pack
  *   ledger_<either of those> what the form displayed while they counted
+ *   new_<key>                a piece found with NO row behind it at all —
+ *                             see adjustment.ts's NewOpenLine. Never paired
+ *                             with a ledger_ field: there is nothing prior to
+ *                             disagree with, so the whole value is the length.
  */
 export async function adjustStock(
   itemId: string,
@@ -137,7 +141,19 @@ export async function adjustStock(
   // was refused as "not a whole number" and no count could ever be recorded.
   const counted = new Map<string, number>();
   const displayed = new Map<string, number>();
+  const newLengths: number[] = [];
   for (const [key, value] of formData.entries()) {
+    if (key.startsWith("new_")) {
+      const raw = String(value).trim();
+      if (raw === "") continue;
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n <= 0) {
+        return { ok: false, message: "A new cut length must be a whole number greater than zero" };
+      }
+      newLengths.push(n);
+      continue;
+    }
+
     const isLedger = key.startsWith("ledger_");
     const rowKey = isLedger ? key.slice(7) : key;
     if (!rowKey.startsWith("sealed_") && !rowKey.startsWith("open_")) continue;
@@ -172,8 +188,10 @@ export async function adjustStock(
     }
   }
 
+  const newOpen = newLengths.map((length) => ({ length }));
+
   try {
-    const args = parseStockAdjustArgs({ itemId, sealed, open, reason });
+    const args = parseStockAdjustArgs({ itemId, sealed, open, newOpen, reason });
     const outcome = await runOrRequest("stock.adjust", args, reason);
     return outcome.kind === "executed" ? { ok: true } : describeRequested(outcome);
   } catch (error) {

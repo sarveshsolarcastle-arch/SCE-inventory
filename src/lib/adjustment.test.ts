@@ -212,6 +212,71 @@ test("the note names both moments, so a delayed approval is legible", () => {
   );
 });
 
+test("a piece with no ledger row at all becomes a new open pack, not a delta", () => {
+  const plan = planAdjustment(
+    { sealed: [], open: [], newOpen: [{ length: 50 }] },
+    state()
+  );
+
+  assert.deepEqual(plan.refusals, []);
+  assert.deepEqual(plan.newOpen, [{ length: 50 }]);
+  // Counted, but never charged against the ledger it never appeared on — that
+  // is what makes the correction total come out including it automatically.
+  assert.equal(plan.countedTotal, 50);
+  assert.equal(plan.ledgerAtCount, 0);
+});
+
+test("a new piece sits alongside an ordinary correction to an existing open pack", () => {
+  // The exact motivating case: an existing 12 m open roll is corrected, AND a
+  // separate, never-booked-in 50 m offcut is found at the same count.
+  const plan = planAdjustment(
+    {
+      sealed: [],
+      open: [{ packId: PACK, counted: 10, ledger: 12 }],
+      newOpen: [{ length: 50 }],
+    },
+    state({ open: [{ id: PACK, remaining: 12, originalSize: 400 }] })
+  );
+
+  assert.deepEqual(plan.refusals, []);
+  assert.deepEqual(plan.open, [
+    { packId: PACK, delta: -2, from: 12, to: 10, deletes: false },
+  ]);
+  assert.deepEqual(plan.newOpen, [{ length: 50 }]);
+  assert.equal(plan.countedTotal, 10 + 50);
+  assert.equal(plan.ledgerAtCount, 12);
+});
+
+test("a new-piece length of zero or less is silently dropped, not refused", () => {
+  // Mirrors a delta of zero on an existing row: nothing to write, nothing to
+  // fail on. The form never sends one of these — this guards the pure
+  // function itself against a stray blank row reaching it some other way.
+  const plan = planAdjustment(
+    { sealed: [], open: [], newOpen: [{ length: 0 }, { length: -5 }] },
+    state()
+  );
+
+  assert.deepEqual(plan.newOpen, []);
+  assert.equal(plan.countedTotal, 0);
+});
+
+test("newOpen is optional, so every call site that predates it still type-checks", () => {
+  const plan = planAdjustment({ sealed: [], open: [] }, state());
+  assert.deepEqual(plan.newOpen, []);
+});
+
+test("the note folds a new piece into the correction with no special-casing", () => {
+  const plan = planAdjustment(
+    { sealed: [], open: [], newOpen: [{ length: 50 }] },
+    state()
+  );
+
+  assert.equal(
+    describeAdjustment(plan, 100, 150, "m"),
+    "Counted 50 m against a ledger of 0 (+50). Applied to a ledger of 100, giving 150."
+  );
+});
+
 test("a refusal explains itself well enough to act on", () => {
   const gone = describeRefusal({ kind: "pack_gone", packId: PACK }, "m");
   assert.match(gone, /count again/);

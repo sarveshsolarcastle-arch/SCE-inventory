@@ -195,7 +195,16 @@ export function parseStockAdjustArgs(raw: unknown): StockAdjustArgs {
     };
   });
 
-  if (!sealed.length && !open.length) {
+  // No `ledger` field here on purpose — see StockAdjustArgs. A length of zero
+  // is not "found nothing", it is a row that should never have been sent.
+  const newOpen = arr(o.newOpen ?? [], "New pieces").map((row, i) => {
+    const r = obj(row);
+    return {
+      length: int(r.length, `New piece ${i + 1}`, { min: 1 }),
+    };
+  });
+
+  if (!sealed.length && !open.length && !newOpen.length) {
     throw new InvalidArgsError("A stock count must cover at least one pack");
   }
 
@@ -214,6 +223,7 @@ export function parseStockAdjustArgs(raw: unknown): StockAdjustArgs {
     itemId: str(o.itemId, "Item"),
     sealed,
     open,
+    newOpen,
     reason: str(o.reason, "Reason"),
   };
 }
