@@ -80,6 +80,9 @@ export default async function ChallanPage({ params }: { params: Promise<{ id: st
       <ChallanSheet
         challanNo={formatChallanNo(dispatch.challanNo)}
         date={dispatch.dispatchedAt}
+        // The "Delivery Challan For" block is no longer printed (showParty),
+        // by decision; `party` is kept so re-enabling it needs no other edit.
+        showParty={false}
         // The customer when one is recorded; the site's own name is the
         // honest fallback, since that is who the material is for.
         party={{ name: site.customerName || site.name, address: site.address, projectCode: site.projectCode }}

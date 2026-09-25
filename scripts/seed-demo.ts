@@ -1095,6 +1095,217 @@ async function main() {
         },
       });
 
+      /* ---- 8-10 Sep: a big site, and Stock_In & Stock_Out with a supplier -- */
+
+      // A site holding 50+ different materials, which is what the site page's
+      // scrolling "Materials Currently at This Site" box exists for. Fifty
+      // small discrete items keep it about the SHAPE of a large build without
+      // pretending to be anything else; they are deliberately plain.
+      const kharghar = await tx.site.create({
+        data: {
+          name: "Kharghar Solar Park",
+          location: "Kharghar",
+          customerName: "Navi Mumbai Power Co-op Ltd",
+          address: "Sector 12, Kharghar,\nNavi Mumbai 410 210",
+          projectCode: "NM/2026/33",
+          notes: "Large build — fifty-odd line items sent in one consignment.",
+        },
+      });
+
+      const BOS: [name: string, unit: string][] = [
+        ["MC4 Connector, Male", "pcs"], ["MC4 Connector, Female", "pcs"], ["MC4 Y Branch, 2-to-1", "pcs"],
+        ["MC4 Spanner Tool", "pcs"], ["Cable Lug 4 sqmm", "pcs"], ["Cable Lug 6 sqmm", "pcs"],
+        ["Cable Lug 10 sqmm", "pcs"], ["Cable Lug 16 sqmm", "pcs"], ["Copper Lug 35 sqmm", "pcs"],
+        ["Cable Gland PG16", "pcs"], ["Cable Gland PG21", "pcs"], ["Cable Gland PG29", "pcs"],
+        ["Mid Clamp 30 mm", "pcs"], ["Mid Clamp 35 mm", "pcs"], ["Rail Splice Kit", "pcs"],
+        ["Aluminium Rail 4.2 m", "pcs"], ["L-Foot Bracket", "pcs"], ["Tile Hook, Stainless", "pcs"],
+        ["Roof Sheet Hook", "pcs"], ["Hex Bolt M8 x 25", "pcs"], ["Hex Bolt M10 x 30", "pcs"],
+        ["Nut M8, Stainless", "pcs"], ["Nut M10, Stainless", "pcs"], ["Spring Washer M8", "pcs"],
+        ["Flat Washer M8", "pcs"], ["Anchor Fastener 10 mm", "pcs"], ["Self-Drilling Screw 6.3 mm", "pcs"],
+        ["Earthing Rod 1.5 m", "pcs"], ["Earthing Pit Cover", "pcs"], ["GI Strip 25 x 3 mm", "m"],
+        ["Lightning Arrestor", "pcs"], ["DC Isolator 32 A", "pcs"], ["DC Fuse 15 A", "pcs"],
+        ["DCDB Enclosure", "pcs"], ["ACDB Enclosure", "pcs"], ["MCB 32 A, 2-pole", "pcs"],
+        ["MCB 63 A, 4-pole", "pcs"], ["Surge Protection Device", "pcs"], ["Energy Meter, 3-phase", "pcs"],
+        ["CT 100/5 A", "pcs"], ["Junction Box IP65", "pcs"], ["PVC Conduit 25 mm", "m"],
+        ["Conduit Clamp 25 mm", "pcs"], ["Cable Tray 100 mm", "m"], ["Danger Sign Board", "pcs"],
+        ["Warning Label Roll", "pcs"], ["UV Cable Tie 300 mm", "pcs"], ["Heat Shrink Sleeve 6 mm", "m"],
+        ["Insulation Tape, Red", "pcs"], ["Lug Crimping Die Set", "pcs"],
+      ];
+      const bosItems: Item[] = [];
+      for (const [i, [name, unit]] of BOS.entries()) {
+        const sku = `BOS-${String(i + 1).padStart(2, "0")}`;
+        const item = await tx.item.create({
+          data: {
+            sku,
+            name,
+            category: "Balance of system",
+            measure: "DISCRETE",
+            baseUnit: unit,
+            packUnit: null,
+            scrapThreshold: null,
+            minStock: 10,
+          },
+        });
+        await addOpenPack(tx, item, 60 + ((i * 37) % 140));
+        await recalcItemStock(tx, item.id);
+        items[sku] = await tx.item.findUniqueOrThrow({ where: { id: item.id } });
+        bosItems.push(items[sku]);
+      }
+      await stamp(at("2026-09-08T09:00:00"));
+
+      const challan4 = await nextChallanNo(tx);
+      const dispatch4 = await tx.dispatch.create({
+        data: {
+          challanNo: challan4,
+          reference: "NM/PO/0917",
+          siteId: kharghar.id,
+          dispatchedAt: at("2026-09-09T09:30:00"),
+          deliveredBy: "Ramesh Patil (Eicher MH-46 BM 2210)",
+          receivedBy: "S. Kulkarni, Site Supervisor",
+          note: "Full BOS kit for Phase 1 — runs to two printed pages.",
+          userId: finance.id,
+        },
+      });
+      for (const [i, item] of bosItems.entries()) {
+        await issue({
+          item,
+          siteId: kharghar.id,
+          dispatchId: dispatch4.id,
+          request: req({ loose: 15 + ((i * 11) % 40) }),
+          userId: finance.id,
+        });
+      }
+      await stamp(at("2026-09-09T09:30:00"));
+
+      // "Stock_In & Stock_Out" from the site page: a real, supplier-named
+      // receipt into the store, then the ordinary dispatch for the same
+      // quantity — store stock ends where it started, and the Stock_In ledger
+      // has a supplier to show instead of a dash.
+      {
+        const clamp = items["END-CLM-35"];
+        const receipt = await tx.delivery.create({
+          data: {
+            reference: "HAV/INV/5520",
+            supplier: "Havells India Ltd",
+            receivedAt: at("2026-09-10T11:10:00"),
+            note: "Stock_In to cover the Stock_Out entered alongside it",
+            userId: finance.id,
+          },
+        });
+        const { id: packId } = await addOpenPack(tx, clamp, 60);
+        await recalcItemStock(tx, clamp.id);
+        const applied = emptyAppliedPlan();
+        applied.created.push({
+          id: packId,
+          remaining: 60,
+          originalSize: null,
+          state: "OPEN",
+          shelfSlotId: null,
+        });
+        await tx.transaction.create({
+          data: {
+            type: "STOCK_IN",
+            quantity: 60,
+            itemId: clamp.id,
+            userId: finance.id,
+            deliveryId: receipt.id,
+            appliedPlan: serialiseAppliedPlan(applied),
+          },
+        });
+
+        const challan5 = await nextChallanNo(tx);
+        const dispatch5 = await tx.dispatch.create({
+          data: {
+            challanNo: challan5,
+            reference: "ZP/PO/0071",
+            siteId: vasai.id,
+            dispatchedAt: at("2026-09-10T11:10:00"),
+            note: "Not in the store's records yet — booked in and sent out together.",
+            userId: finance.id,
+          },
+        });
+        await issue({
+          item: clamp,
+          siteId: vasai.id,
+          dispatchId: dispatch5.id,
+          request: req({ loose: 60 }),
+          userId: finance.id,
+        });
+        await stamp(at("2026-09-10T11:10:00"));
+      }
+
+      /* ---- 12 Sep: stock found defective on the shelf ------------------- */
+
+      // Through the app's own markStockDefective, so what the demo shows is
+      // exactly what the "Mark defective" form does: the goods leave stock, a
+      // DEFECT movement is written, and a supplier-claim row appears. Three
+      // shapes — whole sealed packets, a whole open roll, a cut length — and
+      // one loose quantity, with one of them already CLAIMED to show the
+      // lifecycle. Placed after the count and the pending requests so it
+      // cannot make either of them stale.
+      {
+        const { markStockDefective } = await import("../src/lib/defects.ts");
+        const DEFECTED = at("2026-09-12T14:15:00");
+        const mark = (input: Partial<Parameters<typeof markStockDefective>[1]> & { itemId: string }) =>
+          markStockDefective(
+            tx,
+            {
+              sealedPacks: [],
+              pieces: [],
+              loose: 0,
+              openPackIds: [],
+              note: null,
+              approvedOpens: [],
+              ...input,
+            },
+            finance.id,
+          );
+
+        const ties = await mark({
+          itemId: items["TIE-CBL-NYL"].id,
+          sealedPacks: [{ packSize: 100, count: 1 }],
+          note: "Packet split open in the box — housings cracked",
+        });
+
+        const blackRoll = await tx.openPack.findFirstOrThrow({
+          where: { itemId: items["CBL-DC-BLK-4"].id, state: "OPEN" },
+          orderBy: { remaining: "asc" },
+        });
+        await mark({
+          itemId: items["CBL-DC-BLK-4"].id,
+          openPackIds: [blackRoll.id],
+          note: "Insulation nicked along the whole roll",
+        });
+
+        await mark({
+          itemId: items["CBL-ERT-6"].id,
+          pieces: [{ length: 12, count: 1 }],
+          approvedOpens: [
+            { packSize: 100, count: 5 },
+            { packSize: 200, count: 5 },
+          ],
+          note: "Kinked and crushed at the drum",
+        });
+
+        await mark({
+          itemId: items["PLG-RAW-BIG"].id,
+          loose: 8,
+          note: "Plugs with cracked collars",
+        });
+
+        // The ties' claim is already with the supplier.
+        await tx.defectiveItem.updateMany({
+          where: { transactionId: ties.transactionId },
+          data: { status: "CLAIMED" },
+        });
+        // Rows the app writes are stamped `now`; put them on the timeline.
+        await tx.defectiveItem.updateMany({
+          where: { source: "STOCK", reportedAt: { gte: RUN_START } },
+          data: { reportedAt: DEFECTED },
+        });
+        await stamp(DEFECTED);
+      }
+
       /* ---- the shelf --------------------------------------------------- */
 
       // Last, so that assignSlotItem adopts the open and scrap packs the six
