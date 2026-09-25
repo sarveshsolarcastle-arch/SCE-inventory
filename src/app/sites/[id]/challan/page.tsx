@@ -100,8 +100,13 @@ export default async function SiteMaterialStatementPage({
         showParty={false}
         challanNo={reference}
         date={today}
-        party={{ name: site.customerName || site.name, address: site.address, projectCode: site.projectCode }}
-        shipTo={{ name: site.name, address: site.address || site.location }}
+        party={{
+          name: site.customerName || site.name,
+          address: site.address,
+          projectCode: site.projectCode,
+          phone: site.phone,
+        }}
+        shipTo={{ name: site.name, address: site.address || site.location, phone: site.phone }}
         lines={lines}
         issuedBy={user.name ?? "—"}
         reference={null}

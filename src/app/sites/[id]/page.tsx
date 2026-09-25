@@ -205,6 +205,15 @@ export default async function SiteDetailPage({
                 <Field label="Project ID / reference">
                   <Input name="projectCode" defaultValue={site.projectCode ?? ""} />
                 </Field>
+                <Field label="Customer phone number">
+                  <Input
+                    name="phone"
+                    type="tel"
+                    inputMode="tel"
+                    defaultValue={site.phone ?? ""}
+                    placeholder="Printed on the challan"
+                  />
+                </Field>
                 <Field label="Notes">
                   <Input name="notes" defaultValue={site.notes ?? ""} />
                 </Field>
@@ -235,6 +244,7 @@ export default async function SiteDetailPage({
               {site.customerName && <p>{site.customerName}</p>}
               {site.address && <p className="whitespace-pre-line">{site.address}</p>}
               {site.projectCode && <p>Project {site.projectCode}</p>}
+              {site.phone && <p>Phone {site.phone}</p>}
               {site.notes && <p>{site.notes}</p>}
               <p className="pt-2">Only an admin can rename or remove a site.</p>
             </CardBody>

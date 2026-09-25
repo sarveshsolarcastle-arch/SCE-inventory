@@ -33,6 +33,7 @@ export async function createSite(formData: FormData) {
     customerName: formData.get("customerName"),
     address: formData.get("address"),
     projectCode: formData.get("projectCode"),
+    phone: formData.get("phone"),
     notes: formData.get("notes"),
   });
 
@@ -58,6 +59,7 @@ export async function updateSite(siteId: string, formData: FormData) {
     customerName: formData.get("customerName"),
     address: formData.get("address"),
     projectCode: formData.get("projectCode"),
+    phone: formData.get("phone"),
     notes: formData.get("notes"),
   });
 

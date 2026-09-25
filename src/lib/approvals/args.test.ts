@@ -82,6 +82,7 @@ test("a site needs a name; location and notes are optional", () => {
     customerName: null,
     address: null,
     projectCode: null,
+    phone: null,
     notes: null,
   });
   assert.throws(() => parseSiteCreateArgs({ name: "   " }), InvalidArgsError);
@@ -98,6 +99,7 @@ test("a cleared field and a round-tripped null mean the same thing", () => {
     customerName: "",
     address: "",
     projectCode: "",
+    phone: "",
     notes: "",
   });
   const fromJson = parseSiteCreateArgs({
@@ -106,9 +108,18 @@ test("a cleared field and a round-tripped null mean the same thing", () => {
     customerName: null,
     address: null,
     projectCode: null,
+    phone: null,
     notes: null,
   });
   assert.deepEqual(fromForm, fromJson);
+});
+
+test("a site's phone number is kept as typed (trimmed), and refused if not text", () => {
+  assert.equal(parseSiteCreateArgs({ name: "A", phone: "  98200 12345 / 022 2345 6789  " }).phone,
+    "98200 12345 / 022 2345 6789");
+  // A request raised before phone existed has no such key: that is a blank, not an error.
+  assert.equal(parseSiteCreateArgs({ name: "A" }).phone, null);
+  assert.throws(() => parseSiteCreateArgs({ name: "A", phone: 9820012345 }), InvalidArgsError);
 });
 
 test("values are trimmed, so approval and direct execution agree", () => {

@@ -60,6 +60,7 @@ export async function createSite(
       customerName: args.customerName,
       address: args.address,
       projectCode: args.projectCode,
+      phone: args.phone,
       notes: args.notes,
     },
   });
@@ -78,6 +79,7 @@ export async function updateSite(
       customerName: args.customerName,
       address: args.address,
       projectCode: args.projectCode,
+      phone: args.phone,
       notes: args.notes,
     },
   });

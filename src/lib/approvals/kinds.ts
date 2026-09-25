@@ -75,6 +75,8 @@ export type SiteCreateArgs = {
   customerName: string | null;
   address: string | null;
   projectCode: string | null;
+  /** The customer's contact number — printed on the site's challans. */
+  phone: string | null;
   notes: string | null;
 };
 export type SiteUpdateArgs = SiteCreateArgs & { siteId: string };

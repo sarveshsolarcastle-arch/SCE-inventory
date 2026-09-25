@@ -55,7 +55,7 @@ export function describeKind(
       // update also rewrites the customer, the postal address and the project
       // ID — the details that get PRINTED on a delivery challan — and a summary
       // that mentioned only the name would understate what is being approved.
-      return `Update ${site()} — name ("${String(args.name ?? "")}"), customer, address and project details`;
+      return `Update ${site()} — name ("${String(args.name ?? "")}"), customer, address, phone and project details`;
     case "site.delete":
       return `Delete ${site()}`;
     case "shelf.create":

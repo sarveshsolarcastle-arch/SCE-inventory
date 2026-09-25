@@ -103,7 +103,13 @@ export default async function TransferChallanPage({
           address: COMPANY.addressLines.join("\n"),
           projectCode: null,
         }}
-        shipTo={{ name: toSite.name, address: toSite.address || toSite.location }}
+        shipTo={{
+          name: toSite.name,
+          address: toSite.address || toSite.location,
+          // The DESTINATION site's number — the only party block left on this
+          // sheet now that "Transfer From" is hidden.
+          phone: toSite.phone,
+        }}
         lines={lines.map(lineFromTransaction)}
         issuedBy={transfer.user.name}
         reference={null}
