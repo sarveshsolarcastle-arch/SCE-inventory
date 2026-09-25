@@ -163,13 +163,27 @@ export default function SiteMaterialPanel({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle tone="special" icon={<Boxes size={13} />}>
-          Materials Currently at This Site
-        </CardTitle>
-      </CardHeader>
-      <CardBody className="space-y-3">
+    // 50-60 lines used to stretch this card to several screens and drag the
+    // Edit Site card beside it just as tall. On md+ the card is laid over its
+    // grid cell (absolute, inset-0), so it takes exactly the height the Edit
+    // Site card gives the row and contributes none of its own — the list
+    // scrolls inside it instead. The wrapper's min-height is the floor for when
+    // the neighbour is short (a non-admin sees a small read-only details card).
+    // Below md the two cards stack, so there is no neighbour to match and the
+    // list just gets a capped height.
+    <div className="relative md:min-h-[34rem]">
+      <Card className="flex flex-col md:absolute md:inset-0">
+        <CardHeader>
+          <CardTitle tone="special" icon={<Boxes size={13} />}>
+            Materials Currently at This Site
+          </CardTitle>
+          {rows.length > 0 && (
+            <span className="text-xs font-semibold text-ink-subtle">
+              {rows.length} item{rows.length === 1 ? "" : "s"}
+            </span>
+          )}
+        </CardHeader>
+        <CardBody className="flex min-h-0 flex-1 flex-col space-y-3">
         {error && <Alert tone="danger">{error}</Alert>}
 
         {lastTransferId && (
@@ -214,7 +228,10 @@ export default function SiteMaterialPanel({
 
         {rows.length === 0 && <EmptyState>Nothing currently at this site.</EmptyState>}
 
-        <div className="space-y-2">
+        {/* The scrolling part. min-h-0 is what lets a flex child shrink below
+            its content so overflow-y can take over; the Record buttons below
+            stay pinned outside it, so they are never a long scroll away. */}
+        <div className="max-h-[28rem] min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 md:max-h-none">
           {rows.map((row) => (
             <MaterialRow
               key={row.itemId}
@@ -234,7 +251,7 @@ export default function SiteMaterialPanel({
           ))}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           {canConsume && rows.length > 0 && (
             <Button
               type="button"
@@ -294,7 +311,8 @@ export default function SiteMaterialPanel({
           )}
         </div>
       </CardBody>
-    </Card>
+      </Card>
+    </div>
   );
 }
 

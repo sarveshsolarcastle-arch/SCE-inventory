@@ -1,4 +1,4 @@
-import { Pencil, Clock, Printer } from "lucide-react";
+import { Pencil, Clock, Printer, FileText, PackagePlus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { updateSite } from "@/lib/actions/sites";
 import { materialsAtSite, oldestContributingDate, effectiveFlagged } from "@/lib/stock";
@@ -130,15 +130,31 @@ export default async function SiteDetailPage({
             .join(" · ") || undefined
         }
         actions={
-          // Only offered when there is something to list — the statement
-          // page itself refuses an empty site anyway, and a Print button
-          // that leads to a refusal is a worse answer than no button.
-          materials.length > 0 ? (
-            <Link href={`/sites/${site.id}/challan`} className={buttonClasses("secondary")}>
-              <Printer size={14} aria-hidden />
-              Print material statement
+          <>
+            {/* Always offered: the challans page lists every document for
+                this site and copes with there being none. */}
+            <Link href={`/sites/${site.id}/challans`} className={buttonClasses("secondary")}>
+              <FileText size={14} aria-hidden />
+              All challans
             </Link>
-          ) : undefined
+            {/* Records a Stock_In and then a Stock_Out, so only a role holding
+                both capabilities is shown it. */}
+            {can(user?.role, "delivery:record") && can(user?.role, "stock:issue") && (
+              <Link href={`/sites/${site.id}/quick-add`} className={buttonClasses("secondary")}>
+                <PackagePlus size={14} aria-hidden />
+                Stock_In &amp; Stock_Out
+              </Link>
+            )}
+            {/* Only offered when there is something to list — the statement
+                page itself refuses an empty site anyway, and a Print button
+                that leads to a refusal is a worse answer than no button. */}
+            {materials.length > 0 && (
+              <Link href={`/sites/${site.id}/challan`} className={buttonClasses("secondary")}>
+                <Printer size={14} aria-hidden />
+                Print material statement
+              </Link>
+            )}
+          </>
         }
       />
 

@@ -17,6 +17,9 @@ import { parsePage, pageArgs, clampPage } from "@/lib/pagination";
  * the reasoning). Same Delivery model, same detail/challan pages — this is
  * only a different `where` and a different entry point, not a different
  * kind of record.
+ *
+ * Since 2026-09-24 new rows here are paper-only challans (typed lines, no
+ * ledger effect); the older ones are stock-backed. Both list side by side.
  * ---------------------------------------------------------------------- */
 
 export default async function SiteDeliveriesPage({
@@ -45,6 +48,7 @@ export default async function SiteDeliveriesPage({
       site: true,
       user: true,
       transactions: { where: { type: "STOCK_IN" } },
+      lines: { select: { id: true } },
       defectiveItems: true,
     },
   });
@@ -54,7 +58,7 @@ export default async function SiteDeliveriesPage({
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Site Ledger"
+        title="Direct to Site Ledger"
         subtitle={`${total} direct-to-site deliver${total === 1 ? "y" : "ies"}`}
         actions={
           canRecord ? (
@@ -96,7 +100,9 @@ export default async function SiteDeliveriesPage({
                       {d.site?.name ?? "—"}
                     </Badge>
                   </Td>
-                  <Td className="text-ink-subtle">{d.transactions.length}</Td>
+                  {/* Typed lines for a paper challan, ledger rows for an
+                      older stock-backed one — never both. */}
+                  <Td className="text-ink-subtle">{d.lines.length + d.transactions.length}</Td>
                   <Td>
                     {d.defectiveItems.length > 0 ? (
                       <Badge tone="warn">{d.defectiveItems.length}</Badge>

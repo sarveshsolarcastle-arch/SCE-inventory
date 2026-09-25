@@ -223,7 +223,7 @@ reasoning and the four traps.
 
 **Phase 12 — the Material Delivery Challan — built 2026-09-08.** A printable A4 delivery note
 for a dispatch, at `/dispatches/[id]/challan`: company block, party and shipping blocks, a
-`Sr No. / Item / Description / Specification / Qty / Unit / Remarks` table, and Received By /
+`Sr No. / Item / Description / Qty / Unit / Remarks` table, and Received By /
 Delivered By signature blocks. Built as an **extension of Dispatch to Site**, not a separate
 feature — `Dispatch` was already a header row with its lines hanging off it as `ISSUE`
 transactions. Restyled the same day, once real data existed to check it against — navy banding
@@ -338,5 +338,23 @@ typed or edited.
 > caller, fixed file, no reason to add an optimization pass to the one path that has to survive
 > `window.print()`). Letterhead was offered and declined — "print regular A4" — so the sheet
 > stays self-contained.
+
+> ✅ **Challan changes and two site shortcuts — 2026-09-24.** The challan table lost its
+> Specification column (every challan shares `ChallanSheet`), the Material Statement now prints
+> blank Received By / Delivered By blocks, the transfer challan reads "Transfer From: Solar
+> Castle Energy" (the origin site is deliberately not printed), and the logo is larger.
+> `/sites/[id]/challans` lists every challan for one site — store dispatches, direct-to-site,
+> transfers in and out — with type and date filters and a link to each print page; it is
+> reached from the site page and is not in the sidebar. **Site Delivery
+> (`/site-deliveries/new`) is now a paper-only challan:** free-text lines (`DeliveryLine`),
+> no Item, no Transaction, no effect on stock or on what a site holds; it warns, and never
+> blocks, when a typed line matches a registered item. Older stock-backed direct-to-site
+> deliveries stay as history, and the stock-moving `recordDelivery` `siteId` branch is kept
+> but no page reaches it. The site page's **Stock_In & Stock_Out** button
+> (`/sites/[id]/quick-add`) is the ordinary Stock_Out form, which first records a Stock_In for
+> exactly the quantities entered and then the ordinary dispatch (`recordStockInThenDispatch`).
+> The master ledger gained **Site Ledger** and **Delivery Ledger** filters. **The `DeliveryLine`
+> migration (`20260924120356_paper_site_challan`) is applied to `dev.db` only — apply it to
+> Turso with `npm run db:migrate:turso -- --apply` before deploying.**
 
 See PROGRESS.md §7 for the full list and §9 for the Phase 8 status and server checklist.

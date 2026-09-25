@@ -61,6 +61,7 @@ const ORDER = [
   "defectiveItem",
   "sitePickup",
   "transaction",
+  "deliveryLine",
   "dispatch",
   "delivery",
   "transfer",

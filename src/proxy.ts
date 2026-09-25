@@ -31,6 +31,7 @@ const ROUTE_CAPABILITIES: [prefix: string, capability: Capability][] = [
   ["/sites/new", "site:manage"],
   ["/shelf/new", "shelf:manage"],
   ["/transactions/new", "stock:return"],
+  ["/defective/new", "defect:flag"],
   ["/deliveries/new", "delivery:record"],
   ["/dispatches/new", "stock:issue"],
   ["/users", "user:manage"],

@@ -1,38 +1,34 @@
 import { prisma } from "@/lib/prisma";
-import DeliveryForm, { type FormItem } from "@/components/DeliveryForm";
+import { requireCapability } from "@/lib/permissions";
+import SiteChallanForm from "@/components/SiteChallanForm";
 import PageHeader from "@/components/ui/PageHeader";
 
-/* Site-only twin of /deliveries/new — see DeliveryForm's `mode` prop. Same
- * items/sites fetch, same form, same recordDelivery action; the only
- * difference is `mode="site"`, which fixes the destination instead of
- * letting it be toggled. */
-export default async function NewSiteDeliveryPage() {
+/* A paper-only challan maker for material that is managed outside the app —
+ * see recordSiteChallan. The item list is fetched for one reason: so the form
+ * can warn when a typed line looks like a registered item. `?site=` lets a
+ * site's own page open this with the site already chosen. */
+export default async function NewSiteDeliveryPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ site?: string }>;
+}) {
+  // Checked here so a role that cannot submit is not shown a form that would
+  // refuse it — the action enforces the same capability.
+  await requireCapability("delivery:record");
+
+  const { site } = await searchParams;
   const [items, sites] = await Promise.all([
-    prisma.item.findMany({
-      orderBy: { name: "asc" },
-      include: { packStock: { orderBy: { packSize: "asc" } } },
-    }),
-    prisma.site.findMany({ orderBy: { name: "asc" } }),
+    prisma.item.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, sku: true } }),
+    prisma.site.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
 
-  const itemsForForm: FormItem[] = items.map((item) => ({
-    id: item.id,
-    name: item.name,
-    sku: item.sku,
-    baseUnit: item.baseUnit,
-    packUnit: item.packUnit,
-    measure: item.measure,
-    scrapThreshold: item.scrapThreshold,
-    knownPackSizes: item.packStock.map((g) => g.packSize),
-  }));
-
   return (
-    <div className="space-y-4">
+    <div className="max-w-5xl space-y-4">
       <PageHeader
         title="Record a Site Delivery"
-        subtitle="Goods received on behalf of a site and delivered straight there, never touching the store. A pack size new to an item needs no setting up — just type it."
+        subtitle="Makes a printable delivery challan for material handled outside the app. Type whatever it says — it is not added to the item list, and stock and site materials do not change."
       />
-      <DeliveryForm items={itemsForForm} sites={sites} mode="site" />
+      <SiteChallanForm items={items} sites={sites} defaultSiteId={site} />
     </div>
   );
 }

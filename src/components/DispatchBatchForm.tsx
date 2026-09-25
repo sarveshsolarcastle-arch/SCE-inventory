@@ -1,5 +1,7 @@
 "use client";
 
+import { recordStockInThenDispatch } from "@/lib/actions/stockInThenDispatch";
+
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -153,14 +155,23 @@ function resolveRow(row: DispatchRowState, items: FormItem[]): Resolution {
 export default function DispatchBatchForm({
   items,
   sites,
+  stockInFirst = false,
+  defaultSiteId,
 }: {
   items: FormItem[];
   sites: Site[];
+  /** Record a Stock_In for exactly what is entered, then the Stock_Out — for
+   * material not yet in the store's records. Everything else is the ordinary
+   * Stock_Out form, so stock cannot block a row: the Stock_In supplies it. */
+  stockInFirst?: boolean;
+  defaultSiteId?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  const [siteId, setSiteId] = useState("");
+  const [siteId, setSiteId] = useState(
+    defaultSiteId && sites.some((s) => s.id === defaultSiteId) ? defaultSiteId : ""
+  );
   const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
   // Printed on the challan's signature blocks. Blank is fine and common — the
@@ -168,7 +179,7 @@ export default function DispatchBatchForm({
   const [deliveredBy, setDeliveredBy] = useState("");
   const [receivedBy, setReceivedBy] = useState("");
   const [rows, setRows] = useState<DispatchRowState[]>(() =>
-    Array.from({ length: 15 }, makeBlankRow)
+    Array.from({ length: stockInFirst ? 3 : 15 }, makeBlankRow)
   );
   const [error, setError] = useState<string | null>(null);
   const [errorRowKey, setErrorRowKey] = useState<string | null>(null);
@@ -259,8 +270,8 @@ export default function DispatchBatchForm({
         const total = item ? requestTotal(buildRequest(r, item)) : 0;
         const plan = plans.get(r.key);
         if (total <= 0) acc.incomplete++;
-        else if (plan?.errors.length) acc.outOfStock++;
-        else if (plan?.opens.length && !r.acknowledgedOpen) acc.needsOpen++;
+        else if (!stockInFirst && plan?.errors.length) acc.outOfStock++;
+        else if (!stockInFirst && plan?.opens.length && !r.acknowledgedOpen) acc.needsOpen++;
       }
       return acc;
     },
@@ -288,7 +299,7 @@ export default function DispatchBatchForm({
       const res = resolutions.get(r.key)!;
       const item = itemById.get(res.itemId)!;
       const request = buildRequest(r, item);
-      const plan = plans.get(r.key);
+      const plan = stockInFirst ? undefined : plans.get(r.key);
       return {
         sourceText: r.sourceText,
         itemId: res.itemId,
@@ -301,7 +312,8 @@ export default function DispatchBatchForm({
     });
 
     startTransition(async () => {
-      const result: DispatchResult = await recordDispatch({
+      const record = stockInFirst ? recordStockInThenDispatch : recordDispatch;
+      const result: DispatchResult = await record({
         siteId,
         reference,
         note,
@@ -374,7 +386,7 @@ export default function DispatchBatchForm({
             items={items}
             resolution={resolutions.get(row.key)!}
             item={itemById.get(resolutions.get(row.key)!.itemId)}
-            plan={plans.get(row.key)}
+            plan={stockInFirst ? undefined : plans.get(row.key)}
             highlighted={row.key === errorRowKey}
             onChoose={(id) => chooseItem(row.key, id)}
             onQuery={(q) => updateRow(row.key, { itemQuery: q, manualItemId: null })}
@@ -400,7 +412,11 @@ export default function DispatchBatchForm({
           {summary.outOfStock > 0 && ` · ${summary.outOfStock} out of stock`}
         </p>
         <Button type="submit" disabled={pending || blocked}>
-          {pending ? "Recording…" : "Record Stock_Out"}
+          {pending
+            ? "Recording…"
+            : stockInFirst
+              ? "Record Stock_In and Stock_Out"
+              : "Record Stock_Out"}
         </Button>
       </div>
     </form>

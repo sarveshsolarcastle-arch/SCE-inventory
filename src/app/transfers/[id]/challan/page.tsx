@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/permissions";
 import { formatTransferChallanNo } from "@/lib/challan";
+import { COMPANY } from "@/lib/company";
 import ChallanSheet from "@/components/ChallanSheet";
+import { lineFromTransaction } from "@/lib/challanLines";
 import PrintButton from "@/components/PrintButton";
 import { buttonClasses } from "@/components/ui/Button";
 
@@ -13,14 +15,14 @@ import { buttonClasses } from "@/components/ui/Button";
  * (formatTransferChallanNo).
  *
  * UNLIKE a Dispatch, Delivery or the site Material Statement, `party` here is
- * NOT a customer. Those three always print the SAME site's customer as
- * `party` and that site itself as `shipTo`, so the two can never disagree.
- * A transfer moves material between two of the company's own sites, which
- * may belong to two entirely different customers — printing the origin
- * site's customer as though it were the recipient of a delivery to the
- * destination site would misstate who the goods are for. So both `party` and
- * `shipTo` here are the sites themselves — origin and destination — under
- * "Transfer From" / "Transfer To" headings, never a customer name.
+ * NOT a customer. A transfer moves material between two of the company's own
+ * sites, which may belong to two entirely different customers — printing the
+ * origin site's customer as though it were the recipient of a delivery to the
+ * destination site would misstate who the goods are for. So `party` is the
+ * company itself (the sheet reads "Transfer From: Solar Castle Energy", by
+ * decision — the origin site is deliberately NOT printed) and `shipTo` is the
+ * destination site, under the standard "Shipping To" heading, never a
+ * customer name.
  * ---------------------------------------------------------------------- */
 
 export default async function TransferChallanPage({
@@ -72,7 +74,7 @@ export default async function TransferChallanPage({
     );
   }
 
-  const { fromSite, toSite } = transfer;
+  const { toSite } = transfer;
 
   return (
     <div className="space-y-4">
@@ -90,19 +92,23 @@ export default async function TransferChallanPage({
         challanNo={formatTransferChallanNo(transfer.challanNo)}
         date={transfer.transferredAt}
         partyHeading="Transfer From"
-        shipToHeading="Transfer To"
+        // The "Transfer From" block is no longer printed at all (showParty),
+        // by decision. `party` is still the company rather than the origin
+        // site, so re-enabling the block cannot leak the origin site. The
+        // destination block uses the sheet's default "Shipping To" heading,
+        // same as every other challan.
+        showParty={false}
         party={{
-          name: fromSite.name,
-          address: fromSite.address,
-          projectCode: fromSite.projectCode,
+          name: COMPANY.name,
+          address: COMPANY.addressLines.join("\n"),
+          projectCode: null,
         }}
         shipTo={{ name: toSite.name, address: toSite.address || toSite.location }}
-        lines={lines}
+        lines={lines.map(lineFromTransaction)}
         issuedBy={transfer.user.name}
         reference={null}
         deliveredBy={transfer.deliveredBy}
         receivedBy={transfer.receivedBy}
-        note={transfer.note}
       />
     </div>
   );

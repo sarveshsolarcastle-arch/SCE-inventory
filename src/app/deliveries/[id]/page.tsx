@@ -29,6 +29,7 @@ export default async function DeliveryDetailPage({
       site: true,
       user: true,
       transactions: { orderBy: { createdAt: "asc" }, include: { item: true } },
+      lines: { orderBy: { position: "asc" } },
       defectiveItems: { include: { item: true } },
       replaces: { include: { item: true } },
     },
@@ -46,7 +47,10 @@ export default async function DeliveryDetailPage({
   // refuses a fully-reversed delivery anyway, and a Print button that leads
   // to a refusal is a worse answer than no button.
   const activeIssueLines = delivery.transactions.filter((t) => t.type === "ISSUE" && !t.reversedAt);
-  const canPrint = numbered != null && activeIssueLines.length > 0;
+  // A paper-only challan (typed lines, no ledger rows) always has something
+  // to print; an older stock-backed one only while some line is unreversed.
+  const paperLines = delivery.lines;
+  const canPrint = numbered != null && (paperLines.length > 0 || activeIssueLines.length > 0);
 
   return (
     <div className="space-y-6">
@@ -73,7 +77,16 @@ export default async function DeliveryDetailPage({
             ) : undefined
           }
         />
-        {delivery.site ? (
+        {delivery.site && paperLines.length > 0 ? (
+          <Alert tone="info">
+            Paper challan for{" "}
+            <Link href={`/sites/${delivery.site.id}`} className="font-bold underline">
+              {delivery.site.name}
+            </Link>{" "}
+            — this only makes a printable challan. It is not in the item list, and store stock
+            and the site&apos;s materials are unchanged.
+          </Alert>
+        ) : delivery.site ? (
           <Alert tone="info">
             Delivered direct to{" "}
             <Link href={`/sites/${delivery.site.id}`} className="font-bold underline">
@@ -87,6 +100,36 @@ export default async function DeliveryDetailPage({
         )}
       </div>
 
+      {paperLines.length > 0 && (
+        <Card>
+          <TableWrap>
+            <Table>
+              <THead>
+                <tr>
+                  <Th>Item</Th>
+                  <Th>Description</Th>
+                  <Th>Qty</Th>
+                  <Th>Unit</Th>
+                  <Th>Remarks</Th>
+                </tr>
+              </THead>
+              <tbody>
+                {paperLines.map((l) => (
+                  <Tr key={l.id}>
+                    <Td className="font-bold text-ink">{l.name}</Td>
+                    <Td className="text-ink-subtle">{l.description ?? ""}</Td>
+                    <Td className="font-mono">{l.quantity}</Td>
+                    <Td className="text-ink-subtle">{l.unit}</Td>
+                    <Td className="text-ink-subtle">{l.remark ?? ""}</Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+          </TableWrap>
+        </Card>
+      )}
+
+      {paperLines.length === 0 && (
       <Card>
         <TableWrap>
           <Table>
@@ -112,6 +155,7 @@ export default async function DeliveryDetailPage({
         </TableWrap>
         {lines.length === 0 && <EmptyState>Nothing entered stock on this delivery.</EmptyState>}
       </Card>
+      )}
 
       {delivery.defectiveItems.length > 0 && (
         <Card>

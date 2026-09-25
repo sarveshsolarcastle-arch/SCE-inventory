@@ -209,6 +209,22 @@ body {
     margin: 8mm;
   }
 
+  /* THE CHALLAN PRINTS EDGE TO EDGE, and pads itself instead.
+     A page margin is outside the page's paint area, so whatever is doing the
+     printing fills it with ITS OWN background: Chrome's dialog uses white, but
+     printing from the Claude desktop pane through "Microsoft Print to PDF"
+     put a solid near-black frame (#131312) round every challan. Nothing the
+     page can style reaches a margin — the only fix is to have none. With a
+     zero margin the html canvas (white, above) covers the whole sheet of paper.
+
+     Named page, so only the challan loses its @page margin; every other
+     printable page keeps the 8mm above. The 8mm the challan needs comes back
+     as padding on .challan-sheet below. */
+  @page challan {
+    size: A4 portrait;
+    margin: 0;
+  }
+
   /* A dispatch can run to 30+ lines. Let the table break across pages, but
      never mid-row, and repeat the header on each page so page 2 is still
      readable as a challan rather than a list of loose numbers. */
@@ -230,9 +246,16 @@ body {
   /* On screen the sheet is a bordered card floating on the app background; on
      paper the page edge is the border. */
   .challan-sheet {
+    page: challan;
     max-width: none;
     border: 0;
-    padding: 0;
+    /* The margin @page challan gave up. `clone` repeats this padding on every
+       page the sheet breaks across, so page 2 of a long dispatch is not
+       flush against the top edge of the paper. */
+    padding: 8mm;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+    background: white;
   }
 
   /* THE ONE THAT BITES ON A LONG DISPATCH. The sheet carries `overflow-hidden`
