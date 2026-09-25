@@ -12,7 +12,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
 import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
 import { Field, Input, Select } from "@/components/ui/Field";
-import Button from "@/components/ui/Button";
+import Button, { buttonClasses } from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Alert from "@/components/ui/Alert";
 import EmptyState from "@/components/ui/EmptyState";
@@ -57,6 +57,7 @@ export default async function ItemDetailPage({
   const user = await currentUser();
   const canOpenPacks = can(user?.role, "stock:issue");
   const canEdit = can(user?.role, "item:manage");
+  const canFlagDefect = can(user?.role, "defect:flag");
   // Three-way since stage 8: FINANCE may REQUEST both of these, so hiding
   // them on a bare `can()` left the two capabilities it is allowed to ask for
   // with nothing on screen to ask with.
@@ -122,6 +123,16 @@ export default async function ItemDetailPage({
               Open one
             </Button>
           </form>
+        )}
+        {canFlagDefect && item.currentStock > 0 && (
+          <div className="pt-1">
+            <Link
+              href={`/defective/new?item=${item.id}`}
+              className={buttonClasses("secondary", "sm")}
+            >
+              Mark some as defective
+            </Link>
+          </div>
         )}
         <div className="text-sm font-semibold text-ink-subtle">
           Shelf locations:{" "}

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/permissions";
 import { formatSiteChallanNo, siteChallanOf } from "@/lib/challan";
 import ChallanSheet from "@/components/ChallanSheet";
+import { lineFromDeliveryLine, lineFromTransaction } from "@/lib/challanLines";
 import PrintButton from "@/components/PrintButton";
 import { buttonClasses } from "@/components/ui/Button";
 
@@ -13,10 +14,12 @@ import { buttonClasses } from "@/components/ui/Button";
  * to the site still needs a signed sheet. Same document as the dispatch
  * challan (ChallanSheet), its own number series (formatSiteChallanNo).
  *
- * Lines are the ISSUE half of the delivery's STOCK_IN + ISSUE pair — ISSUE is
- * the half that says "this went to the site", which is what the sheet
- * attests. A store delivery has no ISSUE lines at all, and siteChallanOf
- * refuses it before we get that far.
+ * Lines come from one of two places, never both. A paper-only challan (since
+ * 2026-09-24) carries its own typed `lines` and nothing else — no Item, no
+ * Transaction. An older direct-to-site delivery has no typed lines and prints
+ * the ISSUE half of its STOCK_IN + ISSUE pair — ISSUE is the half that says
+ * "this went to the site", which is what the sheet attests. A store delivery
+ * has neither, and siteChallanOf refuses it before we get that far.
  * ---------------------------------------------------------------------- */
 
 export default async function DeliveryChallanPage({
@@ -37,6 +40,7 @@ export default async function DeliveryChallanPage({
       site: true,
       user: true,
       transactions: { orderBy: { createdAt: "asc" }, include: { item: true } },
+      lines: { orderBy: { position: "asc" } },
     },
   });
 
@@ -49,7 +53,10 @@ export default async function DeliveryChallanPage({
   // listing material that was pulled back out of the ledger would be a false
   // record — the one thing this document exists to avoid.
   const issued = delivery.transactions.filter((t) => t.type === "ISSUE");
-  const lines = issued.filter((t) => !t.reversedAt);
+  const lines =
+    delivery.lines.length > 0
+      ? delivery.lines.map(lineFromDeliveryLine)
+      : issued.filter((t) => !t.reversedAt).map(lineFromTransaction);
 
   if (lines.length === 0) {
     return (
@@ -93,7 +100,6 @@ export default async function DeliveryChallanPage({
         reference={delivery.reference}
         deliveredBy={delivery.deliveredBy}
         receivedBy={delivery.receivedBy}
-        note={delivery.note}
         supplier={delivery.supplier}
       />
     </div>

@@ -35,5 +35,6 @@ export const TRANSACTION_TYPE_TONE: Record<string, BadgeTone> = {
   ADJUSTMENT: "danger",
   REVERSAL: "danger",
   CONSUME: "neutral",
+  DEFECT: "warn",
   TRANSFER: "special",
 };

@@ -184,6 +184,7 @@ async function main() {
     "defectiveItem",
     "sitePickup",
     "transaction",
+    "deliveryLine",
     "dispatch",
     "delivery",
     "transfer",
@@ -739,6 +740,34 @@ async function main() {
       }
 
       await stamp(DELIVERY_2);
+
+      /* ---- 12 Aug: a paper-only site challan ---------------------------- */
+
+      // Since 2026-09-24 a NEW direct-to-site delivery is just a printable
+      // challan: typed lines, no Item, no Transaction, no effect on what the
+      // site holds. delivery2 above stays as the older stock-backed kind, so
+      // the demo shows both — and the paper one deliberately lists things that
+      // are not in the item list at all.
+      const siteChallan3 = await nextChallanNo(tx, SITE_CHALLAN_SEQUENCE_KEY);
+      await tx.delivery.create({
+        data: {
+          reference: "LOCAL/2214",
+          supplier: "Local hardware supplier",
+          receivedAt: at("2026-08-12T10:00:00"),
+          siteId: powai.id,
+          challanNo: siteChallan3,
+          deliveredBy: "Supplier's tempo",
+          receivedBy: "K. Salunkhe, Store In-charge",
+          userId: finance.id,
+          lines: {
+            create: [
+              { position: 0, name: "Cable Glands - PG21", description: "Nylon, black", quantity: 40, unit: "pcs" },
+              { position: 1, name: "Cement Bags", quantity: 6, unit: "bags", remark: "For the plinth repair" },
+              { position: 2, name: "Binding Wire", description: "18 gauge", quantity: 2.5, unit: "kg" },
+            ],
+          },
+        },
+      });
 
       /* ---- 14 Aug: SCE/DC/0002 to Powai Warehouse ---------------------- */
 

@@ -58,6 +58,12 @@ enum TransactionType {
   /// Without this a site's list is "everything ever sent, minus what came
   /// back", so it grows forever and stops describing what is actually there.
   CONSUME
+  /// Stock already on the shelf found defective, marked at any time rather than
+  /// only while issuing or returning. Leaves store stock exactly as an ISSUE
+  /// does (same allocation, same appliedPlan, so reversal works unchanged) and
+  /// lands in DefectiveItem with source STOCK. `siteId` is null: it never
+  /// touches a site's balance.
+  DEFECT
   /// Material moved site A → B without passing through the store. `siteId` is
   /// the destination, `fromSiteId` the origin. Touches NO packs at all, which
   /// is the honest model: packs are a store-side concept and this material
@@ -81,6 +87,8 @@ enum PackState {
 enum DefectSource {
   DELIVERY
   RETURN
+  /// Found defective sitting in store stock — see TransactionType.DEFECT.
+  STOCK
 }
 
 enum DefectStatus {
@@ -204,7 +212,8 @@ model DefectiveItem {
   packCount Int?
 
   source        DefectSource
-  /// The RETURN that brought it back, when source is RETURN.
+  /// The RETURN that brought it back (source RETURN), or the DEFECT movement
+  /// that took it out of stock (source STOCK).
   transaction   Transaction? @relation(fields: [transactionId], references: [id])
   transactionId String?
   /// The delivery it arrived damaged on, when source is DELIVERY.
@@ -352,6 +361,14 @@ model Sequence {
 /// keep working untouched. A dedicated SITE_DELIVERY transaction type would
 /// have meant editing every one of them, with a chance of missing one.
 /// The shared deliveryId lets the UI render the pair as a single event.
+///
+/// SINCE 2026-09-24 that pairing is LEGACY. A new direct-to-site delivery is a
+/// paper challan only: free-text `lines` (DeliveryLine), no Item, no
+/// Transaction, no effect on stock or on what a site holds — the material is
+/// managed outside the app. The older paired rows stay exactly as they were,
+/// because they are real history that the site balances still count. A
+/// delivery therefore has EITHER `transactions` (legacy) OR `lines` (paper),
+/// never both; readers that list lines check both.
 model Delivery {
   id         String   @id @default(cuid())
   /// Challan / invoice number.
@@ -377,6 +394,8 @@ model Delivery {
   userId String
 
   transactions   Transaction[]
+  /// Typed lines of a paper-only site challan. See the model comment.
+  lines          DeliveryLine[]
   /// Goods that arrived damaged on this delivery.
   defectiveItems DefectiveItem[] @relation("ArrivedDamaged")
   /// Defective rows this delivery made good on, as a supplier replacement.
@@ -384,6 +403,32 @@ model Delivery {
 
   @@index([receivedAt])
   @@index([siteId])
+}
+
+/// One line of a paper-only site delivery challan, exactly as typed. Free text
+/// on purpose: there is no Item behind it and nothing here is ever counted —
+/// the material is managed outside the app, and restricting what can be typed
+/// to what the item list happens to hold would defeat the point of the form.
+/// Cascades with its delivery so a reset that empties Delivery leaves no
+/// orphan lines behind.
+model DeliveryLine {
+  id          String   @id @default(cuid())
+  delivery    Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  deliveryId  String
+  /// Printed under "Item Name".
+  name        String
+  /// Printed under "Description" — the free-text "what exactly" that a
+  /// registered item would carry as its pack breakdown. Blank is fine.
+  description String?
+  quantity    Float
+  /// Whatever the person typed: pcs, m, kg, set…
+  unit        String
+  /// Printed under "Remarks".
+  remark      String?
+  /// Row order as typed, so the printed Sr No. matches the form.
+  position    Int
+
+  @@index([deliveryId])
 }
 
 /// A batch of material moved from one site to another in a single event —

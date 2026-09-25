@@ -28,6 +28,7 @@ const TYPE_FILTERS = {
   ISSUE: ["ISSUE"],
   RETURN: ["RETURN"],
   CONSUME: ["CONSUME"],
+  DEFECT: ["DEFECT"],
   TRANSFER: ["TRANSFER"],
   REVERSAL: ["REVERSAL"],
   PACK_OPS: ["OPEN_PACK", "SCRAP"],
@@ -36,6 +37,22 @@ type TypeFilterKey = keyof typeof TYPE_FILTERS;
 
 function isTypeFilterKey(v: string | undefined): v is TypeFilterKey {
   return !!v && v in TYPE_FILTERS;
+}
+
+/** Pills that filter by WHICH LEDGER PAGE a movement belongs to rather than by
+ * its transaction type — they share the `?type=` param so there is still one
+ * active pill at a time. "Site Ledger" is the direct-to-site deliveries (the
+ * older stock-backed ones; a paper-only site challan writes no movement at all,
+ * so it appears only on the Site Ledger page itself). "Delivery Ledger" is the
+ * dispatches: every movement carrying a dispatch. */
+const SOURCE_FILTERS = {
+  SITE_LEDGER: { delivery: { siteId: { not: null } } },
+  DELIVERY_LEDGER: { dispatchId: { not: null } },
+} satisfies Record<string, Prisma.TransactionWhereInput>;
+type SourceFilterKey = keyof typeof SOURCE_FILTERS;
+
+function isSourceFilterKey(v: string | undefined): v is SourceFilterKey {
+  return !!v && v in SOURCE_FILTERS;
 }
 
 export default async function LedgerPage({
@@ -59,6 +76,7 @@ export default async function LedgerPage({
   const { type, q, item, site, from, to, page: rawPage } = await searchParams;
   const requestedPage = parsePage(rawPage);
   const typeFilter = isTypeFilterKey(type) ? type : undefined;
+  const sourceFilter = isSourceFilterKey(type) ? type : undefined;
 
   // A malformed, truncated or hand-edited ?from=/?to= must not reach Prisma
   // as an Invalid Date — that throws a 500 rather than matching nothing.
@@ -69,6 +87,7 @@ export default async function LedgerPage({
 
   const where: Prisma.TransactionWhereInput = {
     ...(typeFilter ? { type: { in: [...TYPE_FILTERS[typeFilter]] } } : {}),
+    ...(sourceFilter ? SOURCE_FILTERS[sourceFilter] : {}),
     ...(item ? { itemId: item } : {}),
     // A transfer's siteId is the destination and fromSiteId the origin — a
     // site filter has to catch both directions, the same OR the site detail
@@ -118,7 +137,7 @@ export default async function LedgerPage({
     return qs ? `/ledger?${qs}` : "/ledger";
   }
 
-  const activePill = typeFilter ?? "ALL";
+  const activePill = typeFilter ?? sourceFilter ?? "ALL";
   const pillOptions = [
     { value: "ALL", label: "All", href: hrefFor({ type: undefined }) },
     { value: "ADJUSTMENT", label: "Adjustments", href: hrefFor({ type: "ADJUSTMENT" }) },
@@ -126,7 +145,14 @@ export default async function LedgerPage({
     { value: "ISSUE", label: "Issues", href: hrefFor({ type: "ISSUE" }) },
     { value: "RETURN", label: "Returns", href: hrefFor({ type: "RETURN" }) },
     { value: "CONSUME", label: "Consume", href: hrefFor({ type: "CONSUME" }) },
+    { value: "DEFECT", label: "Defective", href: hrefFor({ type: "DEFECT" }) },
     { value: "TRANSFER", label: "Transfers", href: hrefFor({ type: "TRANSFER" }) },
+    { value: "SITE_LEDGER", label: "Direct to Site Ledger", href: hrefFor({ type: "SITE_LEDGER" }) },
+    {
+      value: "DELIVERY_LEDGER",
+      label: "Delivery Ledger",
+      href: hrefFor({ type: "DELIVERY_LEDGER" }),
+    },
     { value: "REVERSAL", label: "Reversals", href: hrefFor({ type: "REVERSAL" }) },
     { value: "PACK_OPS", label: "Pack ops", href: hrefFor({ type: "PACK_OPS" }) },
   ];
@@ -242,7 +268,7 @@ export default async function LedgerPage({
         </TableWrap>
         {transactions.length === 0 && (
           <EmptyState>
-            {total === 0 && !q && !typeFilter && !item && !site && !from && !to
+            {total === 0 && !q && !typeFilter && !sourceFilter && !item && !site && !from && !to
               ? "No activity recorded yet."
               : "No movements match these filters."}
           </EmptyState>

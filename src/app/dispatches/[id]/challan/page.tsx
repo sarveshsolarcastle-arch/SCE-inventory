@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/permissions";
 import { formatChallanNo } from "@/lib/challan";
 import ChallanSheet from "@/components/ChallanSheet";
+import { lineFromTransaction } from "@/lib/challanLines";
 import PrintButton from "@/components/PrintButton";
 import { buttonClasses } from "@/components/ui/Button";
 
@@ -83,12 +84,11 @@ export default async function ChallanPage({ params }: { params: Promise<{ id: st
         // honest fallback, since that is who the material is for.
         party={{ name: site.customerName || site.name, address: site.address, projectCode: site.projectCode }}
         shipTo={{ name: site.name, address: site.address || site.location }}
-        lines={lines}
+        lines={lines.map(lineFromTransaction)}
         issuedBy={dispatch.user.name}
         reference={dispatch.reference}
         deliveredBy={dispatch.deliveredBy}
         receivedBy={dispatch.receivedBy}
-        note={dispatch.note}
       />
     </div>
   );

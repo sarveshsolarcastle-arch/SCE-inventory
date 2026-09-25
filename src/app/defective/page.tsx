@@ -4,6 +4,7 @@ import { formatQuantity } from "@/lib/units";
 import { can, currentUser } from "@/lib/permissions";
 import DefectClaimControl from "@/components/DefectClaimControl";
 import PageHeader from "@/components/ui/PageHeader";
+import { buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
 import Badge from "@/components/ui/Badge";
@@ -25,6 +26,7 @@ export default async function DefectivePage() {
 
   const outstanding = rows.filter((r) => r.status !== "REPLACED");
   const canResolve = can(user?.role, "defect:resolve");
+  const canFlag = can(user?.role, "defect:flag");
   const deliveryChoices = recentDeliveries.map((d) => ({
     id: d.id,
     label: `${d.reference || d.id.slice(0, 8)} — ${d.receivedAt.toLocaleDateString()}${
@@ -38,10 +40,17 @@ export default async function DefectivePage() {
         title="Defective Goods"
         subtitle={
           <>
-            Damaged on arrival, or returned damaged from a site. Not counted in stock and never
-            issued — held so the supplier can be chased.
+            Damaged on arrival, returned damaged from a site, or found defective on the shelf. Not
+            counted in stock and never issued — held so the supplier can be chased.
             {outstanding.length > 0 && <> {outstanding.length} outstanding.</>}
           </>
+        }
+        actions={
+          canFlag ? (
+            <Link href="/defective/new" className={buttonClasses("primary", "md")}>
+              Mark defective
+            </Link>
+          ) : undefined
         }
       />
 
@@ -74,7 +83,9 @@ export default async function DefectivePage() {
                       : formatQuantity(row.item, row.quantity)}
                   </Td>
                   <Td className="text-ink-subtle">
-                    {row.source === "RETURN" ? (
+                    {row.source === "STOCK" ? (
+                      "Found defective in stock"
+                    ) : row.source === "RETURN" ? (
                       `Returned${row.site ? ` from ${row.site.name}` : ""}`
                     ) : row.delivery ? (
                       <Link href={`/deliveries/${row.delivery.id}`} className="hover:text-accent">

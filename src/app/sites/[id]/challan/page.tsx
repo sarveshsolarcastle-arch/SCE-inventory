@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/permissions";
 import { materialsAtSite } from "@/lib/stock";
-import ChallanSheet, { type ChallanLine } from "@/components/ChallanSheet";
+import { formatQuantity } from "@/lib/units";
+import ChallanSheet from "@/components/ChallanSheet";
+import type { ChallanLine } from "@/lib/challanLines";
 import PrintButton from "@/components/PrintButton";
 import { buttonClasses } from "@/components/ui/Button";
 
@@ -55,12 +57,13 @@ export default async function SiteMaterialStatementPage({
 
   const lines: ChallanLine[] = materials.map(({ item, quantity }) => ({
     id: item.id,
+    name: item.name,
+    // A balance, not a movement: no pack breakdown to spell out, just the
+    // plain quantity in the item's own unit.
+    description: formatQuantity(item, quantity),
     quantity,
-    packSize: null,
-    packCount: null,
-    pieces: null,
+    unit: item.baseUnit,
     note: null,
-    item,
   }));
 
   const today = new Date();
@@ -87,11 +90,14 @@ export default async function SiteMaterialStatementPage({
       </div>
 
       <ChallanSheet
-        title="Material Statement"
-        partyHeading="Prepared For"
-        showSignatures={false}
+        // Called a material statement everywhere in the app, but it PRINTS as
+        // a Delivery Challan — the default title — by decision, because that
+        // is the document the customer's site actually accepts. The reference
+        // number below is still the date-based one, not an allocated challan
+        // number, so that stays honest.
         documentNoLabel="Reference No."
         showDeliveryDetails={false}
+        showParty={false}
         challanNo={reference}
         date={today}
         party={{ name: site.customerName || site.name, address: site.address, projectCode: site.projectCode }}
@@ -101,7 +107,6 @@ export default async function SiteMaterialStatementPage({
         reference={null}
         deliveredBy={null}
         receivedBy={null}
-        note={null}
       />
     </div>
   );

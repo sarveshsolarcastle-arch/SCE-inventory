@@ -1,5 +1,5 @@
-import type { Item, Transaction } from "@/generated/prisma/client";
-import { describeMovement } from "@/lib/units";
+import type { ChallanLine } from "@/lib/challanLines";
+import { sumQuantities } from "@/lib/challanLines";
 import { COMPANY, companyContactLines } from "@/lib/company";
 
 /* -------------------------------------------------------------------------
@@ -37,19 +37,11 @@ function FilledOrBlank({ label, value }: { label: string; value: string | null |
   );
 }
 
-/** Only what this sheet actually reads. Narrowed from `Transaction` because
- * the site material statement's lines are aggregates, not real Transaction
- * rows — structurally satisfied by the real ones the dispatch and delivery
- * challan routes already pass, so neither of them changes. */
-export type ChallanLine = Pick<
-  Transaction,
-  "id" | "quantity" | "packSize" | "packCount" | "pieces" | "note"
-> & { item: Item };
-
 export type ChallanSheetProps = {
-  /** Printed in the navy header bar. Defaults to "Delivery Challan"; the site
-   * material statement overrides it — that document is a dated snapshot, not
-   * a record of a delivery, and titling it as one would misrepresent it. */
+  /** Printed in the navy header bar. Defaults to "Delivery Challan", which is
+   * what every sheet prints, the site material statement included (by
+   * decision, even though that one is a dated snapshot rather than a record
+   * of a delivery). */
   title?: string;
   /** Heading over the party block. Defaults to "Delivery Challan For" — the
    * material statement overrides this too, for the same reason as `title`:
@@ -57,8 +49,8 @@ export type ChallanSheetProps = {
    * delivery challan. The transfer challan overrides it to "Transfer From",
    * because there `party` is not a customer at all — see `shipToHeading`. */
   partyHeading?: string;
-  /** Heading over the shipTo block. Defaults to "Shipping To" — the transfer
-   * challan overrides it to "Transfer To". A Dispatch/Delivery/Statement
+  /** Heading over the shipTo block. Defaults to "Shipping To", which every
+   * challan now uses, the transfer challan included. A Dispatch/Delivery/Statement
    * always names the SAME site's customer as `party` and that site itself as
    * `shipTo`, so the two can never disagree. A Transfer has no single
    * customer: material moves site → site, each of which may belong to a
@@ -66,11 +58,9 @@ export type ChallanSheetProps = {
    * destination sites themselves, never a customer name. */
   shipToHeading?: string;
   /** Whether to print the Received By / Delivered By signature blocks.
-   * Defaults to true. The material statement sets it false: a live snapshot
-   * has no delivery to sign for, and printing ruled Date/Signature lines next
-   * to those headings on a document titled anything else invites exactly the
-   * confusion the title/partyHeading overrides exist to avoid — a customer
-   * signing it as though it were a delivery record. */
+   * Defaults to true. Every challan, including the site material statement,
+   * prints them — the statement's Name lines are blank (nobody is recorded as
+   * receiving or delivering a snapshot) so both parties write them in by hand. */
   showSignatures?: boolean;
   /** Label over `challanNo`. Defaults to "Challan No." — the material
    * statement overrides it to "Reference No.", since its own header comment
@@ -85,6 +75,10 @@ export type ChallanSheetProps = {
    * of a balance, not a record of a delivery, so there is no delivery time to
    * write down and no other party's document to reference. */
   showDeliveryDetails?: boolean;
+  /** Whether to print the left-hand party block (Prepared For / Transfer
+   * From). Defaults to true. The material statement and the transfer challan
+   * turn it off; `party` is still required so callers stay uniform. */
+  showParty?: boolean;
   challanNo: string;
   date: Date;
   party: { name: string; address: string | null; projectCode: string | null };
@@ -95,7 +89,6 @@ export type ChallanSheetProps = {
   reference: string | null;
   deliveredBy: string | null;
   receivedBy: string | null;
-  note: string | null;
   /** Direct-to-site deliveries only — printed as an extra details-strip line
    * so the two document kinds still read as "everything else identical". */
   supplier?: string | null;
@@ -108,6 +101,7 @@ export default function ChallanSheet({
   showSignatures = true,
   documentNoLabel = "Challan No.",
   showDeliveryDetails = true,
+  showParty = true,
   challanNo,
   date,
   party,
@@ -117,14 +111,13 @@ export default function ChallanSheet({
   reference,
   deliveredBy,
   receivedBy,
-  note,
   supplier,
 }: ChallanSheetProps) {
   // A total across mixed units would be a nonsense number — 3 rolls of wire in
   // metres plus 12 screws in pieces is not 15 of anything. Sum only when every
   // line is counted in the same unit, and say nothing otherwise.
-  const units = new Set(lines.map((t) => t.item.baseUnit));
-  const total = units.size === 1 ? lines.reduce((sum, t) => sum + t.quantity, 0) : null;
+  const units = new Set(lines.map((t) => t.unit));
+  const total = units.size === 1 ? sumQuantities(lines.map((t) => t.quantity)) : null;
 
   const contact = companyContactLines();
 
@@ -156,23 +149,25 @@ export default function ChallanSheet({
         <img
           src="/logo.png"
           alt={COMPANY.name}
-          className="h-16 w-28 shrink-0 rounded border border-ink-subtle object-contain p-1"
+          className="h-24 w-48 shrink-0 rounded border border-ink-subtle object-contain p-1"
         />
       </div>
 
-      <div className="mb-2 grid gap-4 px-4 pt-2 sm:grid-cols-2">
-        <section className="space-y-0.5">
-          <h2 className="text-xs font-bold tracking-wide uppercase">{partyHeading}</h2>
-          <FilledOrBlank label="Party Name" value={party.name} />
-          <FilledOrBlank label="Address" value={party.address} />
-          <FilledOrBlank label="Project ID" value={party.projectCode} />
-          {/* Phone / Email / GSTIN are not yet fields on Site — printed as
-              ruled blanks, same as Received By's Date/Signature, so the
-              sheet still carries a line for whoever fills them in by hand. */}
-          <Blank label="Phone No." />
-          <Blank label="Email" />
-          <Blank label="GSTIN" />
-        </section>
+      <div className={`mb-2 grid gap-4 px-4 pt-2 ${showParty ? "sm:grid-cols-2" : ""}`}>
+        {showParty && (
+          <section className="space-y-0.5">
+            <h2 className="text-xs font-bold tracking-wide uppercase">{partyHeading}</h2>
+            <FilledOrBlank label="Party Name" value={party.name} />
+            <FilledOrBlank label="Address" value={party.address} />
+            <FilledOrBlank label="Project ID" value={party.projectCode} />
+            {/* Phone / Email / GSTIN are not yet fields on Site — printed as
+                ruled blanks, same as Received By's Date/Signature, so the
+                sheet still carries a line for whoever fills them in by hand. */}
+            <Blank label="Phone No." />
+            <Blank label="Email" />
+            <Blank label="GSTIN" />
+          </section>
+        )}
 
         <section className="space-y-0.5">
           <h2 className="text-xs font-bold tracking-wide uppercase">{shipToHeading}</h2>
@@ -203,8 +198,6 @@ export default function ChallanSheet({
             <tr className="challan-navy-bar">
               <th className="border border-ink-subtle px-1.5 py-0.5 text-left font-bold">Sr No.</th>
               <th className="border border-ink-subtle px-1.5 py-0.5 text-left font-bold">Item Name</th>
-              <th className="border border-ink-subtle px-1.5 py-0.5 text-left font-bold">Description</th>
-              <th className="border border-ink-subtle px-1.5 py-0.5 text-left font-bold">Specification</th>
               <th className="border border-ink-subtle px-1.5 py-0.5 text-right font-bold">Qty</th>
               <th className="border border-ink-subtle px-1.5 py-0.5 text-left font-bold">Unit</th>
               <th className="border border-ink-subtle px-1.5 py-0.5 text-left font-bold">Remarks</th>
@@ -215,30 +208,18 @@ export default function ChallanSheet({
               <tr key={t.id}>
                 <td className="border border-ink-subtle px-1.5 py-0.5 text-center">{i + 1}</td>
                 <td className="border border-ink-subtle px-1.5 py-0.5 font-semibold">
-                  {t.item.name}
-                </td>
-                {/* describeMovement is how every quantity in this app is
-                    rendered — it spells out "2 × 400 m rolls + 30 m" rather
-                    than a bare base-unit total, which is what someone
-                    checking the load against the paper actually counts. Its
-                    own column, rather than stacked under the item name, is
-                    what keeps each row to one line so ~30 lines fit a page. */}
-                <td className="border border-ink-subtle px-1.5 py-0.5">
-                  {describeMovement(t.item, t)}
-                </td>
-                <td className="border border-ink-subtle px-1.5 py-0.5 text-ink-muted">
-                  {[t.item.sku, t.item.category].filter(Boolean).join(" · ")}
+                  {t.name}
                 </td>
                 <td className="border border-ink-subtle px-1.5 py-0.5 text-right font-mono">
                   {t.quantity}
                 </td>
-                <td className="border border-ink-subtle px-1.5 py-0.5">{t.item.baseUnit}</td>
+                <td className="border border-ink-subtle px-1.5 py-0.5">{t.unit}</td>
                 <td className="border border-ink-subtle px-1.5 py-0.5">{t.note ?? ""}</td>
               </tr>
             ))}
             {total !== null && (
               <tr className="challan-total-row">
-                <td className="border border-ink-subtle px-1.5 py-0.5 text-right font-bold" colSpan={4}>
+                <td className="border border-ink-subtle px-1.5 py-0.5 text-right font-bold" colSpan={2}>
                   Total
                 </td>
                 <td className="border border-ink-subtle px-1.5 py-0.5 text-right font-mono font-bold">
@@ -259,7 +240,6 @@ export default function ChallanSheet({
           </p>
         )}
 
-        {note && <p className="mt-1 text-xs font-semibold text-ink-muted">Note: {note}</p>}
       </div>
 
       {showSignatures && (

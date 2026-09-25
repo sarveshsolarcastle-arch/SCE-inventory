@@ -179,6 +179,10 @@ return guard, the dashboards and every site page keep working with no special ca
 transaction type would have meant editing every one of them, with a chance of missing one. The
 UI reads the shared delivery ID and renders the pair as a single event.
 
+**Since 2026-09-24 the Site Delivery screen no longer writes these pairs.** It makes a
+paper-only challan from free-text lines and changes neither stock nor what a site holds; the
+pairing described above is what older direct-to-site deliveries carry.
+
 </details>
 
 **Done when:** the PO is placed and the destination is agreed in writing with the supplier.
@@ -359,8 +363,9 @@ heading that way.
 sheet, for handing to the customer — dated (`SCE/MS/<date>`), not challan-numbered, because it
 is a live balance that can be reprinted at any time, not a record of one delivery. It carries
 no provenance: dispatched, transferred, and direct-delivered material all merge into one line
-per item, with nothing saying which route each unit arrived by. It is a **statement, not a
-challan** — no signature blocks — so do not use it in place of a Dispatch or Delivery challan
+per item, with nothing saying which route each unit arrived by. Since 2026-09-24 it carries
+blank Received By / Delivered By blocks for hand-signing. It is still a **statement, not a
+challan** — not challan-numbered — so do not use it in place of a Dispatch or Delivery challan
 when material is actually moving; print it only to show a customer what is on site right now.
 
 ---

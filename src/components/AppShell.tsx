@@ -73,28 +73,47 @@ export default async function AppShell({ children }: { children: ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <header
           data-print="hide"
-          className="flex h-16 shrink-0 items-center gap-3 border-b border-line bg-surface px-4 lg:px-8"
+          className="relative flex h-16 shrink-0 items-center gap-3 border-b border-line bg-surface px-4 lg:px-8"
         >
           <MobileNav groups={groups} user={user} />
-          {pending > 0 && (
-            <Link
-              href="/approvals"
-              // The sentence needs room the mobile header does not have. At
-              // 375px it wrapped to two lines and burst this h-16 shrink-0
-              // header, taking Sign out onto two lines with it. Below `sm` the
-              // icon and the count carry it — the pill links to Approvals and
-              // the full sentence stays available to screen readers and on
-              // hover — and `shrink-0` stops it being squeezed either way.
-              aria-label={pillText}
-              title={pillText}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-control border border-warn-line bg-warn-soft px-3 py-1.5 text-sm font-semibold whitespace-nowrap text-warn-ink hover:border-warn-ink"
-            >
-              <ClipboardCheck className="h-4 w-4 shrink-0" aria-hidden />
-              <span className="sm:hidden">{pending}</span>
-              <span className="hidden sm:inline">{pillText}</span>
-            </Link>
-          )}
-          <div className="flex-1" />
+          {/* The castle mark on the left, on its own — no wordmark. It is
+              nearly square, so unlike the old wide logo it is narrow enough
+              to show at every phone width. Only the dark theme needs the
+              white chip: the mark is navy and vanishes on a dark header. */}
+          {/* eslint-disable-next-line @next/next/no-img-element -- a fixed
+              local file; next/image's optimizer buys nothing here. */}
+          <img
+            src="/logo-mark.png"
+            alt="Solar Castle"
+            className="h-8 w-auto shrink-0 rounded-control object-contain md:h-10 lg:-ml-5 xl:h-[52px] dark:bg-white dark:p-1"
+          />
+          {/* The approvals banner, centred on the header BAR from xl up, where
+              the logo on the left and Sign out on the right leave it clear of
+              both. Below that it stays in the flow and takes the space between
+              them, so it can never overlap either on a phone. The wrapper lets
+              clicks through (pointer-events-none) so only the pill itself is
+              clickable — otherwise it would blanket the whole header at xl. */}
+          <div className="flex min-w-0 flex-1 justify-center xl:pointer-events-none xl:absolute xl:inset-0 xl:items-center">
+            {pending > 0 && (
+              <Link
+                href="/approvals"
+                // The sentence needs room the mobile header does not have. At
+                // 375px it wrapped to two lines and burst this h-16 shrink-0
+                // header, taking Sign out onto two lines with it. Below `sm` the
+                // icon and the count carry it — the pill links to Approvals and
+                // the full sentence stays available to screen readers and on
+                // hover — and `shrink-0` stops it being squeezed either way.
+                aria-label={pillText}
+                title={pillText}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-control border border-warn-line bg-warn-soft px-3 py-1.5 text-sm font-semibold whitespace-nowrap text-warn-ink hover:border-warn-ink xl:pointer-events-auto"
+              >
+                <ClipboardCheck className="h-4 w-4 shrink-0" aria-hidden />
+                <span className="sm:hidden">{pending}</span>
+                <span className="hidden sm:inline">{pillText}</span>
+              </Link>
+            )}
+          </div>
+          <div className="hidden flex-1 xl:block" />
           <form
             action={async () => {
               "use server";
