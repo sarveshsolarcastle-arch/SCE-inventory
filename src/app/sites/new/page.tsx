@@ -36,6 +36,9 @@ export default async function NewSitePage() {
             <Field label="Project ID / reference">
               <Input name="projectCode" />
             </Field>
+            <Field label="Customer phone number">
+              <Input name="phone" type="tel" inputMode="tel" placeholder="Printed on the challan" />
+            </Field>
             <Field label="Notes">
               <Input name="notes" />
             </Field>

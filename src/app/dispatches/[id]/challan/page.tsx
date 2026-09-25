@@ -85,8 +85,13 @@ export default async function ChallanPage({ params }: { params: Promise<{ id: st
         showParty={false}
         // The customer when one is recorded; the site's own name is the
         // honest fallback, since that is who the material is for.
-        party={{ name: site.customerName || site.name, address: site.address, projectCode: site.projectCode }}
-        shipTo={{ name: site.name, address: site.address || site.location }}
+        party={{
+          name: site.customerName || site.name,
+          address: site.address,
+          projectCode: site.projectCode,
+          phone: site.phone,
+        }}
+        shipTo={{ name: site.name, address: site.address || site.location, phone: site.phone }}
         lines={lines.map(lineFromTransaction)}
         issuedBy={dispatch.user.name}
         reference={dispatch.reference}

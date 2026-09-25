@@ -94,6 +94,7 @@ export function parseSiteCreateArgs(raw: unknown): SiteCreateArgs {
     customerName: optionalStr(o.customerName, "Customer name"),
     address: optionalStr(o.address, "Address"),
     projectCode: optionalStr(o.projectCode, "Project ID"),
+    phone: optionalStr(o.phone, "Phone number"),
     notes: optionalStr(o.notes, "Notes"),
   };
 }

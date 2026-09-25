@@ -255,6 +255,7 @@ async function main() {
           customerName: "Sunview Realty Pvt Ltd",
           address: "Plot 14, MIDC Cross Road B,\nAndheri East, Mumbai 400 093",
           projectCode: "SR/2026/11",
+          phone: "98200 41172",
           notes: "180 kWp rooftop across Blocks A and B. Access via the service lift only.",
         },
       });
@@ -265,6 +266,7 @@ async function main() {
           customerName: "Hiranandani Estates Ltd",
           address: "Warehouse B, Saki Vihar Road,\nPowai, Mumbai 400 076",
           projectCode: "HE/2026/04",
+          phone: "022 2570 3318",
           notes: "Modules delivered direct to site by the supplier — they never reach the store.",
         },
       });
@@ -275,6 +277,7 @@ async function main() {
           customerName: "Zenith Polymers Ltd",
           address: "Survey 88/2, Gauraipada,\nVasai East, Palghar 401 208",
           projectCode: "ZP/2026/19",
+          phone: "98673 20415",
         },
       });
 
@@ -1054,6 +1057,7 @@ async function main() {
         customerName: "Zenith Polymers Ltd",
         address: "Gate 3, Survey 88/2, Gauraipada,\nVasai East, Palghar 401 208",
         projectCode: "ZP/2026/19-A",
+        phone: "98673 20415",
         notes: "Client sent a corrected gate number and project code for the challan.",
       };
       await tx.approvalRequest.create({
@@ -1108,6 +1112,7 @@ async function main() {
           customerName: "Navi Mumbai Power Co-op Ltd",
           address: "Sector 12, Kharghar,\nNavi Mumbai 410 210",
           projectCode: "NM/2026/33",
+          phone: "98330 77045",
           notes: "Large build — fifty-odd line items sent in one consignment.",
         },
       });

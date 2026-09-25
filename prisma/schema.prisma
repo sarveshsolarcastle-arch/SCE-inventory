@@ -257,6 +257,10 @@ model Site {
   /// The client's own reference for the project, printed as Project ID. Free
   /// text rather than generated — it is THEIR numbering, not ours.
   projectCode         String?
+  /// The customer's contact number, printed as "Phone No." on the site's
+  /// challans. Free text rather than a validated format: it is whatever the
+  /// client gave us — a mobile, a landline with an extension, two numbers.
+  phone               String?
   notes               String?
   createdAt           DateTime        @default(now())
   transactions        Transaction[]

@@ -93,8 +93,13 @@ export default async function DeliveryChallanPage({
         date={delivery.receivedAt}
         // The customer when one is recorded; the site's own name is the
         // honest fallback, since that is who the material is for.
-        party={{ name: site.customerName || site.name, address: site.address, projectCode: site.projectCode }}
-        shipTo={{ name: site.name, address: site.address || site.location }}
+        party={{
+          name: site.customerName || site.name,
+          address: site.address,
+          projectCode: site.projectCode,
+          phone: site.phone,
+        }}
+        shipTo={{ name: site.name, address: site.address || site.location, phone: site.phone }}
         lines={lines}
         issuedBy={delivery.user.name}
         reference={delivery.reference}

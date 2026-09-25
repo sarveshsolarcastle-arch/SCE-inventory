@@ -81,8 +81,20 @@ export type ChallanSheetProps = {
   showParty?: boolean;
   challanNo: string;
   date: Date;
-  party: { name: string; address: string | null; projectCode: string | null };
-  shipTo: { name: string; address: string | null };
+  party: {
+    name: string;
+    address: string | null;
+    projectCode: string | null;
+    /** The customer's phone number, when one is recorded. */
+    phone?: string | null;
+  };
+  shipTo: {
+    name: string;
+    address: string | null;
+    /** Printed as "Phone No." — the block that is left when the party block is
+     * hidden, so a site's number must reach this one too. */
+    phone?: string | null;
+  };
   lines: ChallanLine[];
   issuedBy: string;
   /** The OTHER party's document number, if their paperwork has one. */
@@ -160,10 +172,12 @@ export default function ChallanSheet({
             <FilledOrBlank label="Party Name" value={party.name} />
             <FilledOrBlank label="Address" value={party.address} />
             <FilledOrBlank label="Project ID" value={party.projectCode} />
-            {/* Phone / Email / GSTIN are not yet fields on Site — printed as
-                ruled blanks, same as Received By's Date/Signature, so the
-                sheet still carries a line for whoever fills them in by hand. */}
-            <Blank label="Phone No." />
+            {/* Phone is the site's customer number when one is recorded, and a
+                ruled blank when not. Email / GSTIN are not yet fields on Site —
+                printed as ruled blanks, same as Received By's Date/Signature,
+                so the sheet still carries a line for whoever fills them in by
+                hand. */}
+            <FilledOrBlank label="Phone No." value={party.phone} />
             <Blank label="Email" />
             <Blank label="GSTIN" />
           </section>
@@ -173,7 +187,7 @@ export default function ChallanSheet({
           <h2 className="text-xs font-bold tracking-wide uppercase">{shipToHeading}</h2>
           <FilledOrBlank label="Shipping Name" value={shipTo.name} />
           <FilledOrBlank label="Address" value={shipTo.address} />
-          <Blank label="Phone No." />
+          <FilledOrBlank label="Phone No." value={shipTo.phone} />
           <Blank label="Email" />
           <Blank label="GSTIN" />
         </section>
