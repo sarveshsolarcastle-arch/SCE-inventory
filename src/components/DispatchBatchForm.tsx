@@ -173,6 +173,9 @@ export default function DispatchBatchForm({
     defaultSiteId && sites.some((s) => s.id === defaultSiteId) ? defaultSiteId : ""
   );
   const [reference, setReference] = useState("");
+  // Stock_In & Stock_Out only: the Stock_In half is a real receipt, and the
+  // Stock_In ledger has a Supplier column that stays "—" unless it is asked.
+  const [supplier, setSupplier] = useState("");
   const [note, setNote] = useState("");
   // Printed on the challan's signature blocks. Blank is fine and common — the
   // challan then prints ruled lines to fill in when the van is loaded.
@@ -315,6 +318,8 @@ export default function DispatchBatchForm({
       const record = stockInFirst ? recordStockInThenDispatch : recordDispatch;
       const result: DispatchResult = await record({
         siteId,
+        // Ignored by a plain Stock_Out, which has no supplier.
+        ...(stockInFirst ? { supplier } : {}),
         reference,
         note,
         deliveredBy,
@@ -346,6 +351,15 @@ export default function DispatchBatchForm({
             ))}
           </Select>
         </Field>
+        {stockInFirst && (
+          <Field label="Supplier (optional)">
+            <Input
+              value={supplier}
+              onChange={(e) => setSupplier(e.target.value)}
+              placeholder="Who the material came from"
+            />
+          </Field>
+        )}
         {/* Our own challan number is assigned on save and is not editable —
             this is the OTHER party's document number, if their paperwork has
             one. Relabelled so the two are not mistaken for each other. */}

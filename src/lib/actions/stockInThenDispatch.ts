@@ -27,7 +27,14 @@ import { recordDispatch, type DispatchInput, type DispatchResult } from "@/lib/a
  * recorded receipt and stays; the message says so.
  * ---------------------------------------------------------------------- */
 
-export async function recordStockInThenDispatch(input: DispatchInput): Promise<DispatchResult> {
+/** A Stock_Out's fields plus the one thing only the Stock_In half needs: who
+ * the material came from. A dispatch has no supplier, so it is kept out of what
+ * recordDispatch receives. */
+export type StockInThenDispatchInput = DispatchInput & { supplier?: string | null };
+
+export async function recordStockInThenDispatch(
+  { supplier, ...input }: StockInThenDispatchInput
+): Promise<DispatchResult> {
   try {
     await requireCapability("delivery:record");
     await requireCapability("stock:issue");
@@ -60,6 +67,9 @@ export async function recordStockInThenDispatch(input: DispatchInput): Promise<D
   if (!stockLines.length) return { ok: false, message: "Add at least one line" };
 
   const stocked = await recordDelivery({
+    // Without this the Stock_In ledger's Supplier column read "—" for every
+    // receipt made from this screen, with nowhere to enter one.
+    supplier,
     reference: input.reference,
     note: input.note || "Stock_In to cover the Stock_Out entered alongside it",
     lines: stockLines,
