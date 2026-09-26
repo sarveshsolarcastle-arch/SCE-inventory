@@ -9,6 +9,8 @@ import { TableWrap, Table, THead, Tr, Td } from "@/components/ui/Table";
 import SortableTh from "@/components/ui/SortableTh";
 import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
+import Alert from "@/components/ui/Alert";
+import { searchItems } from "@/lib/itemSearch";
 
 const SORT_FIELDS = { name: "name", sku: "sku", category: "category", stock: "currentStock" } as const;
 type SortKey = keyof typeof SORT_FIELDS;
@@ -30,19 +32,29 @@ export default async function ItemsPage({
   const sortKey: SortKey = isSortKey(sort) ? sort : "name";
   const sortDir: "asc" | "desc" = dir === "desc" ? "desc" : "asc";
 
-  const items = await prisma.item.findMany({
-    where: q
-      ? {
-          OR: [
-            { name: { contains: q } },
-            { sku: { contains: q } },
-            { category: { contains: q } },
-          ],
-        }
-      : undefined,
+  // With a search term, load the sorted list and filter it in memory: the
+  // forgiving match (plurals, typos) can't be expressed as a SQL `contains`,
+  // and a store catalogue is small enough that this is cheap.
+  const all = await prisma.item.findMany({
     orderBy: { [SORT_FIELDS[sortKey]]: sortDir },
     include: { shelfSlots: { include: { shelf: true } } },
   });
+
+  const term = q?.trim();
+  let items = all;
+  let didYouMean: string | null = null;
+  let closeMatches = false;
+  if (term) {
+    const outcome = searchItems(all, term);
+    // An explicit column sort wins; otherwise the best match comes first.
+    // Array.sort is stable, so ties keep the name order from the query above.
+    const ranked = sort
+      ? outcome.matches
+      : outcome.matches.slice().sort((a, b) => b.score - a.score);
+    items = ranked.map((m) => m.item);
+    didYouMean = outcome.suggestion;
+    closeMatches = outcome.fuzzy;
+  }
 
   return (
     <div className="space-y-4">
@@ -58,6 +70,25 @@ export default async function ItemsPage({
       />
 
       <SearchBar name="q" defaultValue={q ?? ""} placeholder="Search by name, SKU, or category" />
+
+      {closeMatches && (
+        <Alert tone="info">
+          No exact match for <strong>&ldquo;{term}&rdquo;</strong>. Showing close matches
+          {didYouMean && (
+            <>
+              {" "}
+              — did you mean{" "}
+              <Link
+                href={`/items?${new URLSearchParams({ q: didYouMean, ...(sort ? { sort, dir: sortDir } : {}) }).toString()}`}
+                className="font-bold underline"
+              >
+                {didYouMean}
+              </Link>
+              ?
+            </>
+          )}
+        </Alert>
+      )}
 
       <Card>
         <TableWrap>
