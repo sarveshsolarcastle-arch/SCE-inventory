@@ -33,6 +33,7 @@ import * as siteOps from "./ops/sites";
 import * as shelfOps from "./ops/shelf";
 import * as correctionOps from "./ops/corrections";
 import {
+  parseReverseDeliveryArgs,
   parseReverseDispatchArgs,
   parseReverseTransactionArgs,
   parseReverseTransferArgs,
@@ -71,6 +72,7 @@ export type ResultFor<K extends OperationKind> = {
   "stock.reverseTransaction": void;
   "stock.reverseDispatch": void;
   "stock.reverseTransfer": void;
+  "stock.reverseDelivery": void;
   "stock.adjust": void;
 }[K];
 
@@ -232,6 +234,32 @@ async function transferLabel(transferId: string): Promise<string | null> {
   return (
     `the transfer from ${transfer.fromSite.name} to ${transfer.toSite.name} of ` +
     `${transfer.transferredAt.toLocaleDateString()} (${lineCount(transfer._count.transactions)})`
+  );
+}
+
+async function deliveryLabel(deliveryId: string): Promise<string | null> {
+  const delivery = await prisma.delivery.findUnique({
+    where: { id: deliveryId },
+    select: {
+      reference: true,
+      supplier: true,
+      receivedAt: true,
+      // Filtered to STOCK_IN — see dispatchLabel above: a REVERSAL row this
+      // delivery's own reversal wrote carries the same deliveryId, and (on a
+      // legacy direct-to-site delivery) its paired ISSUE would double the
+      // count of a "line" a person actually typed.
+      _count: { select: { transactions: { where: { type: "STOCK_IN" } } } },
+    },
+  });
+  if (!delivery) return null;
+  const named = delivery.reference
+    ? `delivery ${delivery.reference}`
+    : delivery.supplier
+      ? `the delivery from ${delivery.supplier}`
+      : "the delivery";
+  return (
+    `${named} of ${delivery.receivedAt.toLocaleDateString()} ` +
+    `(${lineCount(delivery._count.transactions)})`
   );
 }
 
@@ -494,6 +522,50 @@ export const OPERATIONS: Registry = {
       revalidateCorrections();
       revalidateTransfers(args.transferId);
     },
+  },
+
+  "stock.reverseDelivery": {
+    parse: parseReverseDeliveryArgs,
+    summarise: async (args) =>
+      describeKind(
+        "stock.reverseDelivery",
+        { ...args },
+        { delivery: await deliveryLabel(args.deliveryId) }
+      ),
+    targetKey: (args) => `Delivery:${args.deliveryId}`,
+    // Same reasoning as reverseDispatch's precheck: checks EVERY line, since
+    // the operation is all-or-nothing and an admin told "ready" off line 1
+    // alone would be misled. STOCK_IN and ISSUE both, for the reason
+    // reverseDelivery itself gives — a legacy direct-to-site line is a pair.
+    precheck: async (args) => {
+      if ((await deliveryLabel(args.deliveryId)) === null) return missing("That delivery");
+      const movements = await prisma.transaction.findMany({
+        where: {
+          deliveryId: args.deliveryId,
+          type: { in: ["STOCK_IN", "ISSUE"] },
+          reversedAt: null,
+        },
+        orderBy: { createdAt: "asc" },
+      });
+      if (!movements.length) {
+        return formatPrecheck({
+          kind: "blocked",
+          reason: "nothing is left to reverse on this delivery",
+        });
+      }
+      for (const movement of movements) {
+        const obstacles = await correctionOps.findObstaclesFor(db, movement);
+        if (obstacles.length) {
+          return formatPrecheck({
+            kind: "blocked",
+            reason: describeObstacle(obstacles[0]),
+          });
+        }
+      }
+      return CLEAR;
+    },
+    execute: (tx, args, actorId) => correctionOps.reverseDelivery(tx, args, actorId),
+    revalidate: () => revalidateCorrections(),
   },
 
   "stock.adjust": {

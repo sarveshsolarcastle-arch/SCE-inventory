@@ -1,6 +1,8 @@
-import { AlertTriangle, CheckCircle2, Printer } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Printer, Undo2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireCapability } from "@/lib/permissions";
+import { capabilityMode, currentUser, requireCapability } from "@/lib/permissions";
+import { reverseDelivery } from "@/lib/actions/corrections";
+import { ReverseButton } from "@/components/CorrectionPanel";
 import { describeMovement, formatQuantity } from "@/lib/units";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -8,6 +10,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
 import { TableWrap, Table, THead, Th, Tr, Td } from "@/components/ui/Table";
 import Alert from "@/components/ui/Alert";
+import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
 import { buttonClasses } from "@/components/ui/Button";
 import { formatSiteChallanNo, siteChallanOf } from "@/lib/challan";
@@ -52,6 +55,16 @@ export default async function DeliveryDetailPage({
   const paperLines = delivery.lines;
   const canPrint = numbered != null && (paperLines.length > 0 || activeIssueLines.length > 0);
 
+  const user = await currentUser();
+  const reverseMode = capabilityMode(user?.role, "stock:reverse");
+
+  const reversalLines = delivery.transactions.filter((t) => t.type === "REVERSAL");
+  const activeStockInLines = lines.filter((t) => !t.reversedAt);
+  // reverseDelivery reverses a line's STOCK_IN and (on a legacy direct-to-site
+  // delivery) its paired ISSUE together, atomically — so the STOCK_IN side
+  // alone is a reliable stand-in for "is the whole delivery undone".
+  const fullyReversed = lines.length > 0 && activeStockInLines.length === 0;
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -69,12 +82,29 @@ export default async function DeliveryDetailPage({
             </>
           }
           actions={
-            canPrint ? (
-              <Link href={`/deliveries/${delivery.id}/challan`} className={buttonClasses("secondary")}>
-                <Printer size={14} aria-hidden />
-                Print challan
-              </Link>
-            ) : undefined
+            <div className="flex items-center gap-2">
+              {canPrint && (
+                <Link href={`/deliveries/${delivery.id}/challan`} className={buttonClasses("secondary")}>
+                  <Printer size={14} aria-hidden />
+                  Print challan
+                </Link>
+              )}
+              {/* Nothing to reverse on a paper-only challan — it never touched
+                  stock or a site's holding, so there is nothing here to undo. */}
+              {lines.length > 0 &&
+                (fullyReversed ? (
+                  <Badge tone="neutral">Reversed</Badge>
+                ) : (
+                  reverseMode !== "none" &&
+                  activeStockInLines.length > 0 && (
+                    <ReverseButton
+                      action={reverseDelivery.bind(null, delivery.id)}
+                      label="this whole delivery"
+                      mode={reverseMode}
+                    />
+                  )
+                ))}
+            </div>
           }
         />
         {delivery.site && paperLines.length > 0 ? (
@@ -137,6 +167,7 @@ export default async function DeliveryDetailPage({
               <tr>
                 <Th>Item</Th>
                 <Th>Received</Th>
+                <Th>Status</Th>
               </tr>
             </THead>
             <tbody>
@@ -148,6 +179,13 @@ export default async function DeliveryDetailPage({
                     </Link>
                   </Td>
                   <Td className="text-ink-subtle">{describeMovement(t.item, t)}</Td>
+                  <Td>
+                    {t.reversedAt ? (
+                      <Badge tone="neutral">Reversed</Badge>
+                    ) : (
+                      <Badge tone="ok">Active</Badge>
+                    )}
+                  </Td>
                 </Tr>
               ))}
             </tbody>
@@ -198,6 +236,23 @@ export default async function DeliveryDetailPage({
                 <span className="text-ink-subtle">{formatQuantity(d.item, d.quantity)}</span>
               </div>
             ))}
+          </CardBody>
+        </Card>
+      )}
+
+      {reversalLines.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle tone="danger" icon={<Undo2 size={13} />}>
+              Reversal
+            </CardTitle>
+          </CardHeader>
+          <CardBody>
+            <p className="text-sm font-semibold text-ink-subtle">
+              {reversalLines.length} line{reversalLines.length === 1 ? "" : "s"} of this delivery
+              {fullyReversed ? "" : " have been"} reversed
+              {reversalLines[0]?.reason && `, reason: "${reversalLines[0].reason}"`}.
+            </p>
           </CardBody>
         </Card>
       )}

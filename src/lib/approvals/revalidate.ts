@@ -41,6 +41,13 @@ export function revalidateCorrections() {
   revalidatePath("/defective");
   revalidatePath("/sites", "layout");
   revalidatePath("/dispatches", "layout");
+  // "/dispatches" above already covers reverseDispatch's own list+detail
+  // pages; a delivery reversal (single-line, via reverseTransaction on a
+  // STOCK_IN, or whole-delivery via reverseDelivery) needs the same for
+  // deliveries — the ledger list, its detail page, and a direct-to-site
+  // delivery's separate ledger.
+  revalidatePath("/deliveries", "layout");
+  revalidatePath("/site-deliveries", "layout");
 }
 
 /** A transfer reversal's own pages, on top of revalidateCorrections — which

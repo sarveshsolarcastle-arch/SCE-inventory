@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   InvalidArgsError,
+  parseReverseDeliveryArgs,
   parseReverseTransactionArgs,
   parseReverseTransferArgs,
   parseShelfCreateArgs,
@@ -60,11 +61,12 @@ test("THE INVARIANT: every operation is one that somebody can actually request",
   // does. The registry entry would be dead weight that still LOOKS like part
   // of the feature — which is worse than not being there.
   const requestable = new Set(ROLES.flatMap((role) => REQUESTABLE[role]));
-  for (const kind of OPERATION_KINDS) {
   // site.create stopped needing approval on 2026-09-30 (FINANCE now holds
   // site:create outright). The kind stays registered only so requests already
   // in the queue from before then can still be approved or rejected.
   const noLongerRequested = new Set<string>(["site.create"]);
+  for (const kind of OPERATION_KINDS) {
+    if (noLongerRequested.has(kind)) continue;
     assert.ok(
       requestable.has(CAPABILITY_FOR_KIND[kind]),
       `${kind} needs ${CAPABILITY_FOR_KIND[kind]}, which no role may request`
@@ -187,6 +189,18 @@ test("a transfer reversal must carry its reason, same as a single-movement one",
   assert.throws(() => parseReverseTransferArgs({ transferId: "t1" }), InvalidArgsError);
   assert.throws(
     () => parseReverseTransferArgs({ transferId: "t1", reason: "   " }),
+    InvalidArgsError
+  );
+});
+
+test("a delivery reversal must carry its reason, same as a single-movement one", () => {
+  assert.deepEqual(parseReverseDeliveryArgs({ deliveryId: "d1", reason: "wrong supplier" }), {
+    deliveryId: "d1",
+    reason: "wrong supplier",
+  });
+  assert.throws(() => parseReverseDeliveryArgs({ deliveryId: "d1" }), InvalidArgsError);
+  assert.throws(
+    () => parseReverseDeliveryArgs({ deliveryId: "d1", reason: "   " }),
     InvalidArgsError
   );
 });

@@ -16,6 +16,7 @@
 
 import type {
   BoxType,
+  ReverseDeliveryArgs,
   ReverseDispatchArgs,
   ReverseTransactionArgs,
   ReverseTransferArgs,
@@ -170,6 +171,11 @@ export function parseReverseDispatchArgs(raw: unknown): ReverseDispatchArgs {
 export function parseReverseTransferArgs(raw: unknown): ReverseTransferArgs {
   const o = obj(raw);
   return { transferId: str(o.transferId, "Transfer"), reason: str(o.reason, "Reason") };
+}
+
+export function parseReverseDeliveryArgs(raw: unknown): ReverseDeliveryArgs {
+  const o = obj(raw);
+  return { deliveryId: str(o.deliveryId, "Delivery"), reason: str(o.reason, "Reason") };
 }
 
 /** The one worth the most care. A stock count that loses its ledger figures

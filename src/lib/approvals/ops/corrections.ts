@@ -25,6 +25,7 @@ import {
   planAdjustment,
 } from "@/lib/adjustment";
 import type {
+  ReverseDeliveryArgs,
   ReverseDispatchArgs,
   ReverseTransactionArgs,
   ReverseTransferArgs,
@@ -38,6 +39,7 @@ type ReversibleMovement = {
   siteId: string | null;
   fromSiteId: string | null;
   dispatchId: string | null;
+  deliveryId: string | null;
   quantity: number;
   appliedPlan: string | null;
   reversedAt: Date | null;
@@ -151,6 +153,7 @@ async function reverseMovementTx(
       itemId: movement.itemId,
       siteId: movement.siteId,
       dispatchId: movement.dispatchId,
+      deliveryId: movement.deliveryId,
       userId: actorId,
       reason,
       reversesId: movement.id,
@@ -189,6 +192,39 @@ export async function reverseDispatch(
     orderBy: { createdAt: "asc" },
   });
   if (!movements.length) throw new Error("Nothing left to reverse on this dispatch");
+
+  for (const movement of movements) {
+    await reverseMovementTx(tx, movement, actorId, args.reason);
+  }
+}
+
+/** Reverses every not-yet-reversed line of a delivery, atomically: one row
+ * failing its obstacle check aborts the whole delivery's reversal, same as
+ * reverseDispatch. Both STOCK_IN, and — on a legacy direct-to-site delivery —
+ * the paired ISSUE, are looked for: the schema comment on Delivery explains
+ * why a direct-to-site line is a STOCK_IN/ISSUE pair sharing one deliveryId,
+ * and reversing only one half would leave the other's effect standing (store
+ * stock restored but the site still credited, or vice versa). A paper-only
+ * challan (DeliveryLine, no Transaction) has nothing here to find, so it
+ * refuses the same way an empty dispatch would.
+ *
+ * Each compensating REVERSAL row carries the same deliveryId as the movement
+ * it undoes, so the delivery page groups them as one event rather than N
+ * loose corrections. */
+export async function reverseDelivery(
+  tx: Prisma.TransactionClient,
+  args: ReverseDeliveryArgs,
+  actorId: string
+): Promise<void> {
+  const movements = await tx.transaction.findMany({
+    where: {
+      deliveryId: args.deliveryId,
+      type: { in: ["STOCK_IN", "ISSUE"] },
+      reversedAt: null,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!movements.length) throw new Error("Nothing left to reverse on this delivery");
 
   for (const movement of movements) {
     await reverseMovementTx(tx, movement, actorId, args.reason);

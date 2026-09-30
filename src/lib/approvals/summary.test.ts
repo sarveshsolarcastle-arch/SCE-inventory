@@ -53,7 +53,7 @@ test("deleting a shelf says what is actually lost", () => {
   );
 });
 
-test("the three reversals are distinguishable at a glance", () => {
+test("the four reversals are distinguishable at a glance", () => {
   assert.match(
     describeKind("stock.reverseDispatch", { dispatchId: "d1" }, { dispatch: "CH-1042" }),
     /every line of CH-1042/
@@ -65,6 +65,10 @@ test("the three reversals are distinguishable at a glance", () => {
   assert.match(
     describeKind("stock.reverseTransfer", { transferId: "tr1" }, { transfer: "TC-7" }),
     /every line of TC-7/
+  );
+  assert.match(
+    describeKind("stock.reverseDelivery", { deliveryId: "dl1" }, { delivery: "delivery INV-9" }),
+    /every line of delivery INV-9/
   );
 });
 

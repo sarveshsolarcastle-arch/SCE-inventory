@@ -25,6 +25,7 @@
 
 import { NotPermittedError } from "@/lib/permissions";
 import {
+  parseReverseDeliveryArgs,
   parseReverseDispatchArgs,
   parseReverseTransactionArgs,
   parseReverseTransferArgs,
@@ -103,6 +104,25 @@ export async function reverseTransfer(
     return outcome.kind === "executed" ? { ok: true } : describeRequested(outcome);
   } catch (error) {
     return refusal(error, "Transfer reversal failed");
+  }
+}
+
+/** Reverses every not-yet-reversed line of a delivery in one go — same shape
+ * as reverseDispatch, and for the same reason: a wrong multi-item delivery
+ * should take one reason and one approval to undo, not one per line. */
+export async function reverseDelivery(
+  deliveryId: string,
+  formData: FormData
+): Promise<CorrectionResult> {
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!reason) return { ok: false, message: "A reason is required to reverse a delivery" };
+
+  try {
+    const args = parseReverseDeliveryArgs({ deliveryId, reason });
+    const outcome = await runOrRequest("stock.reverseDelivery", args, reason);
+    return outcome.kind === "executed" ? { ok: true } : describeRequested(outcome);
+  } catch (error) {
+    return refusal(error, "Delivery reversal failed");
   }
 }
 

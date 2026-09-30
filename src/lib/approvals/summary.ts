@@ -30,6 +30,7 @@ export type SummaryNames = {
   movement?: string | null;
   dispatch?: string | null;
   transfer?: string | null;
+  delivery?: string | null;
 };
 
 function name(value: string | null | undefined, fallback: string): string {
@@ -76,6 +77,8 @@ export function describeKind(
       return `Reverse every line of ${name(names.dispatch, "a dispatch")}`;
     case "stock.reverseTransfer":
       return `Reverse every line of ${name(names.transfer, "a transfer")}`;
+    case "stock.reverseDelivery":
+      return `Reverse every line of ${name(names.delivery, "a delivery")}`;
     case "stock.adjust":
       return `Apply a counted stock correction to ${item()}`;
     default:

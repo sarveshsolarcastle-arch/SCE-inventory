@@ -68,30 +68,44 @@ export default async function DeliveriesPage({
                 <Th>Supplier</Th>
                 <Th>Lines</Th>
                 <Th>Defects</Th>
+                <Th>Status</Th>
                 <Th>By</Th>
               </tr>
             </THead>
             <tbody>
-              {deliveries.map((d) => (
-                <Tr key={d.id}>
-                  <Td className="text-ink-subtle">{d.receivedAt.toLocaleDateString()}</Td>
-                  <Td>
-                    <Link href={`/deliveries/${d.id}`} className="font-bold text-ink hover:text-accent">
-                      {d.reference || "(no reference)"}
-                    </Link>
-                  </Td>
-                  <Td className="text-ink-subtle">{d.supplier ?? "—"}</Td>
-                  <Td className="text-ink-subtle">{d.transactions.length}</Td>
-                  <Td>
-                    {d.defectiveItems.length > 0 ? (
-                      <Badge tone="warn">{d.defectiveItems.length}</Badge>
-                    ) : (
-                      <span className="text-ink-subtle">—</span>
-                    )}
-                  </Td>
-                  <Td className="text-ink-subtle">{d.user.name}</Td>
-                </Tr>
-              ))}
+              {deliveries.map((d) => {
+                const active = d.transactions.filter((t) => !t.reversedAt);
+                const reversed = active.length === 0 && d.transactions.length > 0;
+                return (
+                  <Tr key={d.id}>
+                    <Td className="text-ink-subtle">{d.receivedAt.toLocaleDateString()}</Td>
+                    <Td>
+                      <Link href={`/deliveries/${d.id}`} className="font-bold text-ink hover:text-accent">
+                        {d.reference || "(no reference)"}
+                      </Link>
+                    </Td>
+                    <Td className="text-ink-subtle">{d.supplier ?? "—"}</Td>
+                    <Td className="text-ink-subtle">{d.transactions.length}</Td>
+                    <Td>
+                      {d.defectiveItems.length > 0 ? (
+                        <Badge tone="warn">{d.defectiveItems.length}</Badge>
+                      ) : (
+                        <span className="text-ink-subtle">—</span>
+                      )}
+                    </Td>
+                    <Td>
+                      {d.transactions.length === 0 ? (
+                        <span className="text-ink-subtle">—</span>
+                      ) : reversed ? (
+                        <Badge tone="neutral">Reversed</Badge>
+                      ) : (
+                        <Badge tone="ok">Active</Badge>
+                      )}
+                    </Td>
+                    <Td className="text-ink-subtle">{d.user.name}</Td>
+                  </Tr>
+                );
+              })}
             </tbody>
           </Table>
         </TableWrap>
