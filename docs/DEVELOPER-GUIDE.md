@@ -9,7 +9,7 @@ what *not* to do to it and why.
 ## Before you commit — every time
 
 ```bash
-npx tsc --noEmit    # types
+npm run typecheck   # types (runs `next typegen` first, which a fresh clone needs)
 npm run lint        # style/bugs
 npm test            # unit tests
 ```

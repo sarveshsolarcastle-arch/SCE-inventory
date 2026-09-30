@@ -60,7 +60,7 @@ Useful commands:
 |---|---|
 | `npm run dev` | Development server |
 | `npm test` | Unit tests (~250, a few minutes at most) |
-| `npx tsc --noEmit` | Type check — run before every commit |
+| `npm run typecheck` | Type check — run before every commit (generates Next's route types first; a bare `tsc` fails on a fresh clone) |
 | `npm run lint` | ESLint |
 | `npm run build` | Production build |
 | `npm run db:migrate:dev -- --name <what>` | Create and apply a new migration locally |
