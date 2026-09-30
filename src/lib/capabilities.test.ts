@@ -127,6 +127,7 @@ test("finance does the day-to-day stock work outright, not by asking", () => {
     "stock:transfer",
     "site:pickup",
     "item:manage",
+    "site:create",
   ];
   for (const capability of outright) {
     assert.equal(capabilityMode("FINANCE", capability), "do", capability);

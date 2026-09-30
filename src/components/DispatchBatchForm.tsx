@@ -274,7 +274,9 @@ export default function DispatchBatchForm({
         const plan = plans.get(r.key);
         if (total <= 0) acc.incomplete++;
         else if (!stockInFirst && plan?.errors.length) acc.outOfStock++;
-        else if (!stockInFirst && plan?.opens.length && !r.acknowledgedOpen) acc.needsOpen++;
+        // Opening a sealed pack no longer needs a separate approve click — the
+        // warning below still says which packs will be opened.
+
       }
       return acc;
     },
@@ -676,13 +678,6 @@ function PlanStatus({
           {plan.scrap.length > 0 &&
             ` Also writes off ${plan.scrap.map((s) => `${s.length} ${item.baseUnit}`).join(", ")} as scrap.`}
         </p>
-        {acknowledged ? (
-          <p className="text-xs font-bold">✓ Approved</p>
-        ) : (
-          <Button type="button" onClick={onAcknowledge} variant="secondary" size="sm">
-            Approve opening this pack
-          </Button>
-        )}
       </Alert>
     );
   }

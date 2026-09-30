@@ -49,7 +49,7 @@ export const OPERATION_KINDS: readonly OperationKind[] = [
  * on the request row, so capabilities.ts stays the single source: a row's
  * capability is a fact about its kind, not about when it was raised. */
 export const CAPABILITY_FOR_KIND: Record<OperationKind, Capability> = {
-  "site.create": "site:manage",
+  "site.create": "site:create",
   "site.update": "site:manage",
   "site.delete": "site:manage",
   "shelf.create": "shelf:manage",

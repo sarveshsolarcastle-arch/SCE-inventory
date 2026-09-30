@@ -21,7 +21,7 @@ export default async function SitesPage() {
     currentUser(),
   ]);
 
-  const siteMode = capabilityMode(user?.role, "site:manage");
+  const siteMode = capabilityMode(user?.role, "site:create");
 
   // The cards used to show name and location only, which said nothing about
   // whether a site actually has anything on it.

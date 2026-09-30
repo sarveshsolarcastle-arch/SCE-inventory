@@ -28,7 +28,7 @@ import type { Role } from "@/generated/prisma/enums";
 const ROUTE_CAPABILITIES: [prefix: string, capability: Capability][] = [
   ["/items/new", "item:manage"],
   ["/approvals", "approval:view"],
-  ["/sites/new", "site:manage"],
+  ["/sites/new", "site:create"],
   ["/shelf/new", "shelf:manage"],
   ["/transactions/new", "stock:return"],
   ["/defective/new", "defect:flag"],

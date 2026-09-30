@@ -34,6 +34,9 @@ export type Capability =
   // catalogue and layout
   | "item:manage"
   | "site:manage"
+  // Adding a new site — split out of site:manage so FINANCE can create sites
+  // directly without also being handed edit/delete.
+  | "site:create"
   | "shelf:manage"
   // Removing a shelf outright — admin only, and deliberately NOT folded into
   // `shelf:manage`. Relabelling a box and demolishing the shelf it sits on are
@@ -73,6 +76,7 @@ export const ALL_CAPABILITIES: readonly Capability[] = [
   "site:pickup",
   "item:manage",
   "site:manage",
+  "site:create",
   "shelf:manage",
   "shelf:delete",
   "defect:flag",
@@ -94,6 +98,7 @@ export const CAPABILITIES: Record<Role, readonly Capability[]> = {
   FINANCE: [
     "delivery:record",
     "item:manage",
+    "site:create",
     "defect:flag",
     "defect:resolve",
     "ledger:view",

@@ -12,7 +12,7 @@ import { controlLabel, requestHint } from "@/lib/approvals/labels";
  * not exist when the page redirects. */
 export default async function NewSitePage() {
   const user = await currentUser();
-  const mode = capabilityMode(user?.role, "site:manage");
+  const mode = capabilityMode(user?.role, "site:create");
   return (
     <div className="max-w-lg space-y-4">
       <PageHeader title="New Site" />

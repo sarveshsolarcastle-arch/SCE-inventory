@@ -61,6 +61,10 @@ test("THE INVARIANT: every operation is one that somebody can actually request",
   // of the feature — which is worse than not being there.
   const requestable = new Set(ROLES.flatMap((role) => REQUESTABLE[role]));
   for (const kind of OPERATION_KINDS) {
+  // site.create stopped needing approval on 2026-09-30 (FINANCE now holds
+  // site:create outright). The kind stays registered only so requests already
+  // in the queue from before then can still be approved or rejected.
+  const noLongerRequested = new Set<string>(["site.create"]);
     assert.ok(
       requestable.has(CAPABILITY_FOR_KIND[kind]),
       `${kind} needs ${CAPABILITY_FOR_KIND[kind]}, which no role may request`
