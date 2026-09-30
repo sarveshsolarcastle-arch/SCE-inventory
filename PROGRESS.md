@@ -97,7 +97,6 @@ To apply schema changes:
 npx prisma migrate dev --name <description>
 ```
 
-
 ## 5. Data Model (`prisma/schema.prisma`)
 
 - **User** — id, name, email, passwordHash, role (`ADMIN` | `FINANCE` | `EMPLOYEE`), `isActive`. Accounts are **deactivated, never deleted**: every `Transaction` carries a `userId` and that trail is the answer to the brief's third problem, so removing a leaver would punch holes in it.
@@ -450,8 +449,7 @@ added then. All six had landed, so Phase 7 was planned, approved, and then built
 
 Full design record — the direction, the decisions, the alternatives rejected, and the
 as-built note — is in [REDESIGN-PLAN.md's "Phase 7" section](REDESIGN-PLAN.md). The
-step-by-step working checklist that guided the build lives outside the repo at
-a private working note that is not in the repo.
+step-by-step working checklist that guided the build was a private note and is not part of the repo.
 
 **What changed**, in one paragraph: light theme by default with a *user* dark toggle (dark
 previously followed the OS only), a grouped left sidebar (`AppShell` + `nav/`) replacing the
@@ -770,9 +768,8 @@ requestable operations is no longer refused, the attempt becomes an `ApprovalReq
 admin can carry it out attributed to whoever asked. What it did **not** change is the two
 exclusions — see [the box in §5](#the-two-exclusions). The design is settled with the user and recorded
 in [REDESIGN-PLAN.md](REDESIGN-PLAN.md) ("Decided 2026-09-05"), which is the durable version. The
-file-by-file implementation plan is at
-a private working note that is not in the repo — **outside the repo, so do not rely on
-it**; if it is gone, REDESIGN-PLAN.md carries every decision and its reasoning.
+file-by-file implementation plan was a private note and is not in the repo;
+REDESIGN-PLAN.md carries every decision and its reasoning.
 
 **The requirement.** The employee account is being retired and finance takes over its work
 outright — an accepted takeover, the user's words. Separately, finance should be able to attempt
@@ -1814,7 +1811,5 @@ The other pre-live items, in rough order of cost-to-skip:
 - **[REDESIGN-PLAN.md](REDESIGN-PLAN.md)** — the phase plan (1-7 built, **8 in progress**, **11 partly built — Parts 1 and 3 done, Part 2's foundation only**), with verification steps and, importantly, the alternatives that were rejected and why. **The main document for continuing work.** Its Phase 8 section records two things you will otherwise re-derive wrongly: why the SQLite file cannot live on Google Drive, and why the "SQLite stays" hosting decision was reversed. Its "Decided 2026-09-05" section carries Phase 11 in full — including why `user:manage` and `backup:manage` must never become approvable, and why the approval path cannot call an exported core from a `"use server"` file. Its **"Decided 2026-09-08"** section carries Phase 12, the delivery challan — why it extends Dispatch rather than standing alone, why the number needed a counter table rather than `max()+1`, what was dropped from the client's supplied format and why (HSN/SAC, letterhead), and the three rules a later reader will be tempted to soften. Its **"Follow-up, same day"** sub-section under Phase 12 carries the three styling rounds after that — the navy template match, the real logo and company details, and the page-density rework — plus why the browser's own print header/footer is out of this codebase's reach.
 - **`delivery-challan-format.pdf`** (repo root, **gitignored — not in the repository**, so this is deliberately not a link) — the challan layout supplied by the client, and the reference for Phase 12. A generic GST-style challan. It is an input to the work rather than part of it, and sits alongside the client's `Current Stock (1).xlsx`, ignored for the same reason. Ask the client for a copy if you need it. The built sheet follows it except where the written brief disagreed — see the decision table in REDESIGN-PLAN.md. The client's actual logo file lives at [public/logo.png](public/logo.png) (moved there from the repo root, where it arrived as `Logo.png`).
 - [.env.example](.env.example) — every environment variable the app reads, with the consequence of getting each one wrong.
-- a private working note that is not in the repo — the Phase 7/8 working checklist. **Outside the repo**, so it is not a durable record; REDESIGN-PLAN.md's phase sections are.
-- a private working note that is not in the repo — the Phase 11 implementation plan: file-by-file changes, the staged sequence, and the end-to-end verification script. **Outside the repo**, same caveat — REDESIGN-PLAN.md's "Decided 2026-09-05" section holds every decision and its reasoning, and is what to trust if the two disagree or the file is missing.
 - [inventory_management.md.txt](inventory_management.md.txt) — the original problem statement the project was built from.
 - [storeroom-heavy-stock-plan.md](storeroom-heavy-stock-plan.md) — physical storage plan for heavy and humidity-sensitive stock (racking spec, VCI/sealed-case protection). Procurement and physical handling only; no bearing on the code.

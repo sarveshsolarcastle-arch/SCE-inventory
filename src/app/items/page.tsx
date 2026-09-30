@@ -1,3 +1,10 @@
+/* Items list (/items): the catalogue, with search and sorting.
+ *
+ * Sorting is a whitelist (SORT_FIELDS) so a `?sort=` value can never name an
+ * arbitrary column. Searching is "forgiving" (src/lib/itemSearch.ts: plurals,
+ * typos, "did you mean"), which cannot be expressed as SQL, so when a search term
+ * is present the sorted list is loaded and filtered in memory.
+ */
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/permissions";

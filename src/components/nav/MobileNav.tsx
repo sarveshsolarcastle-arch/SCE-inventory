@@ -1,3 +1,9 @@
+/* The slide-out sidebar for phones and narrow windows.
+ *
+ * Client component because it owns open/closed state. It renders the very same
+ * SidebarNav the desktop layout uses, so the two menus cannot drift apart. Closes on
+ * Escape, on a click on the dark backdrop, and after choosing a link.
+ */
 "use client";
 
 import { useEffect, useState } from "react";

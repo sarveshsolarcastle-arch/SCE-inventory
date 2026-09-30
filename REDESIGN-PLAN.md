@@ -1599,9 +1599,8 @@ while production is fine — the classic setup for a wrong "fix".
 ## Full plan
 
 The step-by-step implementation plan, with the primitives table, file paths and the risk
-register, lives outside the repo at
-a private working note that is not in the repo.
-**This section is the durable record**; that file is the working checklist. When Phase 7 is
+register, was a private working checklist and is not in the repo.
+**This section is the durable record.** When Phase 7 is
 built, this section gains an "as built" note like every other phase, and the deviations get
 recorded here.
 
@@ -2305,9 +2304,8 @@ it is **finance requesting, admin approving**, not the reverse. The out-of-scope
 struck through accordingly.
 
 Three separable changes, deliberately sized and shipped apart because their risk profiles are
-nothing alike. The full implementation plan — file-by-file, with the staged sequence — lives at
-a private working note that is not in the repo. **That file is outside the repo and is
-therefore not durable; this section is the record.**
+nothing alike. The full implementation plan — file-by-file, with the staged sequence — was a private working note and is not in the repo;
+**this section is the record.**
 
 ### Part 1 — fold EMPLOYEE into FINANCE (≈1 hour, no migration) ✅ BUILT
 

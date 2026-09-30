@@ -1,3 +1,10 @@
+/* Placement Suggestions (/shelf/suggestions).
+ *
+ * Read-only. The suggestions are computed on the fly from the last 30 days of ISSUE
+ * transactions (src/lib/suggestions.ts); there is no table behind this page. A
+ * busy item that is not in an easy-to-reach front-row slot is suggested for a swap
+ * with a quieter item that currently sits in front.
+ */
 import Link from "next/link";
 import { getPlacementSuggestions } from "@/lib/suggestions";
 import PageHeader from "@/components/ui/PageHeader";

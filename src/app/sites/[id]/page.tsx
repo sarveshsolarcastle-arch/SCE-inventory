@@ -1,3 +1,12 @@
+/* One site (/sites/[id]); a site is a project. Shows the customer and address
+ * printed on its challans, what the site currently holds, the activity feed, and the
+ * edit/delete controls.
+ *
+ * What a site holds is DERIVED by replaying the ledger (src/lib/siteBalance.ts); it
+ * is never stored. The activity feed groups the rows of one batch under one line so
+ * a 15-item dispatch is not a wall of entries. Edit and delete run through
+ * `runOrRequest`, so a Finance user sees "request" wording instead of "do it".
+ */
 import { Pencil, Clock, Printer, FileText, PackagePlus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { updateSite } from "@/lib/actions/sites";

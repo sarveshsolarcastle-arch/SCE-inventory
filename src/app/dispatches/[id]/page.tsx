@@ -1,3 +1,9 @@
+/* One dispatch (/dispatches/[id]): the header (challan number, site, who and
+ * when), every line that went out, any reversals, and the buttons to print the
+ * challan or ask for / perform a reversal. A dispatch is the group of ISSUE
+ * transactions written by one batch Stock_Out; reversed lines are shown struck
+ * through here but never print on the challan.
+ */
 import { Printer, Undo2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { capabilityMode, currentUser, requireCapability } from "@/lib/permissions";

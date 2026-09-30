@@ -1,3 +1,7 @@
+/* Shelf list (/shelf): every physical shelf unit, with a link to its 2D map.
+ * Creating a shelf needs `shelf:manage`; Finance may only request it, which is why
+ * the button's wording comes from `capabilityMode` (do / request / none).
+ */
 import Link from "next/link";
 import { LayoutGrid } from "lucide-react";
 import { prisma } from "@/lib/prisma";

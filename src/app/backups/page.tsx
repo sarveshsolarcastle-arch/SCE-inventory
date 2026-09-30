@@ -1,3 +1,11 @@
+/* Backups (/backups), admin only (`backup:manage`).
+ *
+ * Lists the nightly database dumps that the GitHub Actions workflow commits to the
+ * repo's `backups` branch (read back through src/lib/backup/github.ts), with a
+ * Restore button per row, a download of a fresh dump, and a restore-from-file
+ * fallback for when GitHub is unreachable. Restore replaces EVERY table; see
+ * src/lib/backup/restore.ts for the safety copy and rollback it performs.
+ */
 import { redirect } from "next/navigation";
 import { Download, DatabaseBackup } from "lucide-react";
 import { can, currentUser } from "@/lib/permissions";

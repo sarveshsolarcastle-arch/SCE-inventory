@@ -1,3 +1,8 @@
+/* My Account (/account): every signed-in user may change their OWN password
+ * here. Not a capability, because gating it would be wrong. Also shows, in plain
+ * words, what the user's role can and cannot do; keep ROLE_BLURB in step with
+ * capabilities.ts.
+ */
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/permissions";
 import { changeOwnPassword } from "@/lib/actions/users";

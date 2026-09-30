@@ -1,3 +1,8 @@
+/* A dashboard number card: label, big value, optional note and icon, and a thin
+ * coloured top edge chosen by `tone` (ok / warn / danger / info / special / neutral).
+ * Becomes a link when given an `href`. `alert` makes an attention-worthy card stand
+ * out (for example a low-stock count above zero).
+ */
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { BadgeTone } from "./tones";

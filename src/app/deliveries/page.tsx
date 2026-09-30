@@ -1,3 +1,7 @@
+/* Stock_In ledger (/deliveries): every delivery received into the store, newest
+ * first, 50 per page. Direct-to-site deliveries are a separate paper-only feature
+ * with their own ledger at /site-deliveries, so they are filtered out here.
+ */
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { can, currentUser, requireCapability } from "@/lib/permissions";

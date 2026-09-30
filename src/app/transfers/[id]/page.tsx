@@ -1,3 +1,7 @@
+/* One transfer (/transfers/[id]): origin and destination sites, its lines, any
+ * reversal, and links to the printable transfer challan (series SCE/TC/...).
+ * Reversal goes through the approval queue for roles that may only request it.
+ */
 import { Printer, Undo2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { capabilityMode, currentUser, requireCapability } from "@/lib/permissions";

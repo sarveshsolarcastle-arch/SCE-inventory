@@ -1,3 +1,7 @@
+/* Transfer ledger (/transfers): every site-to-site transfer batch, newest first,
+ * 50 per page. A transfer moves material from one site's holding to another's
+ * without touching the store. Needs `ledger:view`.
+ */
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/permissions";

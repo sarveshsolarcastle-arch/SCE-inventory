@@ -1,3 +1,8 @@
+/* Stock_Out ledger (/dispatches): every batch dispatch to a site, newest first,
+ * 50 per page. Pagination uses src/lib/pagination.ts; `clampPage` pulls a
+ * too-large `?page=` back to the last real page instead of showing an empty table.
+ * Needs `ledger:view`.
+ */
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireCapability } from "@/lib/permissions";

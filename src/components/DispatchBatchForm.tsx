@@ -1,3 +1,16 @@
+/* The Stock_Out (batch dispatch to a site) form, the busiest screen in the app.
+ *
+ * Rows can be typed or pasted from Excel (src/lib/dispatchPaste.ts parses the paste,
+ * src/lib/matching.ts matches each typed name to a catalogue item and flags
+ * unmatched / ambiguous / "did you mean" rows). For every row the allocation
+ * planner (src/lib/allocation.ts, pure) previews which packs would be cut, and
+ * warns when a sealed pack would have to be opened. Submitting calls `recordDispatch`,
+ * which RE-PLANS on the server inside the transaction: the preview is advice, not
+ * a promise, because stock may move while the form is open.
+ *
+ * With `stockInFirst` the same form backs "Stock_In & Stock_Out": it first records
+ * a delivery for exactly what was entered, then dispatches it.
+ */
 "use client";
 
 import { recordStockInThenDispatch } from "@/lib/actions/stockInThenDispatch";
@@ -58,9 +71,6 @@ type DispatchRowState = {
   /** The Remarks column on the printed challan. Not part of `isBlank`: a
    * remark with no item and no quantity is not a line to dispatch. */
   remark: string;
-  /** Reset to false on every edit — a stale approval must not survive a
-   * change to what it was approving. */
-  acknowledgedOpen: boolean;
 };
 
 let keyCounter = 0;
@@ -77,7 +87,6 @@ function makeBlankRow(): DispatchRowState {
     loose: "",
     pieces: [],
     remark: "",
-    acknowledgedOpen: false,
   };
 }
 
@@ -232,7 +241,7 @@ export default function DispatchBatchForm({
   function updateRow(key: string, patch: Partial<DispatchRowState>) {
     setRows((prev) =>
       prev.map((r) =>
-        r.key === key ? { ...r, ...patch, acknowledgedOpen: patch.acknowledgedOpen ?? false } : r
+        r.key === key ? { ...r, ...patch } : r
       )
     );
   }
@@ -246,7 +255,6 @@ export default function DispatchBatchForm({
           ...r,
           manualItemId: itemId,
           itemQuery: item ? `${item.name} (${item.sku})` : r.itemQuery,
-          acknowledgedOpen: false,
         };
         return item ? { ...patched, ...defaultQuantityPatch(patched, item) } : patched;
       })
@@ -407,7 +415,6 @@ export default function DispatchBatchForm({
             onChoose={(id) => chooseItem(row.key, id)}
             onQuery={(q) => updateRow(row.key, { itemQuery: q, manualItemId: null })}
             onUpdate={(patch) => updateRow(row.key, patch)}
-            onAcknowledge={() => updateRow(row.key, { acknowledgedOpen: true })}
             onRemove={() => removeRow(row.key)}
           />
         ))}
@@ -450,7 +457,6 @@ function DispatchRowCard({
   onChoose,
   onQuery,
   onUpdate,
-  onAcknowledge,
   onRemove,
 }: {
   index: number;
@@ -463,7 +469,6 @@ function DispatchRowCard({
   onChoose: (itemId: string) => void;
   onQuery: (query: string) => void;
   onUpdate: (patch: Partial<DispatchRowState>) => void;
-  onAcknowledge: () => void;
   onRemove: () => void;
 }) {
   const isContinuous = item?.measure === "CONTINUOUS";
@@ -626,18 +631,11 @@ function DispatchRowCard({
               item is chosen, since there is nothing to remark on before that. */}
           <Input
             value={row.remark}
-            onChange={(e) =>
-              // acknowledgedOpen is carried through explicitly: updateRow clears
-              // it on every patch, because an edit invalidates a stale approval.
-              // A remark changes nothing about the packs being opened, so
-              // letting it clear the acknowledgement would silently re-block a
-              // row the user had already approved.
-              onUpdate({ remark: e.target.value, acknowledgedOpen: row.acknowledgedOpen })
-            }
+            onChange={(e) => onUpdate({ remark: e.target.value })}
             placeholder="Remarks for the challan (optional)"
           />
 
-          <PlanStatus item={item} plan={plan} total={total} acknowledged={row.acknowledgedOpen} onAcknowledge={onAcknowledge} />
+          <PlanStatus item={item} plan={plan} total={total} />
         </>
       )}
     </div>
@@ -648,14 +646,10 @@ function PlanStatus({
   item,
   plan,
   total,
-  acknowledged,
-  onAcknowledge,
 }: {
   item: FormItem;
   plan: AllocationPlan | undefined;
   total: number;
-  acknowledged: boolean;
-  onAcknowledge: () => void;
 }) {
   if (total <= 0) return null;
   if (!plan) return null;

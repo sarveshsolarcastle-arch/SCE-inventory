@@ -1,3 +1,10 @@
+/* The "what this site holds" panel on a site page, with the three things you can
+ * do to that material: CONSUME it (used up on the job), TRANSFER it to another site
+ * (batched, one destination, one challan), or FLAG it for pickup (awaiting collection
+ * back to the store). Consume and transfer draw on one shared `remaining` figure per
+ * row so the same quantity cannot be promised twice. All three call
+ * src/lib/actions/siteLifecycle.ts.
+ */
 "use client";
 
 import { useState, useTransition } from "react";

@@ -1,3 +1,9 @@
+/* The Stock_In (record a delivery) form. Pack size / pack count / loose fields per
+ * row, an Excel-paste path (src/lib/deliveryPaste.ts), supplier and reference.
+ * `mode` is fixed per page ("store" receives into the store, "site" is the older
+ * direct-to-site variant), so a person cannot flip it mid-form and put material in
+ * the wrong place. Submits to `recordDelivery` (src/lib/actions/deliveries.ts).
+ */
 "use client";
 
 import { useId, useMemo, useState, useTransition } from "react";

@@ -1,3 +1,8 @@
+/* A table header cell that sorts by a column. It is a plain link to
+ * `?sort=<key>&dir=<asc|desc>`: sort state lives in the URL, not in React state, so
+ * a sorted view can be bookmarked or shared. Other search params (filters, page)
+ * are carried over unchanged. The page itself must read `sort`/`dir` and apply them.
+ */
 import Link from "next/link";
 import type { ReactNode } from "react";
 

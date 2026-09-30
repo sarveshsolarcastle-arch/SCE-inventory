@@ -1,3 +1,10 @@
+/* New Item form (/items/new). Needs `item:manage`.
+ *
+ * Posts to `createItem` (src/lib/actions/items.ts). There is deliberately no
+ * "starting stock" field: stock only ever arrives through a recorded movement
+ * (a delivery), so every unit in the store has a ledger entry behind it. Validation
+ * errors come back as `?error=` and are shown at the top of the form.
+ */
 import { createItem } from "@/lib/actions/items";
 import PageHeader from "@/components/ui/PageHeader";
 import { Card, CardBody } from "@/components/ui/Card";

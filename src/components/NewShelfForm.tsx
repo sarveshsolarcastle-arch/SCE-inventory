@@ -1,3 +1,8 @@
+/* Two-step wizard for creating a shelf: (1) name and size, (2) click each box to
+ * cycle it through Fresh, Opened, Recyclable to match the physical shelf. The chosen
+ * layout is submitted as one map of slot key to box type. `mode` only changes what
+ * the final button says ("Create" vs "Request"); the server decides which happens.
+ */
 "use client";
 
 import { useState } from "react";

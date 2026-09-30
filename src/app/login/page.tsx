@@ -1,3 +1,10 @@
+/* Sign-in page (/login).
+ *
+ * The `login` server action hands the form to NextAuth's credentials provider
+ * (src/lib/auth.ts). A wrong email or password becomes `?error=1`, which the page
+ * renders as a generic message; it deliberately does not say WHICH field was wrong.
+ * proxy.ts sends anyone already signed in straight on to /dashboard.
+ */
 import { signIn } from "@/lib/auth";
 import { AuthError } from "next-auth";
 import { redirect } from "next/navigation";

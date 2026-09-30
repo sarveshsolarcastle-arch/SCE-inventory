@@ -1,3 +1,8 @@
+/* One item (/items/[id]): its details, where it sits on the shelves, its sealed
+ * packs (`PackStock`), its open packs and offcuts (`OpenPack`), the last 50
+ * movements, and the correction panel (stock count / reverse). Everything shown for
+ * stock is read from the packs, never from a stored total; see docs/ARCHITECTURE.md.
+ */
 import { Pencil, Clock } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { updateItem } from "@/lib/actions/items";

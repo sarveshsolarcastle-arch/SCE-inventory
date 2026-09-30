@@ -1,3 +1,8 @@
+/* Form building blocks: a labelled `Field` wrapper and the styled `Input`, `Select`
+ * and `Textarea`. They pass every native attribute straight through, so a `name`,
+ * `required` or `defaultValue` works exactly as on a plain element. `invalid` turns
+ * the border red. Use these instead of raw inputs so forms look consistent.
+ */
 import type {
   InputHTMLAttributes,
   ReactNode,
