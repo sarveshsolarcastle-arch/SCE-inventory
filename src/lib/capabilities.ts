@@ -37,6 +37,11 @@ export type Capability =
   // Adding a new site — split out of site:manage so FINANCE can create sites
   // directly without also being handed edit/delete.
   | "site:create"
+  // Removing a site — split out of site:manage for the same reason shelf:delete
+  // is split from shelf:manage. FINANCE holds site:manage (edit) outright, and
+  // a shared key would have handed it the delete in the same stroke. Stays
+  // approval-gated for FINANCE.
+  | "site:delete"
   | "shelf:manage"
   // Removing a shelf outright — admin only, and deliberately NOT folded into
   // `shelf:manage`. Relabelling a box and demolishing the shelf it sits on are
@@ -77,6 +82,7 @@ export const ALL_CAPABILITIES: readonly Capability[] = [
   "item:manage",
   "site:manage",
   "site:create",
+  "site:delete",
   "shelf:manage",
   "shelf:delete",
   "defect:flag",
@@ -99,6 +105,14 @@ export const CAPABILITIES: Record<Role, readonly Capability[]> = {
     "delivery:record",
     "item:manage",
     "site:create",
+    // Since 2026-09-30 finance also does, outright, what it used to ask for:
+    // edit a site, create/delete a shelf and relabel its boxes, and reverse a
+    // transaction, dispatch, transfer or delivery. Only site deletion and stock
+    // adjustment still go through an admin — see REQUESTABLE.
+    "site:manage",
+    "shelf:manage",
+    "shelf:delete",
+    "stock:reverse",
     "defect:flag",
     "defect:resolve",
     "ledger:view",
@@ -147,7 +161,7 @@ export const CAPABILITIES: Record<Role, readonly Capability[]> = {
 export const REQUESTABLE: Record<Role, readonly Capability[]> = {
   // An admin never requests; it would be asking itself.
   ADMIN: [],
-  FINANCE: ["site:manage", "shelf:manage", "shelf:delete", "stock:reverse", "stock:adjust"],
+  FINANCE: ["site:delete", "stock:adjust"],
   // The role is being retired. Giving it a new power on the way out makes no
   // sense.
   EMPLOYEE: [],

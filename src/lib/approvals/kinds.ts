@@ -53,7 +53,9 @@ export const OPERATION_KINDS: readonly OperationKind[] = [
 export const CAPABILITY_FOR_KIND: Record<OperationKind, Capability> = {
   "site.create": "site:create",
   "site.update": "site:manage",
-  "site.delete": "site:manage",
+  // NOT site:manage — finance holds that (edit) outright, and deleting a site
+  // is the one site operation that still needs an admin's say-so.
+  "site.delete": "site:delete",
   "shelf.create": "shelf:manage",
   // NOT shelf:manage — relabelling a box and demolishing the shelf it sits on
   // are different-sized actions, and the split exists so granting one never

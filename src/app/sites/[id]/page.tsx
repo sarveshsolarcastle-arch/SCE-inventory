@@ -110,6 +110,9 @@ export default async function SiteDetailPage({
     }),
   ]);
   const siteMode = capabilityMode(user?.role, "site:manage");
+  // Separate from siteMode: finance edits a site outright but still has to ask
+  // for the delete.
+  const deleteMode = capabilityMode(user?.role, "site:delete");
   const updateWithId = updateSite.bind(null, site.id);
 
   const flaggedByItem = new Map(pickups.map((p) => [p.itemId, p.quantity]));
@@ -236,9 +239,11 @@ export default async function SiteDetailPage({
                 )}
               </form>
 
-              <div className="mt-5 border-t border-line pt-4">
-                <DeleteSiteButton siteId={site.id} siteName={site.name} mode={siteMode} />
-              </div>
+              {deleteMode !== "none" && (
+                <div className="mt-5 border-t border-line pt-4">
+                  <DeleteSiteButton siteId={site.id} siteName={site.name} mode={deleteMode} />
+                </div>
+              )}
             </CardBody>
           </Card>
         ) : (

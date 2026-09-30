@@ -17,10 +17,10 @@ import { can, type Capability } from "@/lib/capabilities";
  * true on 2026-09-05, when the client retired the employee account and finance
  * took over its work outright. FINANCE is now the combined operational role.
  *
- * What still separates ADMIN is not volume of features but KIND: the two
- * operations that rewrite history (stock:reverse, stock:adjust), the three
- * that change structure (site:manage, shelf:manage, shelf:delete), plus
- * accounts and backups. Finance may REQUEST the first five; accounts and
+ * What still separates ADMIN, since 2026-09-30, is narrower: deleting a site
+ * (site:delete), adjusting stock after a count (stock:adjust), accounts and
+ * backups. Finance holds site:manage, shelf:manage, shelf:delete and
+ * stock:reverse outright, and may REQUEST the first two; accounts and
  * backups are requestable by nobody — see REQUESTABLE in capabilities.ts for
  * why that is a fact about `restoreDatabase` rather than a policy preference.
  *

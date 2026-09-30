@@ -108,14 +108,8 @@ test("the retired employee role gains nothing on its way out", () => {
   assert.deepEqual(REQUESTABLE.EMPLOYEE, []);
 });
 
-test("finance may request exactly the five structural and history-rewriting powers", () => {
-  assert.deepEqual([...REQUESTABLE.FINANCE].sort(), [
-    "shelf:delete",
-    "shelf:manage",
-    "site:manage",
-    "stock:adjust",
-    "stock:reverse",
-  ]);
+test("finance may request exactly site deletion and stock adjustment", () => {
+  assert.deepEqual([...REQUESTABLE.FINANCE].sort(), ["site:delete", "stock:adjust"]);
 });
 
 test("finance does the day-to-day stock work outright, not by asking", () => {
@@ -128,6 +122,10 @@ test("finance does the day-to-day stock work outright, not by asking", () => {
     "site:pickup",
     "item:manage",
     "site:create",
+    "site:manage",
+    "shelf:manage",
+    "shelf:delete",
+    "stock:reverse",
   ];
   for (const capability of outright) {
     assert.equal(capabilityMode("FINANCE", capability), "do", capability);
@@ -135,16 +133,21 @@ test("finance does the day-to-day stock work outright, not by asking", () => {
 });
 
 test("capabilityMode collapses the three cases the pages care about", () => {
-  assert.equal(capabilityMode("ADMIN", "site:manage"), "do");
-  assert.equal(capabilityMode("FINANCE", "site:manage"), "request");
-  assert.equal(capabilityMode("EMPLOYEE", "site:manage"), "none");
+  assert.equal(capabilityMode("ADMIN", "site:delete"), "do");
+  assert.equal(capabilityMode("FINANCE", "site:delete"), "request");
+  assert.equal(capabilityMode("EMPLOYEE", "site:delete"), "none");
   assert.equal(capabilityMode("FINANCE", "user:manage"), "none");
   assert.equal(capabilityMode(undefined, "ledger:view"), "none");
 });
 
+test("finance still has to ask for stock adjustment and site deletion", () => {
+  assert.equal(capabilityMode("FINANCE", "stock:adjust"), "request");
+  assert.equal(capabilityMode("FINANCE", "site:delete"), "request");
+});
+
 test("no role at all can do or request anything", () => {
   assert.equal(can(undefined, "ledger:view"), false);
-  assert.equal(canRequest(undefined, "site:manage"), false);
+  assert.equal(canRequest(undefined, "site:delete"), false);
 });
 
 test("every role has somewhere to land", () => {

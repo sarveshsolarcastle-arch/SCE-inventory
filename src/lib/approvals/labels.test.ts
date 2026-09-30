@@ -100,10 +100,10 @@ test("ControlMode and CapabilityMode are the same three modes", () => {
 
   assert.deepEqual(toCapability, ["do", "request", "none"]);
   // And the producer really does only ever return those three.
-  assert.equal(capabilityMode("ADMIN", "site:manage"), "do");
-  assert.equal(capabilityMode("FINANCE", "site:manage"), "request");
+  assert.equal(capabilityMode("ADMIN", "site:delete"), "do");
+  assert.equal(capabilityMode("FINANCE", "site:delete"), "request");
   assert.equal(capabilityMode("FINANCE", "user:manage"), "none");
-  assert.equal(capabilityMode(undefined, "site:manage"), "none");
+  assert.equal(capabilityMode(undefined, "site:delete"), "none");
 });
 
 test("the prefix is never composed twice", () => {

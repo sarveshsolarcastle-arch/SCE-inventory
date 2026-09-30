@@ -28,6 +28,12 @@ test("every operation kind has a capability, and no orphans either way", () => {
   assert.equal(Object.keys(CAPABILITY_FOR_KIND).length, OPERATION_KINDS.length);
 });
 
+test("site.delete needs site:delete, not site:manage", () => {
+  // Finance edits a site outright; the delete is the part it still asks for.
+  assert.equal(CAPABILITY_FOR_KIND["site.delete"], "site:delete");
+  assert.equal(CAPABILITY_FOR_KIND["site.update"], "site:manage");
+});
+
 test("shelf.delete needs shelf:delete, not shelf:manage", () => {
   // The split exists so granting the relabel never silently grants the demolish.
   assert.equal(CAPABILITY_FOR_KIND["shelf.delete"], "shelf:delete");
@@ -61,10 +67,24 @@ test("THE INVARIANT: every operation is one that somebody can actually request",
   // does. The registry entry would be dead weight that still LOOKS like part
   // of the feature — which is worse than not being there.
   const requestable = new Set(ROLES.flatMap((role) => REQUESTABLE[role]));
-  // site.create stopped needing approval on 2026-09-30 (FINANCE now holds
-  // site:create outright). The kind stays registered only so requests already
-  // in the queue from before then can still be approved or rejected.
-  const noLongerRequested = new Set<string>(["site.create"]);
+  // These stopped needing approval on 2026-09-30 (FINANCE now holds
+  // site:create, site:manage, shelf:manage, shelf:delete and stock:reverse
+  // outright). The kinds stay registered only so requests already in the queue
+  // from before then can still be approved or rejected. Only site.delete and
+  // stock.adjust still reach the approval path.
+  const noLongerRequested = new Set<string>([
+    "site.create",
+    "site.update",
+    "shelf.create",
+    "shelf.delete",
+    "shelf.slot.boxType",
+    "shelf.slot.item",
+    "shelf.slot.frontRow",
+    "stock.reverseTransaction",
+    "stock.reverseDispatch",
+    "stock.reverseTransfer",
+    "stock.reverseDelivery",
+  ]);
   for (const kind of OPERATION_KINDS) {
     if (noLongerRequested.has(kind)) continue;
     assert.ok(

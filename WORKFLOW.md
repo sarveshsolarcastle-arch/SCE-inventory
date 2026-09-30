@@ -39,11 +39,14 @@ Two consequences, and both are load-bearing:
 - **It means separation of duties is a review control, not a gate.** The compensating control
   is the attribution review in §10.3. Skip that and the split is nothing but habit.
 
-**Admin sits in the path of exactly five things**, and nothing else in daily operations:
+**Admin sits in the path of exactly two things**, and nothing else in daily operations:
 
-`site:manage` · `shelf:manage` · `shelf:delete` · `stock:reverse` · `stock:adjust`
+`site:delete` · `stock:adjust`
 
-Finance may **request** all five through the approval queue. Two capabilities —
+Finance may **request** both through the approval queue. Everything else that used to need
+approval — editing a site, creating/deleting a shelf, relabelling boxes, and reversing a
+transaction, dispatch, transfer or delivery — Finance now does directly (since 2026-09-30).
+Two capabilities —
 `user:manage` and `backup:manage` — are requestable by **nobody**, by design, permanently.
 Do not add them: an approval flow that can mint an admin is not an approval flow, and an
 approved database restore would delete the very row that authorised it.
