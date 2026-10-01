@@ -106,7 +106,13 @@ export default async function SiteMaterialStatementPage({
           projectCode: site.projectCode,
           phone: site.phone,
         }}
-        shipTo={{ name: site.name, address: site.address || site.location, phone: site.phone }}
+        shipTo={{
+          // The billing name, like `party` above — the site's own name is an
+          // internal label and is only the fallback when none is recorded.
+          name: site.customerName || site.name,
+          address: site.address || site.location,
+          phone: site.phone,
+        }}
         lines={lines}
         issuedBy={user.name ?? "—"}
         reference={null}

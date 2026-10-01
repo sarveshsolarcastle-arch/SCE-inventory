@@ -92,7 +92,7 @@ export function parseSiteCreateArgs(raw: unknown): SiteCreateArgs {
   return {
     name: str(o.name, "Name"),
     location: optionalStr(o.location, "Location"),
-    customerName: optionalStr(o.customerName, "Customer name"),
+    customerName: optionalStr(o.customerName, "Billing name"),
     address: optionalStr(o.address, "Address"),
     projectCode: optionalStr(o.projectCode, "Project ID"),
     phone: optionalStr(o.phone, "Phone number"),

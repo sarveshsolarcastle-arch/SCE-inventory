@@ -208,7 +208,7 @@ export default async function SiteDetailPage({
                 {/* The three below are what a delivery challan prints. They are
                     kept separate from `location`, which has to stay short
                     enough to read inside a <select>. */}
-                <Field label="Customer / party name">
+                <Field label="Billing name">
                   <Input name="customerName" defaultValue={site.customerName ?? ""} />
                 </Field>
                 <Field label="Delivery address">

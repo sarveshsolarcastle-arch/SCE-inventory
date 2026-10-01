@@ -104,7 +104,8 @@ export default async function TransferChallanPage({
           projectCode: null,
         }}
         shipTo={{
-          name: toSite.name,
+          // Billing name first; the site's own name only when none is recorded.
+          name: toSite.customerName || toSite.name,
           address: toSite.address || toSite.location,
           // The DESTINATION site's number — the only party block left on this
           // sheet now that "Transfer From" is hidden.

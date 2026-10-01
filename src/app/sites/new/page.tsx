@@ -27,7 +27,7 @@ export default async function NewSitePage() {
             </Field>
             {/* The delivery challan prints these three. All optional — a site
                 can be created now and given its paperwork details later. */}
-            <Field label="Customer / party name">
+            <Field label="Billing name">
               <Input name="customerName" />
             </Field>
             <Field label="Delivery address">
