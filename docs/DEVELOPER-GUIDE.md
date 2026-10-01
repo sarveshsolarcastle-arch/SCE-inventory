@@ -99,7 +99,8 @@ See the header of `src/lib/approvals/registry.ts`. In short: add a kind and argu
 `kinds.ts`, a parser in `args.ts`, the operation in `ops/`, register it in `registry.ts`, add its
 one-line summary in `summary.ts` and the pages to refresh in `revalidate.ts`, then call it from
 the action with `runOrRequest("your.kind", args)`. `args.test.ts` has an invariant that every
-kind must be requestable by some role.
+kind must be requestable by some role, except the kinds listed in its `noLongerRequested` set
+(operations Finance now holds outright; kept registered for queued requests).
 
 ### Change the database schema
 

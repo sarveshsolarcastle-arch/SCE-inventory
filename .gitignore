@@ -69,3 +69,7 @@ next-env.d.ts
 # fresh clone without the source sheet to hand.
 /scripts/stock-import.json
 /scripts/stock-shelf-locations.md
+
+# The client's real stock list, input to a one-off 2026-09 script. Kept out of the
+# repository on purpose; see scripts/README.md.
+/scripts/stock-import-2026-09.json

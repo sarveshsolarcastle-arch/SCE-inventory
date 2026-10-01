@@ -51,7 +51,7 @@ Seeded logins (**development only — never leave these on a real deployment**):
 | Email | Password | Role |
 |---|---|---|
 | `admin@example.com` | `admin123` | Admin — everything |
-| `finance@example.com` | `finance123` | Finance — day-to-day stock work; asks an admin for the rest |
+| `finance@example.com` | `finance123` | Finance — day-to-day work including site edits, shelves and reversals; asks an admin only to delete a site or adjust stock |
 | `employee@example.com` | `employee123` | Retired role, kept so old logins still work |
 
 Useful commands:
@@ -118,9 +118,13 @@ docs/             the handover documents listed above
 
 - **Production data is real.** The hosted database holds the company's actual stock. Scripts
   under `scripts/` that touch it require a typed confirmation argument on purpose.
-- **Roles.** `ADMIN` and `FINANCE` are the two active roles. Finance may *request* the
-  admin-only actions (edit/delete sites, shelf changes, reversals, stock counts); an admin
-  approves at `/approvals` and the work then runs. Accounts and backups are admin-only and
-  deliberately outside the approval queue — see `src/lib/capabilities.ts`.
+- **Roles.** `ADMIN` and `FINANCE` are the two active roles. Since 2026-09-30 Finance does
+  most things outright: receiving and dispatching stock, creating and editing sites, shelf
+  work, and reversals. Only **deleting a site** and **stock-count adjustments** still go
+  through the approval queue: Finance *requests*, an admin approves at `/approvals`, and the
+  work then runs. Accounts and backups are admin-only and deliberately outside the queue.
+  The authoritative tables are in `src/lib/capabilities.ts`; the machinery for the queue is
+  kept (and older requests can still be decided) so a capability can be moved back behind
+  approval by editing that one file.
 - **`vercel.json` pins the region to `bom1`.** It looks like boilerplate. It is not: the
   database is in Mumbai and every SQL statement pays the round trip.

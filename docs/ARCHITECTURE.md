@@ -77,7 +77,10 @@ meantime — and refuses if more packs need opening than the user saw.
 ### 5. The approval queue
 
 A **Finance** user who tries something only an admin may do gets an `ApprovalRequest` row instead
-of a refusal. An admin sees it at `/approvals`, with a live check of what would happen *now*, and
+of a refusal. (Today that applies to two things only, **site deletion** and **stock adjustment**:
+the other operations in the registry were moved to outright Finance permission on 2026-09-30 but
+are kept registered so requests already queued can still be decided, and so a capability can be
+put back behind approval by changing `REQUESTABLE` alone.) An admin sees it at `/approvals`, with a live check of what would happen *now*, and
 approving **runs the operation** as the requester.
 
 - `kinds.ts` — the list of request types and their argument shapes (pure).

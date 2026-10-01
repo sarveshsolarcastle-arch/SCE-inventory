@@ -34,7 +34,7 @@ assumptions (exact item names, a database in a particular state) no longer hold.
 
 | Script | Purpose |
 |---|---|
-| `replace-stock-2026-09.ts` (+ `stock-import-2026-09.json`, `build-stock-import-2026-09.py`) | Replaced the whole catalogue and opening stock with the client's updated sheet. |
+| `replace-stock-2026-09.ts` (+ `build-stock-import-2026-09.py`) | Replaced the whole catalogue and opening stock with the client's updated sheet. Its input, `stock-import-2026-09.json`, is the client's real stock list and is deliberately **not in the repository**; ask the company for a copy if you ever need to study it. |
 | `apply-stock-corrections-2026-09-21.ts` | Applied the client's renames, splits and new items after a recount. |
 | `apply-stock-deliveries-2026-09-21.ts` | Added three delivery lists as additive stock. |
 | `apply-backfill-dispatches-2026-09-21.ts` | Backfilled the first ledger entries: material that had gone straight out to sites. |

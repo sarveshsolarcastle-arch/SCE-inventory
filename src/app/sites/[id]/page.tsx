@@ -4,8 +4,9 @@
  *
  * What a site holds is DERIVED by replaying the ledger (src/lib/siteBalance.ts); it
  * is never stored. The activity feed groups the rows of one batch under one line so
- * a 15-item dispatch is not a wall of entries. Edit and delete run through
- * `runOrRequest`, so a Finance user sees "request" wording instead of "do it".
+ * a 15-item dispatch is not a wall of entries. Editing is done outright by Finance
+ * and admins; deleting runs through `runOrRequest`, so a Finance user sees "request"
+ * wording there instead of "do it".
  */
 import { Pencil, Clock, Printer, FileText, PackagePlus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
