@@ -7,6 +7,8 @@
 "use client";
 
 import { useId, useMemo, useState, useTransition } from "react";
+import { asString, useFormDraft } from "@/lib/useFormDraft";
+import DraftNotice from "@/components/DraftNotice";
 import { useRouter } from "next/navigation";
 import {
   recordDelivery,
@@ -68,6 +70,22 @@ function blankRow(): RowState {
     packCount: "",
     loose: "",
     defectiveQty: "",
+  };
+}
+
+/** A row read back from a saved draft - see restoreRow in DispatchBatchForm
+ * for why every field is checked, an unknown item id is dropped, and the key
+ * is always fresh. */
+function restoreRow(raw: Partial<RowState>, itemIds: Set<string>): RowState {
+  return {
+    ...blankRow(),
+    sourceText: asString(raw.sourceText),
+    itemQuery: asString(raw.itemQuery),
+    itemId: typeof raw.itemId === "string" && itemIds.has(raw.itemId) ? raw.itemId : "",
+    packSize: asString(raw.packSize),
+    packCount: asString(raw.packCount),
+    loose: asString(raw.loose),
+    defectiveQty: asString(raw.defectiveQty),
   };
 }
 
@@ -145,6 +163,51 @@ export default function DeliveryForm({
   const [rows, setRows] = useState<RowState[]>(() => [blankRow(), blankRow(), blankRow()]);
   const [error, setError] = useState<string | null>(null);
   const [rowErrors, setRowErrors] = useState<Map<number, string[]>>(new Map());
+
+  // Survives leaving the page - typically to register the item just found -
+  // and a reload. Store and site deliveries are separate drafts.
+  const draft = useFormDraft(
+    `delivery:${mode}`,
+    { reference, supplier, note, siteId, deliveredBy, receivedBy, rows },
+    rows.every(isBlank) &&
+      !reference &&
+      !supplier &&
+      !note &&
+      !siteId &&
+      !deliveredBy &&
+      !receivedBy,
+    (saved) => {
+      const itemIds = new Set(items.map((i) => i.id));
+      setReference(asString(saved.reference));
+      setSupplier(asString(saved.supplier));
+      setNote(asString(saved.note));
+      if (typeof saved.siteId === "string" && sites.some((s) => s.id === saved.siteId)) {
+        setSiteId(saved.siteId);
+      }
+      setDeliveredBy(asString(saved.deliveredBy));
+      setReceivedBy(asString(saved.receivedBy));
+      if (Array.isArray(saved.rows) && saved.rows.length > 0) {
+        setRows(
+          (saved.rows as unknown[])
+            .filter((r): r is Partial<RowState> => !!r && typeof r === "object")
+            .map((r) => restoreRow(r, itemIds))
+        );
+      }
+    }
+  );
+
+  function startOver() {
+    draft.discard();
+    setReference("");
+    setSupplier("");
+    setNote("");
+    setSiteId("");
+    setDeliveredBy("");
+    setReceivedBy("");
+    setRows([blankRow(), blankRow(), blankRow()]);
+    setError(null);
+    setRowErrors(new Map());
+  }
 
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   const resolutions = useMemo(
@@ -252,6 +315,7 @@ export default function DeliveryForm({
       });
 
       if (result.ok) {
+        draft.clear();
         router.push(`/deliveries/${result.deliveryId}`);
         router.refresh();
         return;
@@ -269,6 +333,7 @@ export default function DeliveryForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {draft.restored && <DraftNotice onDiscard={startOver} />}
       {error && <Alert tone="danger">{error}</Alert>}
 
       <Card>

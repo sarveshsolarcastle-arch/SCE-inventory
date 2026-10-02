@@ -16,6 +16,8 @@
 import { recordStockInThenDispatch } from "@/lib/actions/stockInThenDispatch";
 
 import { useMemo, useState, useTransition } from "react";
+import { asString, useFormDraft } from "@/lib/useFormDraft";
+import DraftNotice from "@/components/DraftNotice";
 import { useRouter } from "next/navigation";
 import {
   recordDispatch,
@@ -87,6 +89,34 @@ function makeBlankRow(): DispatchRowState {
     loose: "",
     pieces: [],
     remark: "",
+  };
+}
+
+/** A row read back from a saved draft. Every field is checked, because the
+ * draft is unvalidated JSON that may predate a deploy — and an item id is only
+ * kept if that item still exists, otherwise the typed name is left to match
+ * afresh. Always gets a new key: the counter above restarts on a reload, so a
+ * saved key could collide with one handed out later. */
+function restoreRow(raw: Partial<DispatchRowState>, itemIds: Set<string>): DispatchRowState {
+  return {
+    ...makeBlankRow(),
+    sourceText: asString(raw.sourceText),
+    itemQuery: asString(raw.itemQuery),
+    manualItemId:
+      typeof raw.manualItemId === "string" && itemIds.has(raw.manualItemId)
+        ? raw.manualItemId
+        : null,
+    parsedQuantity: typeof raw.parsedQuantity === "number" ? raw.parsedQuantity : null,
+    sealedSize: asString(raw.sealedSize),
+    sealedCount: asString(raw.sealedCount),
+    loose: asString(raw.loose),
+    pieces: Array.isArray(raw.pieces)
+      ? raw.pieces.filter(
+          (p): p is Piece =>
+            !!p && typeof p.length === "number" && typeof p.count === "number"
+        )
+      : [],
+    remark: asString(raw.remark),
   };
 }
 
@@ -178,9 +208,9 @@ export default function DispatchBatchForm({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  const [siteId, setSiteId] = useState(
-    defaultSiteId && sites.some((s) => s.id === defaultSiteId) ? defaultSiteId : ""
-  );
+  const initialSiteId =
+    defaultSiteId && sites.some((s) => s.id === defaultSiteId) ? defaultSiteId : "";
+  const [siteId, setSiteId] = useState(initialSiteId);
   const [reference, setReference] = useState("");
   // Stock_In & Stock_Out only: the Stock_In half is a real receipt, and the
   // Stock_In ledger has a Supplier column that stays "—" unless it is asked.
@@ -195,6 +225,53 @@ export default function DispatchBatchForm({
   );
   const [error, setError] = useState<string | null>(null);
   const [errorRowKey, setErrorRowKey] = useState<string | null>(null);
+
+  // The half-filled form survives leaving the page — typically to register an
+  // item found mid-entry — and a reload. One draft per entry point, so a form
+  // opened from a site's page never inherits the general form's site.
+  const draft = useFormDraft(
+    `dispatch:${stockInFirst ? "stockin" : "plain"}:${defaultSiteId ?? ""}`,
+    { siteId, reference, supplier, note, deliveredBy, receivedBy, rows },
+    rows.every(isBlank) &&
+      !rows.some((r) => r.remark.trim()) &&
+      siteId === initialSiteId &&
+      !reference &&
+      !supplier &&
+      !note &&
+      !deliveredBy &&
+      !receivedBy,
+    (saved) => {
+      const itemIds = new Set(items.map((i) => i.id));
+      if (typeof saved.siteId === "string" && sites.some((s) => s.id === saved.siteId)) {
+        setSiteId(saved.siteId);
+      }
+      setReference(asString(saved.reference));
+      setSupplier(asString(saved.supplier));
+      setNote(asString(saved.note));
+      setDeliveredBy(asString(saved.deliveredBy));
+      setReceivedBy(asString(saved.receivedBy));
+      if (Array.isArray(saved.rows) && saved.rows.length > 0) {
+        setRows(
+          (saved.rows as unknown[])
+            .filter((r): r is Partial<DispatchRowState> => !!r && typeof r === "object")
+            .map((r) => restoreRow(r, itemIds))
+        );
+      }
+    }
+  );
+
+  function startOver() {
+    draft.discard();
+    setSiteId(initialSiteId);
+    setReference("");
+    setSupplier("");
+    setNote("");
+    setDeliveredBy("");
+    setReceivedBy("");
+    setRows(Array.from({ length: stockInFirst ? 3 : 15 }, makeBlankRow));
+    setError(null);
+    setErrorRowKey(null);
+  }
 
   const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   const rules = useMemo(
@@ -337,6 +414,7 @@ export default function DispatchBatchForm({
         lines,
       });
       if (result.ok) {
+        draft.clear();
         router.push(`/dispatches/${result.dispatchId}`);
         router.refresh();
       } else {
@@ -348,6 +426,7 @@ export default function DispatchBatchForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {draft.restored && <DraftNotice onDiscard={startOver} />}
       {error && <Alert tone="danger">{error}</Alert>}
 
       <div className="grid gap-3 sm:grid-cols-3">

@@ -8,6 +8,7 @@ import { pendingApprovalCount } from "@/lib/approvals/queue";
 import { NAV_GROUPS } from "@/components/nav/navLinks";
 import SidebarNav from "@/components/nav/SidebarNav";
 import MobileNav from "@/components/nav/MobileNav";
+import DraftScope from "@/components/DraftScope";
 
 /** What the count means depends on who is reading it — see queue.ts. An admin
  * is being asked to act; a finance user is watching their own requests, and a
@@ -126,7 +127,10 @@ export default async function AppShell({ children }: { children: ReactNode }) {
           </form>
         </header>
 
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 lg:px-8">{children}</main>
+        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 lg:px-8">
+          {/* Half-filled forms are saved per signed-in user — see useFormDraft. */}
+          {id ? <DraftScope userId={id}>{children}</DraftScope> : children}
+        </main>
       </div>
     </div>
   );

@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { asString, useFormDraft } from "@/lib/useFormDraft";
+import DraftNotice from "@/components/DraftNotice";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { recordSiteChallan } from "@/lib/actions/siteChallans";
@@ -37,6 +39,18 @@ function blankRow(): Row {
   return { key: keyCounter, name: "", description: "", quantity: "", unit: "pcs", remark: "" };
 }
 
+/** A row read back from a saved draft; see restoreRow in DispatchBatchForm. */
+function restoreRow(raw: Partial<Row>): Row {
+  return {
+    ...blankRow(),
+    name: asString(raw.name),
+    description: asString(raw.description),
+    quantity: asString(raw.quantity),
+    unit: asString(raw.unit) || "pcs",
+    remark: asString(raw.remark),
+  };
+}
+
 type Hit = { rowKey: number; typed: string; registered: string; exact: boolean };
 
 function today(): string {
@@ -58,10 +72,11 @@ export default function SiteChallanForm({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  const [siteId, setSiteId] = useState(
-    defaultSiteId && sites.some((s) => s.id === defaultSiteId) ? defaultSiteId : ""
-  );
-  const [date, setDate] = useState(today);
+  const initialSiteId =
+    defaultSiteId && sites.some((s) => s.id === defaultSiteId) ? defaultSiteId : "";
+  const [siteId, setSiteId] = useState(initialSiteId);
+  const [initialDate] = useState(today);
+  const [date, setDate] = useState(initialDate);
   const [supplier, setSupplier] = useState("");
   const [reference, setReference] = useState("");
   const [deliveredBy, setDeliveredBy] = useState("");
@@ -75,6 +90,55 @@ export default function SiteChallanForm({
   // told again — one acknowledgement must not cover a later, different match.
   const [acknowledged, setAcknowledged] = useState<string | null>(null);
   const [prompting, setPrompting] = useState(false);
+
+  // Survives leaving the page and a reload. One draft per entry point, so a
+  // form opened from a site's page never inherits another site.
+  const draft = useFormDraft(
+    `site-challan:${defaultSiteId ?? ""}`,
+    { siteId, date, supplier, reference, deliveredBy, receivedBy, note, rows },
+    rows.every(
+      (r) => !r.name.trim() && !r.description.trim() && !r.quantity.trim() && !r.remark.trim()
+    ) &&
+      siteId === initialSiteId &&
+      date === initialDate &&
+      !supplier &&
+      !reference &&
+      !deliveredBy &&
+      !receivedBy &&
+      !note,
+    (saved) => {
+      if (typeof saved.siteId === "string" && sites.some((s) => s.id === saved.siteId)) {
+        setSiteId(saved.siteId);
+      }
+      if (typeof saved.date === "string" && saved.date) setDate(saved.date);
+      setSupplier(asString(saved.supplier));
+      setReference(asString(saved.reference));
+      setDeliveredBy(asString(saved.deliveredBy));
+      setReceivedBy(asString(saved.receivedBy));
+      setNote(asString(saved.note));
+      if (Array.isArray(saved.rows) && saved.rows.length > 0) {
+        setRows(
+          (saved.rows as unknown[])
+            .filter((r): r is Partial<Row> => !!r && typeof r === "object")
+            .map(restoreRow)
+        );
+      }
+    }
+  );
+
+  function startOver() {
+    draft.discard();
+    setSiteId(initialSiteId);
+    setDate(initialDate);
+    setSupplier("");
+    setReference("");
+    setDeliveredBy("");
+    setReceivedBy("");
+    setNote("");
+    setRows([blankRow(), blankRow(), blankRow()]);
+    setError(null);
+    setPrompting(false);
+  }
 
   function update(key: number, patch: Partial<Row>) {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
@@ -148,6 +212,7 @@ export default function SiteChallanForm({
         })),
       });
       if (result.ok) {
+        draft.clear();
         router.push(`/deliveries/${result.deliveryId}`);
         router.refresh();
         return;
@@ -176,6 +241,7 @@ export default function SiteChallanForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {draft.restored && <DraftNotice onDiscard={startOver} />}
       {error && <Alert tone="danger">{error}</Alert>}
 
       <Card>
