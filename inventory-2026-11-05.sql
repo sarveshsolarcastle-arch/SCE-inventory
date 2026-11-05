@@ -1,4 +1,4 @@
--- Inventory database dump — 2026-11-05T00:04:33.826Z
+-- Inventory database dump — 2026-11-05T23:55:02.676Z
 PRAGMA foreign_keys=OFF;
 BEGIN TRANSACTION;
 DROP TABLE IF EXISTS "Site";
